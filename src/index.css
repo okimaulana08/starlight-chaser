@@ -1,0 +1,869 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100dvh;
+    margin: 0;
+    padding: 0;
+    background-color: #050712;
+    font-family: 'Outfit', system-ui, sans-serif;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.03em;
+  }
+}
+
+/* Mobile notched-device safe-area helpers */
+.safe-area-pad {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  padding-left: max(0.5rem, env(safe-area-inset-left));
+  padding-right: max(0.5rem, env(safe-area-inset-right));
+}
+
+.safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
+.safe-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+.touch-canvas {
+  touch-action: none;
+}
+
+/* ==================== ANIME ACTION-RPG CHROME PRIMITIVES ==================== */
+
+@keyframes cta-sheen {
+  0% {
+    transform: translateX(-160%) skewX(-22deg);
+  }
+  45%,
+  100% {
+    transform: translateX(260%) skewX(-22deg);
+  }
+}
+
+/* Sculpted Beveled RPG Panel (replaces flat SaaS boxes) */
+.rpg-panel {
+  background: linear-gradient(160deg, rgba(16, 24, 54, 0.9) 0%, rgba(7, 10, 24, 0.96) 100%);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(245, 200, 76, 0.34);
+  border-radius: 14px;
+  box-shadow:
+    0 12px 36px rgba(0, 0, 0, 0.68),
+    inset 0 1px 0 rgba(255, 251, 235, 0.16),
+    inset 0 0 28px rgba(56, 232, 255, 0.05);
+}
+
+.rpg-panel-subtle {
+  background: linear-gradient(150deg, rgba(13, 20, 46, 0.84) 0%, rgba(6, 9, 22, 0.92) 100%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(245, 200, 76, 0.24);
+  border-radius: 10px;
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+/* Sculpted Ornate RPG Menu & Secondary Crest Button (replaces awkward parallelogram!) */
+.rpg-blade {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(28, 39, 82, 0.92) 0%,
+    rgba(13, 19, 44, 0.95) 55%,
+    rgba(8, 12, 28, 0.98) 100%
+  );
+  border: 1.5px solid rgba(245, 200, 76, 0.42);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.62),
+    inset 0 1px 0 rgba(255, 251, 235, 0.28),
+    inset 0 -2px 0 rgba(2, 6, 23, 0.85),
+    inset 0 0 18px rgba(56, 232, 255, 0.06);
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s, box-shadow 0.2s, filter 0.2s;
+}
+
+.rpg-blade::before {
+  content: '';
+  position: absolute;
+  inset: 0 12% auto 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(253, 224, 71, 0.65), transparent);
+  pointer-events: none;
+}
+
+.rpg-blade:hover {
+  transform: translateY(-2px) scale(1.015);
+  border-color: rgba(253, 224, 71, 0.88);
+  box-shadow:
+    0 0 26px rgba(245, 200, 76, 0.3),
+    0 12px 26px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.rpg-blade:active {
+  transform: translateY(0px) scale(0.985);
+}
+
+/* Sculpted Royal Gold Heroic CTA Crest Button (BATTLE / DEPLOY / ENTER REGION / 10x SUMMON) */
+.rpg-battle-cta {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fef08a 0%, #f5c84c 36%, #db9518 76%, #b46a06 100%);
+  border: 2px solid #fff7cc;
+  box-shadow:
+    0 0 34px rgba(245, 200, 76, 0.52),
+    0 12px 28px rgba(0, 0, 0, 0.72),
+    inset 0 2px 0 rgba(255, 255, 255, 0.88),
+    inset 0 -3px 0 rgba(120, 53, 15, 0.65);
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), filter 0.2s, box-shadow 0.2s;
+}
+
+.rpg-battle-cta::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(
+    110deg,
+    transparent 15%,
+    rgba(255, 255, 255, 0.48) 50%,
+    transparent 85%
+  );
+  animation: cta-sheen 4.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.rpg-battle-cta:hover {
+  transform: translateY(-2px) scale(1.02);
+  filter: brightness(1.06);
+  box-shadow:
+    0 0 48px rgba(253, 224, 71, 0.78),
+    0 16px 32px rgba(0, 0, 0, 0.78),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -3px 0 rgba(120, 53, 15, 0.65);
+}
+
+.rpg-battle-cta:active {
+  transform: translateY(0px) scale(0.985);
+}
+
+/* Grand Chase Mobile Glossy Circular Skill Orb */
+.gc-skill-orb {
+  position: relative;
+  border-radius: 9999px;
+  box-shadow:
+    0 5px 14px rgba(0, 0, 0, 0.78),
+    inset 0 2px 3px rgba(255, 255, 255, 0.32),
+    inset 0 -3px 6px rgba(2, 6, 23, 0.85);
+  transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.gc-skill-orb:not(:disabled):hover {
+  transform: scale(1.08);
+}
+
+.gc-skill-orb:not(:disabled):active {
+  transform: scale(0.92);
+}
+
+/* Mobile Landscape Short-Viewport Helpers (e.g. 844x390, 667x375, 915x412) */
+@media (max-height: 500px) and (orientation: landscape) {
+  .ls-hide {
+    display: none !important;
+  }
+  .ls-compact-pad {
+    padding: 0.3rem 0.65rem !important;
+  }
+  .ls-tight-gap {
+    gap: 0.35rem !important;
+  }
+}
+
+/* Feathered mask so standing hero melts seamlessly into the sky world */
+.hero-standing-mask {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) 76%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) 76%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
+
+.hero-radial-feather {
+  -webkit-mask-image: radial-gradient(ellipse 56% 68% at 50% 42%, #000 44%, rgba(0, 0, 0, 0.72) 66%, transparent 94%);
+  mask-image: radial-gradient(ellipse 56% 68% at 50% 42%, #000 44%, rgba(0, 0, 0, 0.72) 66%, transparent 94%);
+}
+
+/* Legacy glass helper kept as sleek chamfered HUD fallback */
+.glass-panel {
+  background: linear-gradient(155deg, rgba(14, 20, 46, 0.88), rgba(7, 10, 24, 0.94));
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(245, 200, 76, 0.22);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+
+.ssr-border {
+  border-color: rgba(245, 200, 76, 0.82);
+  box-shadow: 0 0 26px rgba(245, 200, 76, 0.35), inset 0 0 20px rgba(245, 200, 76, 0.16);
+}
+
+.sr-border {
+  border-color: rgba(168, 85, 247, 0.78);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.3), inset 0 0 14px rgba(168, 85, 247, 0.14);
+}
+
+.r-border {
+  border-color: rgba(56, 189, 248, 0.62);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.22);
+}
+
+.text-glow-gold {
+  text-shadow: 0 0 18px rgba(245, 200, 76, 0.65), 0 2px 6px rgba(0, 0, 0, 0.85);
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 16px rgba(56, 232, 255, 0.65), 0 2px 6px rgba(0, 0, 0, 0.85);
+}
+
+/* ==================== AAA COLLECTIBLE RARITY CARDS & TYPOGRAPHY ==================== */
+
+.font-rarity {
+  font-family: 'Cinzel Decorative', 'Cinzel', Georgia, serif;
+}
+
+.font-serif-italic {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+@keyframes card-border-spin {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes card-foil-sweep {
+  0% {
+    transform: translateX(-160%) skewX(-24deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 0.9;
+  }
+  75% {
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(260%) skewX(-24deg);
+    opacity: 0;
+  }
+}
+
+@keyframes rarity-text-shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes card-mote-rise {
+  0% {
+    transform: translateY(10px) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.95;
+  }
+  80% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(-48px) scale(1.1);
+    opacity: 0;
+  }
+}
+
+@keyframes card-aura-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+/* Chamfered collectible card shell */
+.card-chamfer {
+  clip-path: polygon(
+    12px 0%,
+    calc(100% - 12px) 0%,
+    100% 12px,
+    100% calc(100% - 12px),
+    calc(100% - 12px) 100%,
+    12px 100%,
+    0% calc(100% - 12px),
+    0% 12px
+  );
+}
+
+.card-chamfer-inner {
+  clip-path: polygon(
+    10px 0%,
+    calc(100% - 10px) 0%,
+    100% 10px,
+    100% calc(100% - 10px),
+    calc(100% - 10px) 100%,
+    10px 100%,
+    0% calc(100% - 10px),
+    0% 10px
+  );
+}
+
+/* Tier Outer Ambient Glows */
+.card-shell-ssr {
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.75),
+    0 0 26px rgba(245, 200, 76, 0.36),
+    0 0 44px rgba(244, 114, 182, 0.16);
+}
+.card-shell-ssr:hover {
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.85),
+    0 0 38px rgba(253, 224, 71, 0.65),
+    0 0 58px rgba(56, 232, 255, 0.28);
+}
+
+.card-shell-sr {
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.72),
+    0 0 22px rgba(168, 85, 247, 0.34);
+}
+.card-shell-sr:hover {
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.82),
+    0 0 34px rgba(192, 132, 252, 0.6);
+}
+
+.card-shell-r {
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.68),
+    0 0 16px rgba(56, 189, 248, 0.24);
+}
+.card-shell-r:hover {
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.8),
+    0 0 26px rgba(56, 189, 248, 0.48);
+}
+
+/* Rotating Conic Metallic Bezel Gradients */
+.card-conic-ssr {
+  background: conic-gradient(
+    from 0deg,
+    #fff7cc 0deg,
+    #f5c84c 52deg,
+    #f472b6 112deg,
+    #38e8ff 175deg,
+    #fde047 240deg,
+    #d97706 305deg,
+    #fff7cc 360deg
+  );
+  animation: card-border-spin 6.5s linear infinite;
+}
+
+.card-conic-sr {
+  background: conic-gradient(
+    from 0deg,
+    #f3e8ff 0deg,
+    #c084fc 70deg,
+    #6366f1 155deg,
+    #e879f9 235deg,
+    #7e22ce 310deg,
+    #f3e8ff 360deg
+  );
+  animation: card-border-spin 9.5s linear infinite;
+}
+
+.card-conic-r {
+  background: linear-gradient(145deg, #bae6fd 0%, #38bdf8 38%, #1d4ed8 72%, #7dd3fc 100%);
+}
+
+/* Diagonal Holographic Foil Shimmer Sweeps */
+.card-shimmer-ssr {
+  background: linear-gradient(
+    115deg,
+    transparent 20%,
+    rgba(255, 250, 210, 0.14) 36%,
+    rgba(255, 255, 255, 0.44) 48%,
+    rgba(56, 232, 255, 0.22) 56%,
+    rgba(244, 114, 182, 0.2) 64%,
+    transparent 80%
+  );
+  animation: card-foil-sweep 4.6s ease-in-out infinite;
+}
+
+.card-shimmer-sr {
+  background: linear-gradient(
+    115deg,
+    transparent 25%,
+    rgba(216, 180, 254, 0.16) 44%,
+    rgba(255, 255, 255, 0.3) 50%,
+    rgba(192, 132, 252, 0.16) 58%,
+    transparent 76%
+  );
+  animation: card-foil-sweep 6.4s ease-in-out infinite;
+}
+
+/* Sculpted Foil Rarity Lettering (SSR / SR / R) */
+.rarity-text-ssr {
+  background: linear-gradient(
+    110deg,
+    #fffbeb 0%,
+    #fde047 22%,
+    #f9a8d4 45%,
+    #67e8f9 68%,
+    #f59e0b 88%,
+    #fffbeb 100%
+  );
+  background-size: 240% 240%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rarity-text-shimmer 4s ease infinite;
+  filter: drop-shadow(0 1px 0 rgba(120, 53, 15, 0.95))
+    drop-shadow(0 0 10px rgba(253, 224, 71, 0.85));
+}
+
+.rarity-text-sr {
+  background: linear-gradient(125deg, #faf5ff 0%, #d8b4fe 35%, #a855f7 70%, #f5d0fe 100%);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rarity-text-shimmer 5.5s ease infinite;
+  filter: drop-shadow(0 1px 0 rgba(59, 7, 100, 0.95))
+    drop-shadow(0 0 8px rgba(192, 132, 252, 0.78));
+}
+
+.rarity-text-r {
+  background: linear-gradient(135deg, #f0f9ff 0%, #7dd3fc 45%, #0ea5e9 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 rgba(12, 74, 110, 0.95))
+    drop-shadow(0 0 6px rgba(56, 189, 248, 0.6));
+}
+
+/* Tier Color Grading Filters applied softly onto card artwork */
+.grade-art-ssr {
+  filter: contrast(1.06) saturate(1.16) brightness(1.03);
+}
+.grade-art-sr {
+  filter: contrast(1.05) saturate(1.1);
+}
+.grade-art-r {
+  filter: contrast(1.03) saturate(0.98);
+}
+.grade-art-locked {
+  filter: saturate(0.45) brightness(0.68) contrast(1.08);
+}
+
+.animate-card-mote {
+  animation: card-mote-rise 3.6s ease-in-out infinite;
+}
+
+.animate-card-aura {
+  animation: card-aura-pulse 3.2s ease-in-out infinite;
+}
+
+/* ==================== LIVING WORLD MAP & WINDING STAGE TRAIL VFX ==================== */
+
+@keyframes leyline-flow {
+  0% {
+    stroke-dashoffset: 36;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes cloud-drift-slow {
+  0% {
+    transform: translateX(-8%) translateY(0px);
+    opacity: 0.26;
+  }
+  50% {
+    transform: translateX(8%) translateY(-6px);
+    opacity: 0.42;
+  }
+  100% {
+    transform: translateX(-8%) translateY(0px);
+    opacity: 0.26;
+  }
+}
+
+@keyframes fog-swirl {
+  0%,
+  100% {
+    transform: scale(1) translate(0px, 0px);
+    opacity: 0.52;
+  }
+  50% {
+    transform: scale(1.06) translate(-10px, 6px);
+    opacity: 0.72;
+  }
+}
+
+@keyframes map-pin-bob {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes frontier-bounce {
+  0%,
+  100% {
+    transform: translate(-50%, 0px);
+  }
+  50% {
+    transform: translate(-50%, -7px);
+  }
+}
+
+.animate-leyline {
+  animation: leyline-flow 1.8s linear infinite;
+}
+
+.animate-cloud-drift {
+  animation: cloud-drift-slow 24s ease-in-out infinite;
+}
+
+.animate-fog-swirl {
+  animation: fog-swirl 11s ease-in-out infinite;
+}
+
+.animate-pin-bob {
+  animation: map-pin-bob 3.2s ease-in-out infinite;
+}
+
+.animate-frontier-bounce {
+  animation: frontier-bounce 1.6s ease-in-out infinite;
+}
+
+@keyframes cutin-slide {
+  0% {
+    transform: translateX(-28%) skewX(-10deg) scaleY(0.75);
+    opacity: 0;
+  }
+  14% {
+    transform: translateX(0%) skewX(-10deg) scaleY(1);
+    opacity: 1;
+  }
+  88% {
+    transform: translateX(2%) skewX(-10deg) scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(18%) skewX(-10deg) scaleY(0.85);
+    opacity: 0;
+  }
+}
+
+@keyframes skill-callout-pop {
+  0% {
+    transform: translateX(-110%) scale(0.88);
+    opacity: 0;
+  }
+  16% {
+    transform: translateX(0%) scale(1.03);
+    opacity: 1;
+  }
+  26% {
+    transform: translateX(0%) scale(1);
+    opacity: 1;
+  }
+  82% {
+    transform: translateX(0%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-30%) scale(0.95);
+    opacity: 0;
+  }
+}
+
+.animate-cutin-slide {
+  animation: cutin-slide 1.02s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-skill-callout {
+  animation: skill-callout-pop 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes combo-pop {
+  0% {
+    transform: scale(1.45) rotate(-4deg);
+  }
+  60% {
+    transform: scale(0.95) rotate(1deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes boss-warning-in {
+  0% {
+    transform: scaleY(0.2);
+    opacity: 0;
+  }
+  16% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  84% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(0.15);
+    opacity: 0;
+  }
+}
+
+@keyframes wave-slash-in {
+  0% {
+    transform: translateX(-32px) scale(0.9);
+    opacity: 0;
+  }
+  18% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  82% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(24px) scale(0.96);
+    opacity: 0;
+  }
+}
+
+@keyframes screen-enter {
+  0% {
+    opacity: 0;
+    transform: scale(1.015);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes gacha-meteor-fall {
+  0% {
+    transform: translate(42vw, -46vh) rotate(-42deg) scale(0.4);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  75% {
+    transform: translate(0, 0) rotate(-42deg) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-18vw, 18vh) rotate(-42deg) scale(1.8);
+    opacity: 0;
+  }
+}
+
+@keyframes upgrade-ring-burst {
+  0% {
+    transform: scale(0.35);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
+
+.animate-combo-pop {
+  animation: combo-pop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.animate-boss-warning {
+  animation: boss-warning-in 2.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-wave-slash {
+  animation: wave-slash-in 1.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-screen-in {
+  animation: screen-enter 0.28s ease-out forwards;
+}
+
+.animate-gacha-meteor {
+  animation: gacha-meteor-fall 1.35s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.animate-upgrade-burst {
+  animation: upgrade-ring-burst 0.65s ease-out forwards;
+}
+
+.hazard-stripes {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(245, 200, 76, 0.85) 0px,
+    rgba(245, 200, 76, 0.85) 14px,
+    rgba(15, 10, 20, 0.92) 14px,
+    rgba(15, 10, 20, 0.92) 28px
+  );
+}
+
+@media (max-height: 460px) {
+  .ls-victory-header {
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.35rem !important;
+  }
+  .ls-victory-body {
+    padding-top: 0.4rem !important;
+    padding-bottom: 0.4rem !important;
+  }
+  .ls-victory-mvp {
+    height: 158px !important;
+  }
+  .ls-victory-tile {
+    width: 3.35rem !important;
+    height: 3.35rem !important;
+  }
+  .ls-victory-footer {
+    padding-top: 0.4rem !important;
+    padding-bottom: 0.4rem !important;
+  }
+}
+
+@keyframes gauge-energy-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+.rpg-gauge-energy {
+  background-image: linear-gradient(
+    110deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.28) 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.22) 75%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: gauge-energy-flow 2.4s linear infinite;
+}
+
+.rpg-chamfer {
+  clip-path: polygon(
+    9px 0%,
+    calc(100% - 9px) 0%,
+    100% 9px,
+    100% calc(100% - 9px),
+    calc(100% - 9px) 100%,
+    9px 100%,
+    0% calc(100% - 9px),
+    0% 9px
+  );
+}
+
+.rpg-chamfer-sm {
+  clip-path: polygon(
+    6px 0%,
+    calc(100% - 6px) 0%,
+    100% 6px,
+    100% calc(100% - 6px),
+    calc(100% - 6px) 100%,
+    6px 100%,
+    0% calc(100% - 6px),
+    0% 6px
+  );
+}
+
+@layer components {
+  .rpg-ornate-card {
+    position: relative;
+    border-radius: 12px;
+    background: linear-gradient(165deg, rgba(20, 29, 64, 0.92) 0%, rgba(9, 13, 30, 0.96) 62%, rgba(6, 9, 22, 0.99) 100%);
+    border: 1px solid rgba(245, 200, 76, 0.3);
+    box-shadow:
+      0 10px 26px rgba(0, 0, 0, 0.58),
+      inset 0 1px 0 rgba(255, 251, 235, 0.16),
+      inset 0 -1px 0 rgba(56, 232, 255, 0.08);
+  }
+}
+
+.rpg-glass-sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0.04) 36%, transparent 54%);
+  pointer-events: none;
+}
+
+/* Custom sleek scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(8, 12, 28, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(245, 200, 76, 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 200, 76, 0.75);
+}

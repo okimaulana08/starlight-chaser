@@ -1,0 +1,719 @@
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  Crosshair,
+  Flame,
+  Heart,
+  LogOut,
+  Pause,
+  Play,
+  Shield,
+  Sparkles,
+  Swords,
+  Volume2,
+  VolumeX,
+  Wind,
+  Zap,
+} from 'lucide-react';
+import { HERO_MAP } from '../data/heroes';
+import { getNextStageId, isStageUnlocked, STAGE_MAP } from '../data/stages';
+import { getFallbackCardSvg } from '../engine/AssetManager';
+import { audioManager } from '../engine/AudioManager';
+import { CombatEngine } from '../engine/CombatEngine';
+import { useCombatStore } from '../store/useCombatStore';
+import { usePlayerStore } from '../store/usePlayerStore';
+import type { SkillDef } from '../types/game';
+import { GameIcon } from './GameIcon';
+import { ROLE_META } from './RoleBadge';
+import { UltimateCutInOverlay } from './UltimateCutInOverlay';
+import { VictoryOverlay } from './VictoryOverlay';
+
+interface CombatHUDProps {
+  stageId: string;
+  onSelectStage: (stageId: string) => void;
+  onExit: () => void;
+}
+
+const PortraitImg: React.FC<{ heroId: string; src: string; className?: string }> = ({
+  heroId,
+  src,
+  className,
+}) => {
+  const [failed, setFailed] = useState(false);
+  return (
+    <img
+      src={failed ? getFallbackCardSvg('HERO', heroId) : src}
+      onError={() => setFailed(true)}
+      alt={heroId}
+      className={className}
+    />
+  );
+};
+
+function renderSkillGlyph(skill: SkillDef, cls = 'w-4 h-4') {
+  if (skill.effects.includes('HEAL')) return <Heart className={cls} />;
+  if (skill.effects.includes('SHIELD') || skill.effects.includes('PROVOKE'))
+    return <Shield className={cls} />;
+  if (skill.effects.includes('BURN') || skill.effects.includes('BURN_DETONATE'))
+    return <Flame className={cls} />;
+  if (skill.effects.includes('GATHER') || skill.effects.includes('FREEZE'))
+    return <Sparkles className={cls} />;
+  if (skill.aimType === 'DASH') return <Wind className={cls} />;
+  if (skill.aimType === 'LINE') return <Crosshair className={cls} />;
+  return <Swords className={cls} />;
+}
+
+export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, onExit }) => {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const engineRef = useRef<CombatEngine | null>(null);
+  const [runSeed, setRunSeed] = useState(0);
+  const [muted, setMuted] = useState(audioManager.isMuted());
+  const clearedStages = usePlayerStore((s) => s.clearedStages);
+  const nextStageId = getNextStageId(stageId);
+  const candidateNext = nextStageId ? STAGE_MAP[nextStageId] : null;
+  const nextStage =
+    candidateNext && isStageUnlocked(candidateNext, clearedStages) ? candidateNext : null;
+
+  const {
+    paused,
+    speedMultiplier,
+    stageName,
+    waveIndex,
+    totalWaves,
+    elapsedSec,
+    sp,
+    maxSp,
+    ultGauge,
+    maxUltGauge,
+    autoMove,
+    autoSkill,
+    fps,
+    comboCount,
+    comboDecayRatio,
+    bossWarning,
+    waveBanner,
+    touchJoystick,
+    aiming,
+    heroes,
+    boss,
+    bannerToast,
+    combatResult,
+    toggleAutoMove,
+    toggleAutoSkill,
+    toggleSpeed,
+    togglePause,
+  } = useCombatStore();
+
+  useEffect(() => {
+    if (!hostRef.current) return;
+    const engine = new CombatEngine(hostRef.current, stageId);
+    engineRef.current = engine;
+    engine.init();
+
+    return () => {
+      engine.destroy();
+      engineRef.current = null;
+    };
+  }, [stageId, runSeed]);
+
+  const formatClock = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  const spSegments = Array.from({ length: maxSp }, (_, i) => Math.max(0, Math.min(1, sp - i)));
+  const shortStageCode = stageName.split(' ')[0];
+
+  const handleTriggerSkill = (heroId: string, slot: 1 | 2 | 'ULT') => {
+    engineRef.current?.requestSkillAim(heroId, slot);
+  };
+
+  return (
+    <div className="relative w-full h-full overflow-hidden bg-[#060916]">
+      {/* Layer 1: Touch-Ready PixiJS 2.5D Battlefield */}
+      <div ref={hostRef} className="absolute inset-0 w-full h-full cursor-crosshair touch-canvas" />
+
+      {/* Layer 2: Authentic Grand Chase Mobile Floating Action HUD */}
+      <div className="pointer-events-none absolute inset-0 flex flex-col justify-between safe-area-pad sm:p-2.5 ls-compact-pad">
+        {/* TOP HUD STRIP */}
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-1.5">
+            {/* Minimal Floating Stage Plaque */}
+            <div className="pointer-events-auto rpg-panel-subtle px-2.5 py-1 flex items-center gap-1.5 sm:gap-2.5 border-l-4 border-l-amber-400 min-w-0">
+              <div className="text-[10px] sm:text-[11px] font-display font-extrabold tracking-wider text-amber-300 uppercase truncate">
+                <span className="sm:hidden">{shortStageCode}</span>
+                <span className="hidden sm:inline">{stageName}</span>
+              </div>
+              <span className="text-slate-600">|</span>
+              <span className="text-[10px] sm:text-[11px] font-bold text-white shrink-0">
+                W{waveIndex}/{totalWaves}
+              </span>
+              <span className="font-mono text-[10px] sm:text-[11px] text-cyan-300 shrink-0">
+                {formatClock(elapsedSec)}
+              </span>
+              <span className="font-mono text-[10px] text-emerald-400 hidden md:inline ls-hide shrink-0">
+                {fps} FPS
+              </span>
+            </div>
+
+            {/* Rounded Tactile Auto, Speed 1x/2x & Pause Controls */}
+            <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 shrink-0">
+              <button
+                onClick={() => {
+                  audioManager.playSfx('button');
+                  toggleSpeed();
+                }}
+                title="Toggle Battle Speed (1x / 2x)"
+                className={`px-2 sm:px-2.5 py-1 rounded-full text-[9px] sm:text-[10px] font-mono font-black uppercase tracking-wider border transition whitespace-nowrap ${
+                  speedMultiplier === 2
+                    ? 'bg-amber-400/25 border-amber-300 text-amber-200 shadow-[0_0_12px_rgba(245,200,76,0.5)]'
+                    : 'bg-slate-950/90 border-slate-700 text-slate-300 hover:text-white'
+                }`}
+              >
+                {speedMultiplier}×
+              </button>
+              <button
+                onClick={toggleAutoMove}
+                className={`px-2.5 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-wider border transition whitespace-nowrap ${
+                  autoMove
+                    ? 'bg-slate-950/95 border-cyan-300 text-cyan-200 shadow-[0_0_12px_rgba(56,232,255,0.45)]'
+                    : 'bg-slate-950/90 border-slate-700 text-slate-300 hover:text-white'
+                }`}
+              >
+                <span className="sm:hidden">MOVE {autoMove ? 'ON' : 'OFF'}</span>
+                <span className="hidden sm:inline">AUTO MOVE {autoMove ? 'ON' : 'OFF'}</span>
+              </button>
+              <button
+                onClick={toggleAutoSkill}
+                className={`px-2.5 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-wider border transition whitespace-nowrap ${
+                  autoSkill
+                    ? 'bg-slate-950/95 border-amber-300 text-amber-200 shadow-[0_0_12px_rgba(245,200,76,0.45)]'
+                    : 'bg-slate-950/90 border-slate-700 text-slate-300 hover:text-white'
+                }`}
+              >
+                <span className="sm:hidden">SKILL {autoSkill ? 'ON' : 'OFF'}</span>
+                <span className="hidden sm:inline">AUTO SKILL {autoSkill ? 'ON' : 'OFF'}</span>
+              </button>
+              <button
+                onClick={() => setMuted(audioManager.toggleMute())}
+                className="rounded-full bg-slate-950/90 border border-slate-700 p-1.5 text-slate-200 hover:text-white"
+                title="Toggle Sound"
+              >
+                {muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={togglePause}
+                className="rounded-full bg-slate-950/90 border border-slate-700 p-1.5 text-slate-200 hover:text-white"
+                title="Pause"
+              >
+                {paused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={onExit}
+                className="rounded-full bg-slate-950/90 border border-rose-500/50 p-1.5 text-rose-300 hover:text-rose-100"
+                title="Retreat"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Ornate Gilded RPG Boss Gauge */}
+          {boss && (
+            <div className="w-full max-w-lg mx-auto rpg-panel px-3 py-1.5 border-fuchsia-400/55 shadow-[0_0_28px_rgba(217,70,239,0.28)]">
+              <div className="flex items-center justify-between gap-2 text-xs mb-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="px-1.5 py-0.5 rounded bg-fuchsia-600 text-[9px] font-black uppercase text-white shrink-0">
+                    PH.{boss.phase}
+                  </span>
+                  <span className="font-display font-extrabold text-xs sm:text-sm text-white tracking-wider truncate">
+                    {boss.name}
+                  </span>
+                  {boss.burnStacks > 0 && (
+                    <span className="flex items-center gap-0.5 text-[10px] text-orange-400 font-black shrink-0">
+                      <Flame className="w-3 h-3" />×{boss.burnStacks}
+                    </span>
+                  )}
+                  {boss.isBroken && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 text-[9px] font-black uppercase animate-pulse shrink-0">
+                      BROKEN ({boss.brokenTimer}s)
+                    </span>
+                  )}
+                </div>
+                <span className="font-mono text-[10px] sm:text-[11px] text-fuchsia-200 font-bold shrink-0">
+                  {boss.hp.toLocaleString()} / {boss.maxHp.toLocaleString()}
+                </span>
+              </div>
+
+              <div className="relative h-2.5 w-full rounded-full bg-slate-950 overflow-hidden border border-amber-400/45">
+                <div
+                  className="h-full transition-all duration-100 bg-gradient-to-r from-rose-600 via-fuchsia-500 to-amber-400"
+                  style={{ width: `${Math.max(0, (boss.hp / boss.maxHp) * 100)}%` }}
+                />
+                <div className="pointer-events-none absolute inset-0 grid grid-cols-10">
+                  {Array.from({ length: 10 }, (_, i) => (
+                    <div key={i} className="border-r border-black/35" />
+                  ))}
+                </div>
+              </div>
+
+              {boss.hitShield > 0 && (
+                <div className="mt-1 flex items-center gap-2">
+                  <Shield className="w-3 h-3 text-cyan-300 shrink-0" />
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-950 overflow-hidden border border-cyan-400/50">
+                    <div
+                      className="h-full bg-gradient-to-r from-cyan-400 to-fuchsia-400 transition-all duration-75"
+                      style={{ width: `${(boss.hitShield / boss.maxHitShield) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-mono font-black text-cyan-300">
+                    {boss.hitShield} HITS
+                  </span>
+                </div>
+              )}
+
+              {boss.isCasting && (
+                <div className="mt-1">
+                  <div className="flex items-center justify-between text-[10px] font-black mb-0.5">
+                    <span
+                      className={`flex items-center gap-1 uppercase tracking-wider truncate ${
+                        boss.castCancelable ? 'text-amber-300 animate-pulse' : 'text-rose-400'
+                      }`}
+                    >
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                      {boss.castName}
+                      {boss.castCancelable && ' — STUN TO CANCEL!'}
+                    </span>
+                    <span className="font-mono text-amber-200 shrink-0">
+                      {Math.round(boss.castProgress * 100)}%
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-slate-950 overflow-hidden border border-amber-400/75">
+                    <div
+                      className={`h-full transition-all duration-75 ${
+                        boss.castCancelable
+                          ? 'bg-gradient-to-r from-amber-400 via-orange-500 to-red-500'
+                          : 'bg-rose-600'
+                      }`}
+                      style={{ width: `${boss.castProgress * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* UPPER EVENT TOAST & AIM PROMPT */}
+        <div className="flex flex-col items-center gap-1 mt-1 mb-auto pointer-events-none px-2">
+          {bannerToast && (
+            <div
+              className={`px-4 sm:px-6 py-1 rounded-full bg-slate-950/90 border border-amber-400/75 text-amber-300 font-display font-bold text-[11px] sm:text-sm tracking-[0.14em] uppercase text-center shadow-[0_4px_20px_rgba(0,0,0,0.85)] ${
+                boss ? 'ls-hide' : ''
+              }`}
+            >
+              {bannerToast}
+            </div>
+          )}
+          {aiming && (
+            <div className="px-4 py-1 rounded-full bg-cyan-950/95 border border-cyan-400 text-cyan-200 text-[10px] sm:text-[11px] font-extrabold tracking-wider uppercase text-center shadow-[0_0_20px_rgba(56,232,255,0.45)]">
+              SLOW-MO 0.35× • {aiming.skillName} — TAP / DRAG ARENA TO CAST
+            </div>
+          )}
+        </div>
+
+        {/* GRAND CHASE MOBILE–STYLE FLOATING BOTTOM COMBAT DECK */}
+        <div className="relative flex flex-col items-center gap-1.5 pb-0.5">
+          {/* Soft atmospheric floor fade (no rigid box!) */}
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 h-28 sm:h-24 bg-gradient-to-t from-[#040714]/85 via-[#040714]/35 to-transparent -z-10" />
+
+          {/* Floating Arched SP Crystal Capsule & Party Chaser Energy Bar */}
+          <div className="pointer-events-auto w-full max-w-3xl flex items-center gap-2 sm:gap-3 px-2.5 sm:px-3.5 py-1 rounded-full bg-slate-950/85 border border-cyan-400/35 backdrop-blur-md shadow-[0_6px_22px_rgba(0,0,0,0.75)]">
+            {/* SP Orb Counter + 10 Faceted Cyan Crystals */}
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-300/60 shrink-0">
+                <Zap className="w-3 h-3 text-cyan-300 fill-cyan-300" />
+                <span className="font-mono text-[10px] sm:text-[11px] font-black text-white leading-none">
+                  {sp.toFixed(1)}
+                </span>
+              </div>
+              <div className="grid grid-cols-10 gap-1 flex-1">
+                {spSegments.map((fill, i) => (
+                  <div
+                    key={i}
+                    className="h-2 sm:h-2.5 rounded-full bg-slate-900/90 border border-cyan-400/35 overflow-hidden shadow-inner"
+                  >
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-sky-300 to-white transition-all duration-75"
+                      style={{
+                        width: `${fill * 100}%`,
+                        boxShadow: fill >= 1 ? '0 0 8px rgba(56,232,255,0.85)' : undefined,
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="w-px h-4 bg-slate-700/80 shrink-0" />
+
+            {/* Party Chaser Ultimate Energy Bar */}
+            <div className="flex items-center gap-1.5 w-28 sm:w-44 shrink-0">
+              <GameIcon name="summon" className="w-4 h-4 sm:w-5 sm:h-5" />
+              <div className="flex-1 h-2 sm:h-2.5 rounded-full bg-slate-900/95 border border-amber-400/50 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-amber-500 via-yellow-300 to-fuchsia-400 transition-all duration-100"
+                  style={{
+                    width: `${Math.min(100, (ultGauge / maxUltGauge) * 100)}%`,
+                    boxShadow:
+                      ultGauge >= maxUltGauge ? '0 0 12px rgba(253,224,71,0.95)' : undefined,
+                  }}
+                />
+              </div>
+              <span className="font-mono text-[10px] sm:text-[11px] font-black text-amber-300 shrink-0">
+                {Math.floor(ultGauge)}/{maxUltGauge}
+              </span>
+            </div>
+          </div>
+
+          {/* 4 FLOATING GRAND CHASE HERO CLUSTERS (Zero-Overlap Math for 390x844, 844x390 & 1280x800!) */}
+          <div className="pointer-events-auto grid grid-cols-2 sm:grid-cols-4 gap-1.5 lg:gap-3 w-full max-w-5xl px-0.5">
+            {heroes.map((h, idx) => {
+              const def = HERO_MAP[h.heroId];
+              if (!def) return null;
+              const s1 = def.skills[0];
+              const s2 = def.skills[1];
+              const s1Ready = h.alive && h.cd1 <= 0 && sp >= s1.spCost;
+              const s2Ready = h.alive && h.cd2 <= 0 && sp >= s2.spCost;
+              const ultReady = h.alive && ultGauge >= h.ultGaugeCost;
+              const ultPct = Math.min(100, Math.round((ultGauge / h.ultGaugeCost) * 100));
+              const key1 = idx * 2 + 1;
+              const key2 = idx * 2 + 2;
+              const roleMeta = ROLE_META[def.role];
+
+              return (
+                <div
+                  key={h.heroId}
+                  className={`relative min-w-0 flex items-center justify-between gap-1 lg:gap-2 px-1.5 lg:px-2.5 py-1 rounded-full bg-gradient-to-r from-slate-950/90 via-slate-900/75 to-slate-950/85 backdrop-blur-md border transition ${
+                    !h.alive
+                      ? 'opacity-40 grayscale border-slate-800'
+                      : ultReady
+                        ? 'border-amber-300/90 shadow-[0_0_22px_rgba(245,200,76,0.48)]'
+                        : 'border-white/15 shadow-[0_8px_20px_rgba(0,0,0,0.65)]'
+                  }`}
+                >
+                  {/* Circular Hero Portrait Medallion + Integrated Curved HP/Shield Pill */}
+                  <div className="relative flex flex-col items-center shrink-0">
+                    <div
+                      className={`relative w-10 h-10 lg:w-14 lg:h-14 rounded-full p-[2px] ${
+                        ultReady ? 'animate-pulse' : ''
+                      }`}
+                      style={{
+                        background: ultReady
+                          ? 'linear-gradient(135deg, #fde047, #f472b6, #38e8ff)'
+                          : `linear-gradient(135deg, ${h.themeColor}, rgba(15,23,42,0.95))`,
+                        boxShadow: ultReady
+                          ? '0 0 18px rgba(253,224,71,0.85)'
+                          : `0 0 12px ${h.themeColor}44`,
+                      }}
+                    >
+                      <div className="w-full h-full rounded-full overflow-hidden bg-slate-950">
+                        <PortraitImg
+                          heroId={h.heroId}
+                          src={def.assets.card}
+                          className="w-full h-full object-cover object-top"
+                        />
+                      </div>
+
+                      {/* Tiny Class Emblem Badge (Top-Left of Portrait Ring) */}
+                      <img
+                        src={roleMeta.asset}
+                        alt={roleMeta.label}
+                        className="absolute -top-1 -left-1 w-4 h-4 lg:w-5 lg:h-5 object-contain drop-shadow-[0_1px_4px_rgba(0,0,0,0.95)]"
+                      />
+
+                      {/* Passive Stack Pill (Top-Right of Portrait Ring) */}
+                      {h.stacksLabel && (
+                        <span className="absolute -top-1 -right-1 px-1 rounded-full bg-slate-950 border border-cyan-400 text-[7px] lg:text-[8px] font-mono font-black text-cyan-200 leading-tight">
+                          {h.stacksCount}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Curved HP + Shield Bar Tucked Right Under Portrait Chin */}
+                    <div className="-mt-2 relative z-10 w-11 lg:w-16 bg-slate-950/95 border border-white/20 rounded-full px-1 py-[1.5px] shadow-md">
+                      <div className="h-1 lg:h-1.5 w-full rounded-full bg-slate-800 relative overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300 transition-all duration-100"
+                          style={{ width: `${Math.max(0, (h.hp / h.maxHp) * 100)}%` }}
+                        />
+                        {h.shield > 0 && (
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-full bg-sky-300/85"
+                            style={{ width: `${Math.min(100, (h.shield / h.maxHp) * 100)}%` }}
+                          />
+                        )}
+                      </div>
+                      <div className="text-[7px] lg:text-[8px] font-display font-bold text-white truncate text-center leading-none mt-[1px]">
+                        {h.name}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3 Glowing Circular Grand Chase Skill Orbs (S1, S2, ULT) */}
+                  <div className="flex items-center gap-1 lg:gap-1.5 shrink-0">
+                    {[
+                      { slot: 1 as const, sk: s1, ready: s1Ready, cd: h.cd1, maxCd: h.maxCd1, key: key1 },
+                      { slot: 2 as const, sk: s2, ready: s2Ready, cd: h.cd2, maxCd: h.maxCd2, key: key2 },
+                    ].map(({ slot, sk, ready, cd, maxCd, key }) => {
+                      const isAimingThis = aiming?.heroId === h.heroId && aiming.skillSlot === slot;
+                      const cdPct = maxCd > 0 ? Math.min(100, (cd / maxCd) * 100) : 0;
+
+                      return (
+                        <button
+                          key={slot}
+                          disabled={!ready}
+                          onClick={() => handleTriggerSkill(h.heroId, slot)}
+                          title={`${sk.name} (${sk.spCost} SP): ${sk.description}`}
+                          className={`gc-skill-orb w-8 h-8 lg:w-12 lg:h-12 flex flex-col items-center justify-center border-2 ${
+                            isAimingThis
+                              ? 'bg-cyan-500/45 border-cyan-200 ring-2 ring-cyan-300 text-white scale-105'
+                              : ready
+                                ? 'border-amber-300/80 text-white'
+                                : 'bg-slate-950/90 border-slate-700/80 text-slate-600 cursor-not-allowed'
+                          }`}
+                          style={
+                            ready && !isAimingThis
+                              ? {
+                                  background: `radial-gradient(circle at 32% 28%, ${h.themeColor}66 0%, rgba(16,24,52,0.95) 68%, rgba(6,10,24,0.98) 100%)`,
+                                  borderColor: h.themeColor,
+                                  boxShadow: `0 4px 14px rgba(0,0,0,0.78), 0 0 12px ${h.themeColor}44, inset 0 2px 3px rgba(255,255,255,0.32)`,
+                                }
+                              : undefined
+                          }
+                        >
+                          {/* Desktop Hotkey Micro-Pill */}
+                          <span className="hidden lg:flex ls-hide absolute -top-1 -left-1 w-4 h-4 rounded-full bg-slate-950 border border-slate-600 text-[8px] font-mono font-bold text-slate-300 items-center justify-center">
+                            {key}
+                          </span>
+
+                          {/* Glowing Skill Emblem */}
+                          <div style={{ color: ready ? '#ffffff' : undefined }}>
+                            {renderSkillGlyph(sk, 'w-3.5 h-3.5 lg:w-5 lg:h-5')}
+                          </div>
+
+                          {/* Radial Conic Cooldown Sweep */}
+                          {cd > 0 && (
+                            <div
+                              className="absolute inset-0 rounded-full flex items-center justify-center"
+                              style={{
+                                background: `conic-gradient(rgba(3, 7, 18, 0.86) ${cdPct}%, rgba(3, 7, 18, 0.25) 0)`,
+                              }}
+                            >
+                              <span className="font-mono text-[9px] lg:text-xs font-black text-amber-300 drop-shadow-[0_1px_4px_rgba(0,0,0,1)]">
+                                {cd}
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Floating Cyan SP Cost Crystal Orb */}
+                          <span className="absolute -bottom-1 -right-0.5 w-3.5 h-3.5 lg:w-4 lg:h-4 rounded-full bg-slate-950 border border-cyan-300 text-[7px] lg:text-[8px] font-mono font-black text-cyan-200 flex items-center justify-center shadow">
+                            {sk.spCost}
+                          </span>
+                        </button>
+                      );
+                    })}
+
+                    {/* Ultimate Chaser Starlight Burst Orb */}
+                    <button
+                      disabled={!ultReady}
+                      onClick={() => handleTriggerSkill(h.heroId, 'ULT')}
+                      title={`ULTIMATE: ${def.ultimate.name} (${h.ultGaugeCost} Gauge)`}
+                      className={`gc-skill-orb w-8 h-8 lg:w-12 lg:h-12 flex flex-col items-center justify-center border-2 ${
+                        ultReady
+                          ? 'bg-gradient-to-br from-amber-300 via-orange-400 to-fuchsia-600 border-amber-100 text-slate-950 shadow-[0_0_20px_rgba(253,224,71,0.9)] animate-pulse'
+                          : 'bg-slate-950/90 border-slate-700/80 text-slate-500 cursor-not-allowed'
+                      }`}
+                      style={
+                        !ultReady
+                          ? {
+                              background: `conic-gradient(rgba(245,200,76,0.28) ${ultPct}%, rgba(8,12,28,0.95) 0)`,
+                            }
+                          : undefined
+                      }
+                    >
+                      <Sparkles
+                        className={`w-3 h-3 lg:w-4 lg:h-4 ${
+                          ultReady ? 'text-slate-950 fill-slate-950' : 'text-amber-400/60'
+                        }`}
+                      />
+                      <span
+                        className={`text-[6.5px] lg:text-[8px] font-black uppercase leading-none mt-0.5 ${
+                          ultReady ? 'text-slate-950' : 'text-amber-200/75 font-mono'
+                        }`}
+                      >
+                        {ultReady ? 'ULT!' : `${ultPct}%`}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* DYNAMIC ANIME HIT COMBO COUNTER (Top-Right Floating) */}
+      {comboCount >= 2 && !combatResult && (
+        <div className="pointer-events-none fixed right-3 sm:right-6 top-[20%] sm:top-[22%] z-30 flex flex-col items-end">
+          <div
+            key={comboCount}
+            className="animate-combo-pop flex items-baseline gap-1.5"
+          >
+            <span
+              className={`font-display font-black leading-none drop-shadow-[0_4px_14px_rgba(0,0,0,0.95)] ${
+                comboCount >= 25
+                  ? 'text-4xl sm:text-6xl text-fuchsia-300'
+                  : comboCount >= 10
+                    ? 'text-3xl sm:text-5xl text-amber-300'
+                    : 'text-2xl sm:text-4xl text-cyan-200'
+              }`}
+              style={{
+                textShadow:
+                  comboCount >= 25
+                    ? '0 0 24px rgba(232,121,249,0.95)'
+                    : comboCount >= 10
+                      ? '0 0 20px rgba(253,224,71,0.9)'
+                      : '0 0 16px rgba(56,232,255,0.85)',
+              }}
+            >
+              {comboCount}
+            </span>
+            <span className="font-display text-xs sm:text-base font-black uppercase tracking-[0.2em] text-white">
+              HITS
+            </span>
+          </div>
+          <div className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.24em] text-amber-200">
+            {comboCount >= 25
+              ? '★ STARLIGHT OVERDRIVE!!'
+              : comboCount >= 10
+                ? 'BLAZING COMBO!'
+                : 'CHAIN COMBO'}
+          </div>
+          <div className="mt-1 w-24 sm:w-32 h-1 rounded-full bg-slate-950/85 overflow-hidden border border-white/20">
+            <div
+              className={`h-full transition-all duration-75 ${
+                comboCount >= 25
+                  ? 'bg-gradient-to-r from-fuchsia-500 via-amber-300 to-cyan-300'
+                  : comboCount >= 10
+                    ? 'bg-gradient-to-r from-amber-500 to-yellow-200'
+                    : 'bg-gradient-to-r from-cyan-500 to-sky-200'
+              }`}
+              style={{ width: `${Math.round(comboDecayRatio * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* CINEMATIC WAVE TRANSITION RIBBON */}
+      {waveBanner && !bossWarning && !combatResult && (
+        <div className="pointer-events-none fixed inset-x-0 top-[36%] z-30 flex justify-center">
+          <div
+            key={waveBanner}
+            className="animate-wave-slash px-8 sm:px-14 py-2 bg-gradient-to-r from-transparent via-slate-950/95 to-transparent border-y-2 border-cyan-400/80 shadow-[0_0_32px_rgba(56,232,255,0.4)]"
+          >
+            <span className="font-display text-xl sm:text-3xl font-black uppercase tracking-[0.3em] text-white text-glow-cyan">
+              {waveBanner}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* CINEMATIC ⚠ WARNING: BOSS APPROACHING ⚠ OVERLAY */}
+      {bossWarning && !combatResult && (
+        <div
+          key={bossWarning.id}
+          className="pointer-events-none fixed inset-x-0 top-1/2 -translate-y-1/2 z-40 animate-boss-warning"
+        >
+          <div className="h-3 w-full hazard-stripes border-y border-amber-300/70" />
+          <div className="w-full py-3 sm:py-5 bg-gradient-to-r from-rose-950/90 via-[#1a0510]/95 to-rose-950/90 backdrop-blur-sm text-center shadow-[0_0_60px_rgba(225,29,72,0.7)]">
+            <div className="flex items-center justify-center gap-2 text-amber-300 text-[10px] sm:text-xs font-black uppercase tracking-[0.36em]">
+              <AlertTriangle className="w-4 h-4 text-rose-400 animate-pulse" />
+              <span>WARNING • BOSS APPROACHING</span>
+              <AlertTriangle className="w-4 h-4 text-rose-400 animate-pulse" />
+            </div>
+            <div className="font-display text-2xl sm:text-5xl font-black uppercase tracking-[0.16em] text-white drop-shadow-[0_4px_20px_rgba(244,63,94,0.95)] mt-1">
+              {bossWarning.name}
+            </div>
+            <div className="text-[11px] sm:text-sm font-serif-italic italic text-rose-200 tracking-widest">
+              {bossWarning.title}
+            </div>
+          </div>
+          <div className="h-3 w-full hazard-stripes border-y border-amber-300/70" />
+        </div>
+      )}
+
+      {/* FLOATING TRANSLUCENT MOBILE VIRTUAL JOYSTICK */}
+      {touchJoystick && !combatResult && (
+        <div className="pointer-events-none fixed inset-0 z-30">
+          <div
+            className="absolute -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full border-2 border-cyan-300/55 bg-slate-950/35 backdrop-blur-[2px] shadow-[0_0_24px_rgba(56,232,255,0.28)]"
+            style={{ left: touchJoystick.originX, top: touchJoystick.originY }}
+          />
+          <div
+            className="absolute -translate-x-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-gradient-to-br from-cyan-300/90 to-amber-300/85 border-2 border-white shadow-[0_0_18px_rgba(56,232,255,0.85)]"
+            style={{ left: touchJoystick.knobX, top: touchJoystick.knobY }}
+          />
+        </div>
+      )}
+
+      {/* 4-Phase Anime Ultimate Cut-In & Impact Flash */}
+      <UltimateCutInOverlay />
+
+      {/* PAUSE OVERLAY */}
+      {paused && !combatResult && (
+        <div className="fixed inset-0 z-40 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="rpg-panel p-5 sm:p-6 max-w-sm w-full text-center border-amber-400/40">
+            <h3 className="font-display text-2xl font-extrabold text-white tracking-wider mb-1">
+              BATTLE PAUSED
+            </h3>
+            <p className="text-xs text-amber-300 mb-5">{stageName}</p>
+            <div className="flex flex-col gap-2.5">
+              <button
+                onClick={togglePause}
+                className="rpg-battle-cta w-full py-3 text-slate-950 font-display font-black uppercase tracking-widest"
+              >
+                Resume Battle
+              </button>
+              <button
+                onClick={() => setRunSeed((s) => s + 1)}
+                className="rpg-blade w-full py-2.5 text-white font-bold text-xs uppercase tracking-wider"
+              >
+                Restart Stage
+              </button>
+              <button
+                onClick={onExit}
+                className="w-full py-2.5 rounded-xl bg-rose-950/75 border border-rose-500/50 text-rose-200 font-bold text-xs uppercase tracking-wider hover:bg-rose-900/75"
+              >
+                Retreat to Command Deck
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CINEMATIC FULL-SCREEN MVP VICTORY / DEFEAT STAGE */}
+      {combatResult && (
+        <VictoryOverlay
+          result={combatResult}
+          heroesSnapshot={heroes}
+          nextStageCode={nextStage?.code}
+          onNextStage={nextStage ? () => onSelectStage(nextStage.id) : undefined}
+          onReplay={() => setRunSeed((s) => s + 1)}
+          onExit={onExit}
+        />
+      )}
+    </div>
+  );
+};

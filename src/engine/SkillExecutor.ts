@@ -1,0 +1,853 @@
+import { Graphics } from 'pixi.js';
+import { audioManager } from './AudioManager';
+import { calculateHealAmount, calculateShieldAmount } from './CombatMath';
+import type { CombatContext, EnemyUnit, HeroUnit } from './CombatTypes';
+import { playHeroSkillVfx } from './HeroVfxChoreographer';
+import type { SkillDef } from '../types/game';
+
+function hexToNum(hex: string): number {
+  return parseInt(hex.replace('#', ''), 16) || 0xffffff;
+}
+
+export interface PendingAim {
+  heroId: string;
+  slot: 1 | 2 | 'ULT';
+  skill: SkillDef;
+}
+
+export class SkillExecutor {
+  public readonly aimGfx = new Graphics();
+  public pendingAim: PendingAim | null = null;
+  private autoSkillTimer = 0.45;
+
+  constructor() {
+    this.aimGfx.visible = false;
+  }
+
+  public startAiming(ctx: CombatContext, heroId: string, slot: 1 | 2 | 'ULT'): boolean {
+    const hero = ctx.heroes.find((h) => h.heroId === heroId && h.alive);
+    if (!hero) return false;
+
+    const skill = slot === 'ULT' ? hero.def.ultimate : hero.def.skills[slot - 1];
+    if (!this.canCast(ctx, hero, slot, skill)) return false;
+
+    // SELF skills & ULTIMATES cast immediately on tap (Grand Chase style — instant cinematic Ultimate Cut-In!)
+    if (skill.aimType === 'SELF') {
+      this.castSkill(ctx, hero, slot, hero.x, hero.y);
+      return true;
+    }
+
+    if (slot === 'ULT') {
+      const target =
+        ctx.enemies.find((e) => e.alive && e.def.isBoss) ??
+        ctx.enemies.find((e) => e.alive);
+      this.castSkill(
+        ctx,
+        hero,
+        'ULT',
+        target ? target.x : hero.x + hero.facing * 180,
+        target ? target.y : hero.y,
+      );
+      return true;
+    }
+
+    this.pendingAim = { heroId, slot, skill };
+    this.aimGfx.visible = true;
+    return true;
+  }
+
+  public cancelAiming(): void {
+    this.pendingAim = null;
+    this.aimGfx.visible = false;
+    this.aimGfx.clear();
+  }
+
+  public canCast(ctx: CombatContext, hero: HeroUnit, slot: 1 | 2 | 'ULT', skill: SkillDef): boolean {
+    if (!hero.alive || ctx.ultActive) return false;
+    if (slot === 'ULT') {
+      const cost = skill.gaugeCost ?? 40;
+      return ctx.ultGauge >= cost;
+    }
+    const cd = slot === 1 ? hero.cd1 : hero.cd2;
+    return cd <= 0 && ctx.sp >= skill.spCost;
+  }
+
+  public renderAimTelegraph(ctx: CombatContext, pointerX: number, pointerY: number): void {
+    if (!this.pendingAim) {
+      this.aimGfx.visible = false;
+      return;
+    }
+    const hero = ctx.heroes.find((h) => h.heroId === this.pendingAim!.heroId);
+    if (!hero || !hero.alive) {
+      this.cancelAiming();
+      return;
+    }
+
+    const { skill } = this.pendingAim;
+    const color = hexToNum(hero.def.themeColor);
+    const radius = skill.radius * (1 + hero.stats.aoeRadiusBonus);
+    const dx = pointerX - hero.x;
+    const dy = pointerY - hero.y;
+    const dist = Math.hypot(dx, dy);
+    const clampedDist = Math.min(dist, skill.range || 320);
+    const angle = Math.atan2(dy, dx);
+    const tx = hero.x + Math.cos(angle) * clampedDist;
+    const ty = hero.y + Math.sin(angle) * clampedDist;
+
+    this.aimGfx.clear();
+    this.aimGfx.visible = true;
+
+    // Outer max range dashed-feel ring around hero
+    if (skill.range > 0) {
+      this.aimGfx
+        .ellipse(hero.x, hero.y, skill.range, skill.range * 0.72)
+        .stroke({ color: 0xffffff, width: 1.5, alpha: 0.28 });
+    }
+
+    if (skill.aimType === 'CIRCLE') {
+      this.aimGfx
+        .ellipse(tx, ty, radius, radius * 0.68)
+        .fill({ color, alpha: 0.22 })
+        .stroke({ color, width: 3, alpha: 0.92 });
+      this.aimGfx.circle(tx, ty, 6).fill({ color: 0xffffff, alpha: 0.95 });
+    } else if (skill.aimType === 'CONE') {
+      const span = 0.68;
+      this.aimGfx
+        .moveTo(hero.x, hero.y)
+        .arc(hero.x, hero.y, radius, angle - span, angle + span)
+        .lineTo(hero.x, hero.y)
+        .fill({ color, alpha: 0.24 })
+        .stroke({ color, width: 3, alpha: 0.92 });
+    } else if (skill.aimType === 'LINE' || skill.aimType === 'DASH') {
+      const len = skill.aimType === 'DASH' ? clampedDist : skill.range;
+      const halfW = Math.max(24, radius * 0.45);
+      const ex = hero.x + Math.cos(angle) * len;
+      const ey = hero.y + Math.sin(angle) * len;
+      const px = -Math.sin(angle) * halfW;
+      const py = Math.cos(angle) * halfW;
+
+      this.aimGfx
+        .poly([
+          hero.x + px,
+          hero.y + py,
+          ex + px,
+          ey + py,
+          ex - px,
+          ey - py,
+          hero.x - px,
+          hero.y - py,
+        ])
+        .fill({ color, alpha: 0.24 })
+        .stroke({ color, width: 3, alpha: 0.92 });
+      this.aimGfx.circle(ex, ey, 10).fill({ color, alpha: 0.65 });
+    }
+  }
+
+  public confirmAim(ctx: CombatContext, pointerX: number, pointerY: number): boolean {
+    if (!this.pendingAim) return false;
+    const { heroId, slot } = this.pendingAim;
+    const hero = ctx.heroes.find((h) => h.heroId === heroId && h.alive);
+    this.cancelAiming();
+    if (!hero) return false;
+    return this.castSkill(ctx, hero, slot, pointerX, pointerY);
+  }
+
+  public castSkill(
+    ctx: CombatContext,
+    hero: HeroUnit,
+    slot: 1 | 2 | 'ULT',
+    rawTx: number,
+    rawTy: number,
+  ): boolean {
+    const skill = slot === 'ULT' ? hero.def.ultimate : hero.def.skills[slot - 1];
+    if (!this.canCast(ctx, hero, slot, skill)) return false;
+
+    // Clamp target within skill range
+    let tx = rawTx;
+    let ty = rawTy;
+    if (skill.range > 0) {
+      const dx = rawTx - hero.x;
+      const dy = rawTy - hero.y;
+      const d = Math.hypot(dx, dy);
+      if (d > skill.range) {
+        tx = hero.x + (dx / d) * skill.range;
+        ty = hero.y + (dy / d) * skill.range;
+      }
+    }
+    tx = Math.max(ctx.bounds.minX + 40, Math.min(ctx.bounds.maxX - 40, tx));
+    ty = Math.max(ctx.bounds.minY + 40, Math.min(ctx.bounds.maxY - 40, ty));
+
+    if (slot === 'ULT') {
+      const cost = skill.gaugeCost ?? 40;
+      ctx.ultGauge = Math.max(0, ctx.ultGauge - cost);
+      ctx.triggerUltimate(hero, skill, tx, ty);
+      return true;
+    }
+
+    // Spend SP & add generous Ultimate Gauge (+5.5 per SP spent so Ult Cut-Ins fire every expedition!)
+    ctx.sp = Math.max(0, ctx.sp - skill.spCost);
+    ctx.addUltGauge(skill.spCost * 5.5, 1 + hero.stats.ultGaugeBonus);
+
+    // Chrono 4-piece Set: 25% chance to refund 0.5 SP on active skill cast
+    const hasChrono4 = hero.stats.activeSets.some((s) => s.setId === 'CHRONO' && s.count >= 4);
+    if (hasChrono4 && Math.random() < 0.25) {
+      ctx.addSp(0.5);
+      ctx.spawnDamageText(hero.x, hero.y - 52, '+0.5 SP', 0x38bdf8);
+    }
+
+    const effectiveCd = Math.max(1.2, skill.cooldown * (1 - hero.stats.cdr));
+    if (slot === 1) hero.cd1 = effectiveCd;
+    else hero.cd2 = effectiveCd;
+
+    this.executeSkillPayload(ctx, hero, skill, slot, tx, ty);
+    return true;
+  }
+
+  /**
+   * Executes the full tactical effects of any Skill 1, Skill 2, or Ultimate (called by UltimateDirector on Phase 4).
+   */
+  public executeSkillPayload(
+    ctx: CombatContext,
+    hero: HeroUnit,
+    skill: SkillDef,
+    slot: 1 | 2 | 'ULT',
+    tx: number,
+    ty: number,
+  ): void {
+    const isUlt = slot === 'ULT';
+    const color = hexToNum(hero.def.themeColor);
+    const radius = skill.radius * (1 + hero.stats.aoeRadiusBonus);
+    const angle = Math.atan2(ty - hero.y, tx - hero.x);
+    hero.facing = tx >= hero.x ? 1 : -1;
+    hero.attackSwingTimer = 0.35;
+
+    // Trigger sleek Mini Anime Skill Callout strip on S1 / S2 casts + hero-specific casting aura!
+    if (!isUlt) {
+      ctx.triggerSkillCallout(hero, skill.name, slot);
+      ctx.spawnRingWave(hero.x, hero.y, 74, color, 0.36);
+    } else {
+      // Launch each hero's BESPOKE Signature Ultimate Choreography (all 12 heroes unique!)
+      playHeroSkillVfx(ctx, hero, skill, 'ULT', tx, ty, radius, angle);
+    }
+
+    // Seraphina Passive: Casting any active skill conjures 1 Star Orb (except S2 consumes them first)
+    let consumedOrbs = 0;
+    if (hero.heroId === 'seraphina') {
+      if (skill.id === 'seraphina_s2') {
+        consumedOrbs = hero.starOrbs;
+        hero.starOrbs = 0;
+      } else if (isUlt) {
+        hero.starOrbs = 3;
+      } else {
+        hero.starOrbs = Math.min(3, hero.starOrbs + 1);
+      }
+    }
+
+    // DASH movement skills (Vaelen S1, Elara S1) with luminous anime afterimage ghost trail!
+    if (skill.aimType === 'DASH') {
+      const originX = hero.x;
+      const originY = hero.y;
+      ctx.spawnBeam(originX, originY - 24, tx, ty - 24, color, 16);
+      ctx.spawnBurst(originX, originY - 20, color, 12);
+      // 4 staggered luminous anime afterimage dash silhouettes along path
+      for (let step = 0; step < 4; step++) {
+        const t = (step + 1) / 5;
+        const ax = originX + (tx - originX) * t;
+        const ay = originY + (ty - originY) * t - 26;
+        ctx.spawnSpriteFx({
+          tex: 'crescentSlash',
+          x: ax,
+          y: ay,
+          rotation: angle,
+          scaleX: 0.48 + step * 0.08,
+          scaleY: 0.52,
+          endScaleX: 0.85,
+          endScaleY: 0.25,
+          tint: step % 2 === 0 ? color : 0xffffff,
+          alpha: 0.82,
+          life: 0.26,
+          delay: step * 0.025,
+          darkHalo: true,
+        });
+      }
+      if (hero.heroId === 'elara') {
+        // Elara detonates decoy at origin and vaults to target
+        hero.x = tx;
+        hero.y = ty;
+        hero.atkSpdBuffTimer = 4.0;
+        hero.atkSpdBuffValue = 0.35;
+        ctx.spawnRingWave(originX, originY, radius, color, 0.38);
+        this.applyDamageInArea(ctx, hero, skill, isUlt, originX, originY, radius, angle);
+        audioManager.playSfx('slash');
+        return;
+      }
+      // Vaelen & Zephyrion dash through foes along line to target
+      hero.x = tx;
+      hero.y = ty;
+      const hitEnemies = this.findEnemiesInShape(ctx, 'LINE', originX, originY, tx, ty, radius, angle);
+      for (const e of hitEnemies) {
+        if (hero.heroId === 'vaelen') e.starfallMarkTimer = 6.0;
+        this.applySkillHitToEnemy(ctx, hero, skill, e, isUlt, 1.0);
+      }
+      if (skill.id === 'zephyrion_s1') {
+        hero.cd2 = Math.max(0, hero.cd2 - 1.5);
+      }
+      ctx.spawnRingWave(tx, ty, 95, color, 0.35);
+      audioManager.playSfx('slash');
+      return;
+    }
+
+    // HEALER & SUPPORT SKILLS (Lyra, Clara, Garrick S2/Ult, Draven S2, Titus S2/Ult)
+    if (skill.effects.includes('HEAL') || (skill.aimType === 'SELF' && skill.effects.includes('SHIELD') && !skill.effects.includes('BURN_DETONATE') && skill.id !== 'raze_s2' && skill.id !== 'draven_ult')) {
+      const centerX = skill.aimType === 'SELF' ? hero.x : tx;
+      const centerY = skill.aimType === 'SELF' ? hero.y : ty;
+      const allies = ctx.heroes.filter(
+        (a) => a.alive && (skill.aimType === 'SELF' || Math.hypot(a.x - centerX, a.y - centerY) <= radius + 90),
+      );
+
+      if (skill.id === 'lyra_s2') {
+        // Sanctuary Bloom 6s zone
+        ctx.addZone({
+          id: `zone_${Date.now()}`,
+          kind: 'SANCTUARY_BLOOM',
+          ownerHeroId: hero.heroId,
+          x: centerX,
+          y: centerY,
+          radius,
+          remaining: 6.0,
+          maxDuration: 6.0,
+          tickTimer: 0.1,
+          color: 0x10b981,
+        });
+        audioManager.playSfx('heal');
+        return;
+      }
+
+      if (!isUlt) {
+        playHeroSkillVfx(ctx, hero, skill, slot, centerX, centerY, radius, angle);
+      } else {
+        ctx.spawnRingWave(centerX, centerY, radius, color, 0.5);
+      }
+
+      for (const ally of allies) {
+        if (skill.effects.includes('HEAL')) {
+          const healAmt =
+            skill.id === 'lyra_ult' || skill.id === 'clara_ult' || skill.id === 'aurelia_ult'
+              ? Math.round(ally.maxHp * skill.multiplier * (1 + hero.stats.healBonus))
+              : calculateHealAmount(hero.stats.atk, skill.multiplier, hero.stats.healBonus);
+          const overflow = Math.max(0, ally.hp + healAmt - ally.maxHp);
+          ctx.healHero(hero, ally, healAmt, true);
+
+          // Aurelia Passive (Blossom Covenant): excess healing converts into Starlight Barrier + +12% ATK
+          if (hero.heroId === 'aurelia') {
+            if (overflow > 0) {
+              ctx.grantShield(hero, ally, Math.min(Math.round(ally.maxHp * 0.2), overflow), false);
+            }
+            ally.atkBuffTimer = Math.max(ally.atkBuffTimer, 6.0);
+            ally.atkBuffValue = Math.max(ally.atkBuffValue, 0.12);
+          }
+
+          if (skill.id === 'lyra_s1' || skill.id === 'aurelia_s2') {
+            ally.hotTimer = 4.5;
+            ally.hotTickAmount = calculateHealAmount(hero.stats.atk, 0.38, hero.stats.healBonus);
+          }
+          // Relic: Lantern of Dawnlight (+10% ATK buff on S1 heal)
+          if (hero.relicId === 'relic_dawnlight_lantern' && slot === 1) {
+            ally.atkBuffTimer = Math.max(ally.atkBuffTimer, 5.0);
+            ally.atkBuffValue = Math.max(ally.atkBuffValue, 0.1);
+          }
+        }
+
+        if (skill.effects.includes('SHIELD')) {
+          const isSelfOnly = skill.id === 'titus_s2';
+          if (!isSelfOnly || ally.heroId === hero.heroId) {
+            const shieldAmt =
+              skill.id === 'clara_s2' || skill.id === 'aurelia_s2'
+                ? Math.round(hero.stats.atk * skill.multiplier * hero.stats.shieldPower)
+                : calculateShieldAmount(hero.maxHp, skill.multiplier, hero.stats.shieldPower);
+            ctx.grantShield(hero, ally, shieldAmt, skill.id === 'draven_s2' || skill.id === 'bram_s2');
+          }
+        }
+
+        if (skill.effects.includes('ATK_BUFF')) {
+          ally.atkBuffTimer = isUlt ? (skill.id === 'aurelia_ult' ? 9.0 : 8.0) : 6.0;
+          ally.atkBuffValue = skill.id === 'aurelia_ult' ? 0.25 : isUlt ? 0.2 : 0.18;
+        }
+        if (skill.effects.includes('INVINCIBLE')) {
+          ally.invincibleTimer = skill.id === 'aurelia_ult' ? 2.0 : 1.5;
+        }
+        if (skill.effects.includes('DAMAGE_REDUCE')) {
+          ally.dmgReduceTimer = 6.0;
+          ally.dmgReduceValue = skill.id === 'garrick_ult' ? 0.5 : 0.25;
+        }
+        if (skill.effects.includes('REFLECT')) {
+          ally.reflectTimer = 6.0;
+        }
+      }
+
+      if (skill.effects.includes('PROVOKE')) {
+        for (const e of ctx.enemies) {
+          if (e.alive && Math.hypot(e.x - hero.x, e.y - hero.y) <= radius + 40) {
+            e.provokeTimer = 4.0 + (hero.relicId === 'relic_prism_aegis' ? 1.5 : 0);
+            e.provokeTargetHeroId = hero.heroId;
+          }
+        }
+      }
+
+      if (skill.id === 'lyra_ult' || skill.id === 'aurelia_ult') {
+        const spGain = skill.id === 'aurelia_ult' ? 1.5 : 2.0;
+        ctx.addSp(spGain);
+        ctx.spawnDamageText(hero.x, hero.y - 58, `+${spGain.toFixed(1)} SP`, 0x38e8ff, true);
+      }
+
+      audioManager.playSfx(skill.effects.includes('HEAL') ? 'heal' : 'shield');
+      return;
+    }
+
+    // ORION S1: Astral Beacon Zone (7s +18% Crit Rate & 40% ATK/s)
+    if (skill.id === 'orion_s1') {
+      ctx.addZone({
+        id: `beacon_${Date.now()}`,
+        kind: 'ASTRAL_BEACON',
+        ownerHeroId: hero.heroId,
+        x: tx,
+        y: ty,
+        radius,
+        remaining: 7.0,
+        maxDuration: 7.0,
+        tickTimer: 0.1,
+        color: 0x38e8ff,
+      });
+      ctx.spawnRingWave(tx, ty, radius, 0x38e8ff, 0.4);
+      audioManager.playSfx('shield');
+      return;
+    }
+
+    // OFFENSIVE / HYBRID SKILLS (Single hit, Multi-hit, Zones, Gather, Pull, Burn Detonate)
+    const effectiveRadius =
+      skill.id === 'seraphina_s2' ? radius * (1 + consumedOrbs * 0.15) : radius;
+    const orbBonusMult = skill.id === 'seraphina_s2' ? 1 + consumedOrbs * 0.35 : 1.0;
+
+    // Special zones spawned by Ultimates
+    if (skill.id === 'vaelen_ult') {
+      ctx.addZone({
+        id: `rift_${Date.now()}`,
+        kind: 'STARLIGHT_RIFT',
+        ownerHeroId: hero.heroId,
+        x: tx,
+        y: ty,
+        radius: effectiveRadius,
+        remaining: 4.0,
+        maxDuration: 4.0,
+        tickTimer: 0.5,
+        color: 0xa855f7,
+      });
+    } else if (skill.id === 'draven_ult') {
+      hero.undyingTimer = 3.0;
+      ctx.addZone({
+        id: `caldera_${Date.now()}`,
+        kind: 'LAVA_CALDERA',
+        ownerHeroId: hero.heroId,
+        x: tx,
+        y: ty,
+        radius: effectiveRadius,
+        remaining: 7.0,
+        maxDuration: 7.0,
+        tickTimer: 0.4,
+        color: 0xf97316,
+      });
+    } else if (skill.id === 'orion_ult') {
+      // Resets Twin Railburst CD immediately
+      hero.cd2 = 0;
+    } else if (skill.id === 'zephyrion_ult') {
+      // Resets Chrono Blink immediately
+      hero.cd1 = 0;
+    } else if (skill.id === 'zephyrion_s2') {
+      hero.critBuffTimer = 6.0;
+      hero.critBuffValue = 0.25;
+    } else if (skill.id === 'bram_ult') {
+      hero.dmgReduceTimer = 6.0;
+      hero.dmgReduceValue = 0.3;
+    } else if (skill.id === 'garrick_s1') {
+      // Garrick leaps onto target zone
+      hero.x = tx;
+      hero.y = ty;
+    } else if (skill.id === 'kael_s2') {
+      // Backstep Volley leaps backward slightly
+      hero.x = Math.max(ctx.bounds.minX + 45, hero.x - Math.cos(angle) * 65);
+      hero.y = Math.max(ctx.bounds.minY + 45, hero.y - Math.sin(angle) * 45);
+    }
+
+    const hitCount = skill.hitCount ?? 1;
+    if (!isUlt) {
+      playHeroSkillVfx(ctx, hero, skill, slot, tx, ty, effectiveRadius, angle);
+    }
+    if (hitCount > 1) {
+      // Stagger multi-hit waves so Hit-Count Shield visibly shatters and numbers cascade!
+      const interval = Math.min(0.11, 0.72 / hitCount);
+      for (let i = 0; i < hitCount; i++) {
+        ctx.delayedStrikes.push({
+          delay: i * interval,
+          fn: () => {
+            if (!hero.alive) return;
+            const jitterX = tx + (Math.random() - 0.5) * 44;
+            const jitterY = ty + (Math.random() - 0.5) * 30;
+            if (!isUlt && i % 2 === 1) {
+              ctx.spawnBurst(jitterX, jitterY - 18, color, 6, 22);
+            }
+            this.applyDamageInArea(
+              ctx,
+              hero,
+              skill,
+              isUlt,
+              tx,
+              ty,
+              effectiveRadius,
+              angle,
+              orbBonusMult / hitCount,
+              i === 0,
+            );
+            audioManager.playSfx(i === 0 ? 'slash' : 'hit', 0.16);
+          },
+        });
+      }
+    } else {
+      ctx.triggerShake(isUlt ? 15 : 7);
+      audioManager.playSfx(isUlt ? 'ult_impact' : 'slash');
+      this.applyDamageInArea(ctx, hero, skill, isUlt, tx, ty, effectiveRadius, angle, orbBonusMult, true);
+    }
+  }
+
+  private findEnemiesInShape(
+    ctx: CombatContext,
+    aimType: SkillDef['aimType'],
+    ox: number,
+    oy: number,
+    tx: number,
+    ty: number,
+    radius: number,
+    angle: number,
+  ): EnemyUnit[] {
+    const out: EnemyUnit[] = [];
+    for (const e of ctx.enemies) {
+      if (!e.alive) continue;
+      if (aimType === 'CIRCLE' || aimType === 'SELF') {
+        const cx = aimType === 'SELF' ? ox : tx;
+        const cy = aimType === 'SELF' ? oy : ty;
+        if (Math.hypot(e.x - cx, e.y - cy) <= radius + e.def.radius) out.push(e);
+      } else if (aimType === 'CONE') {
+        const dx = e.x - ox;
+        const dy = e.y - oy;
+        const dist = Math.hypot(dx, dy);
+        if (dist <= radius + e.def.radius) {
+          let diff = Math.atan2(dy, dx) - angle;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          if (Math.abs(diff) <= 0.85) out.push(e);
+        }
+      } else {
+        // LINE / DASH corridor
+        const lx = tx - ox;
+        const ly = ty - oy;
+        const lenSq = Math.max(1, lx * lx + ly * ly);
+        const t = Math.max(0, Math.min(1, ((e.x - ox) * lx + (e.y - oy) * ly) / lenSq));
+        const px = ox + t * lx;
+        const py = oy + t * ly;
+        if (Math.hypot(e.x - px, e.y - py) <= Math.max(46, radius * 0.65) + e.def.radius) {
+          out.push(e);
+        }
+      }
+    }
+    return out;
+  }
+
+  private applyDamageInArea(
+    ctx: CombatContext,
+    hero: HeroUnit,
+    skill: SkillDef,
+    isUlt: boolean,
+    tx: number,
+    ty: number,
+    radius: number,
+    angle: number,
+    scaleFactor = 1.0,
+    applyCrowdControl = true,
+  ): void {
+    const lineEndX = skill.aimType === 'LINE' ? hero.x + Math.cos(angle) * skill.range : tx;
+    const lineEndY = skill.aimType === 'LINE' ? hero.y + Math.sin(angle) * skill.range : ty;
+    const targets = this.findEnemiesInShape(
+      ctx,
+      skill.aimType,
+      hero.x,
+      hero.y,
+      lineEndX,
+      lineEndY,
+      radius,
+      angle,
+    );
+
+    // Raze S2 spreads highest Burn stacks among nearby foes
+    let maxBurnToSpread = 0;
+    if (skill.id === 'raze_s2') {
+      for (const t of targets) maxBurnToSpread = Math.max(maxBurnToSpread, t.burnStacks);
+    }
+
+    let vaelenMarkTriggered = false;
+
+    for (const enemy of targets) {
+      if (!enemy.alive) continue;
+
+      if (applyCrowdControl) {
+        if (skill.effects.includes('GATHER') && !enemy.def.isBoss) {
+          const cx = skill.aimType === 'SELF' ? hero.x : tx;
+          const cy = skill.aimType === 'SELF' ? hero.y : ty;
+          enemy.x = enemy.x * 0.25 + cx * 0.75 + (Math.random() - 0.5) * 24;
+          enemy.y = enemy.y * 0.25 + cy * 0.75 + (Math.random() - 0.5) * 18;
+        }
+        if (skill.effects.includes('PULL')) {
+          if (enemy.def.isBoss) {
+            hero.x = enemy.x - Math.cos(angle) * (enemy.def.radius + 45);
+            hero.y = enemy.y - Math.sin(angle) * (enemy.def.radius + 35);
+          } else {
+            enemy.x = hero.x + Math.cos(angle) * 72;
+            enemy.y = hero.y + Math.sin(angle) * 58;
+          }
+        }
+        if (skill.effects.includes('PROVOKE')) {
+          enemy.provokeTimer = 4.5 + (hero.relicId === 'relic_prism_aegis' ? 1.5 : 0);
+          enemy.provokeTargetHeroId = hero.heroId;
+        }
+        if (skill.effects.includes('DEF_SHRED')) {
+          enemy.defShredTimer = 5.0;
+          enemy.defShredValue = Math.max(
+            enemy.defShredValue,
+            skill.id === 'seraphina_s1' ? 0.2 : skill.id === 'ignis_s1' || skill.id === 'ignis_ult' ? 0.18 : 0.12,
+          );
+        }
+        if (skill.effects.includes('FREEZE') && !enemy.def.isBoss) {
+          enemy.freezeTimer = Math.max(enemy.freezeTimer, 2.5);
+        }
+        if (skill.id === 'elara_ult') {
+          enemy.lunarTraceTimer = 5.0;
+        }
+        if (skill.effects.includes('BURN') || hero.heroId === 'nyx' || hero.heroId === 'ignis') {
+          const addStacks =
+            skill.id === 'nyx_ult'
+              ? 5
+              : skill.id === 'ignis_ult'
+                ? 4
+                : skill.id === 'bram_ult'
+                  ? 3
+                  : skill.id === 'nyx_s1' || skill.id === 'draven_s1' || skill.id === 'ignis_s1'
+                    ? 2
+                    : 1;
+          enemy.burnStacks = Math.min(5, Math.max(enemy.burnStacks + addStacks, maxBurnToSpread));
+          enemy.burnTimer = 6.0;
+          enemy.burnSourceAtk = Math.max(enemy.burnSourceAtk, hero.stats.atk);
+        }
+      }
+
+      if (skill.id === 'vaelen_s2' && enemy.starfallMarkTimer > 0) {
+        vaelenMarkTriggered = true;
+      }
+
+      this.applySkillHitToEnemy(ctx, hero, skill, enemy, isUlt, scaleFactor, applyCrowdControl);
+    }
+
+    if (vaelenMarkTriggered) {
+      hero.overdriveTimer = 6.0;
+      ctx.spawnRingWave(hero.x, hero.y, 110, 0xf5c84c, 0.35);
+      ctx.spawnDamageText(hero.x, hero.y - 54, 'OVERDRIVE!', 0xfde047, true);
+    }
+  }
+
+  private applySkillHitToEnemy(
+    ctx: CombatContext,
+    hero: HeroUnit,
+    skill: SkillDef,
+    enemy: EnemyUnit,
+    isUlt: boolean,
+    scaleFactor: number,
+    applyCC = true,
+  ): void {
+    // Cancel Cast / STUN_CANCEL check!
+    if (applyCC && skill.effects.includes('STUN_CANCEL')) {
+      if (enemy.isCasting && enemy.castCancelable) {
+        enemy.isCasting = false;
+        enemy.castAction = null;
+        enemy.isBroken = true;
+        enemy.brokenTimer = 2.5;
+        ctx.telegraphs = ctx.telegraphs.filter((tg) => {
+          if (tg.enemyUid === enemy.uid) {
+            tg.gfx.destroy();
+            return false;
+          }
+          return true;
+        });
+        ctx.triggerShake(11);
+        audioManager.playSfx('cancel_cast');
+        ctx.spawnRingWave(enemy.x, enemy.y, 160, 0xfacc15, 0.5);
+        ctx.spawnDamageText(enemy.x, enemy.y - 72, 'CAST BROKEN! +25% DMG', 0xfacc15, true);
+        ctx.notifyBanner(`CANCEL CAST! ${enemy.def.name} is BROKEN for 2.5s!`);
+      } else if (!enemy.def.isBoss) {
+        enemy.stunTimer = Math.max(enemy.stunTimer, 1.0);
+      }
+    }
+
+    // Nyx S2 & Ignis S2: Burn Detonation consumes Burn stacks for explosive damage!
+    if (skill.id === 'nyx_s2' || skill.id === 'ignis_s2') {
+      const stacks = Math.max(1, enemy.burnStacks);
+      enemy.burnStacks = 0;
+      enemy.burnTimer = 0;
+      const perStack = skill.id === 'ignis_s2' ? 0.85 : 0.75;
+      ctx.damageEnemy(hero, enemy, {
+        multiplier: perStack * stacks,
+        isSkill: true,
+        canTriggerMark: true,
+      });
+      ctx.spawnBurst(enemy.x, enemy.y - 20, skill.id === 'ignis_s2' ? 0xfb923c : 0xf97316, 18, 34);
+      return;
+    }
+
+    let bonusDmg = 0;
+    if (skill.effects.includes('EXECUTE') && enemy.hp / enemy.maxHp < 0.35) {
+      bonusDmg += 0.4;
+    }
+    if (hero.heroId === 'zephyrion' && (enemy.isBroken || enemy.hp / enemy.maxHp < 0.4)) {
+      bonusDmg += 0.3;
+    }
+    if ((skill.id === 'raze_ult' || hero.heroId === 'ignis') && enemy.burnStacks > 0) {
+      bonusDmg += skill.id === 'raze_ult' ? 0.4 : 0.2;
+    }
+
+    const extraAtkMult =
+      skill.id === 'draven_s1'
+        ? 0.8
+        : skill.id === 'draven_ult'
+          ? 1.8
+          : skill.id === 'bram_s1'
+            ? 0.7
+            : skill.id === 'bram_ult'
+              ? 1.4
+              : 0;
+
+    const res = ctx.damageEnemy(hero, enemy, {
+      multiplier: skill.multiplier * scaleFactor,
+      scalesWithDef: skill.scalesWithDef,
+      extraAtkMultiplier: extraAtkMult * scaleFactor,
+      isSkill: true,
+      isUlt,
+      bonusCritRate: skill.id === 'kael_s1' ? 0.25 : skill.id === 'zephyrion_s2' ? 0.2 : 0,
+      bonusDmgMult: bonusDmg,
+      hitShieldHits: 1,
+      canTriggerMark: applyCC,
+    });
+    if (hero.heroId === 'zephyrion' && res.isCrit) {
+      hero.cd1 = Math.max(0, hero.cd1 - 0.5);
+      hero.cd2 = Math.max(0, hero.cd2 - 0.5);
+    }
+  }
+
+  /**
+   * Smart Auto-Skill AI per GDD Section 2.1:
+   * Priority 1: Heal if any ally < 65% HP
+   * Priority 2: Cancel Cast (STUN_CANCEL) if boss is casting
+   * Priority 3: Shield / Gather / Multi-hit vs Hit-Count Shield
+   * Priority 4: Ultimate & DPS burst rotation
+   */
+  public updateAutoSkill(ctx: CombatContext, dt: number, enabled: boolean): void {
+    if (!enabled || ctx.ultActive || this.pendingAim) return;
+    this.autoSkillTimer -= dt;
+    if (this.autoSkillTimer > 0) return;
+    this.autoSkillTimer = 0.45;
+
+    const aliveEnemies = ctx.enemies.filter((e) => e.alive);
+    if (aliveEnemies.length === 0) return;
+
+    const aliveHeroes = ctx.heroes.filter((h) => h.alive);
+    const boss = aliveEnemies.find((e) => e.def.isBoss);
+    const primaryTarget = boss ?? aliveEnemies[0];
+
+    // 1. Heal priority if any ally < 65% HP
+    const lowAlly = aliveHeroes.find((h) => h.hp / h.maxHp < 0.65);
+    if (lowAlly) {
+      for (const h of aliveHeroes) {
+        if (h.def.role !== 'HEALER') continue;
+        if (this.canCast(ctx, h, 'ULT', h.def.ultimate) && lowAlly.hp / lowAlly.maxHp < 0.45) {
+          this.castSkill(ctx, h, 'ULT', lowAlly.x, lowAlly.y);
+          return;
+        }
+        if (this.canCast(ctx, h, 1, h.def.skills[0])) {
+          this.castSkill(ctx, h, 1, lowAlly.x, lowAlly.y);
+          return;
+        }
+        if (this.canCast(ctx, h, 2, h.def.skills[1])) {
+          this.castSkill(ctx, h, 2, lowAlly.x, lowAlly.y);
+          return;
+        }
+      }
+    }
+
+    // 2. Boss Cancel Cast interrupt priority!
+    if (boss && boss.isCasting && boss.castCancelable) {
+      for (const h of aliveHeroes) {
+        for (const slot of [1, 2, 'ULT'] as const) {
+          const sk = slot === 'ULT' ? h.def.ultimate : h.def.skills[slot - 1];
+          if (sk.effects.includes('STUN_CANCEL') && this.canCast(ctx, h, slot, sk)) {
+            this.castSkill(ctx, h, slot, boss.x, boss.y);
+            return;
+          }
+        }
+      }
+    }
+
+    // 3. Fire Ultimate if ready (prioritize highest-tier DPS or multi-hit when Boss Hit Shield active)
+    const ultReady = aliveHeroes
+      .filter((h) => this.canCast(ctx, h, 'ULT', h.def.ultimate))
+      .sort((a, b) => {
+        const score = (h: HeroUnit) => {
+          let s = h.def.tier === 'SSR' ? 30 : h.def.tier === 'SR' ? 20 : 10;
+          if (boss && boss.hitShield > 0 && h.def.ultimate.effects.includes('MULTI_HIT')) s += 40;
+          if (h.def.role === 'HEALER') s -= 15;
+          return s;
+        };
+        return score(b) - score(a);
+      });
+    if (ultReady.length > 0 && aliveEnemies.length > 0) {
+      const caster = ultReady[0];
+      this.castSkill(ctx, caster, 'ULT', primaryTarget.x, primaryTarget.y);
+      return;
+    }
+
+    // 4. Gather / Shield / Buff / Burst rotation (keep >= 1 SP reserve if boss might cast soon)
+    const reserveSp = boss && !boss.isBroken ? 1.0 : 0;
+    for (const h of aliveHeroes) {
+      // Gather first if 2+ mobs spread out
+      if (aliveEnemies.length >= 2) {
+        for (const slot of [1, 2] as const) {
+          const sk = h.def.skills[slot - 1];
+          if (
+            (sk.effects.includes('GATHER') || sk.effects.includes('SHIELD')) &&
+            ctx.sp >= sk.spCost + reserveSp &&
+            this.canCast(ctx, h, slot, sk)
+          ) {
+            this.castSkill(ctx, h, slot, primaryTarget.x, primaryTarget.y);
+            return;
+          }
+        }
+      }
+    }
+
+    // General DPS skills
+    for (const h of aliveHeroes) {
+      if (h.def.role === 'HEALER') continue;
+      for (const slot of [2, 1] as const) {
+        const sk = h.def.skills[slot - 1];
+        if (ctx.sp >= sk.spCost + reserveSp && this.canCast(ctx, h, slot, sk)) {
+          this.castSkill(ctx, h, slot, primaryTarget.x, primaryTarget.y);
+          return;
+        }
+      }
+    }
+  }
+}

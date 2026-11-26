@@ -1,0 +1,492 @@
+import React, { useMemo, useState } from 'react';
+import {
+  Crown,
+  Download,
+  MessageSquare,
+  RefreshCw,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
+import { ENEMIES } from '../data/enemies';
+import { FACTIONS } from '../data/factions';
+import { HEROES, HERO_MAP } from '../data/heroes';
+import { RELICS } from '../data/relics';
+import { REGION_MAP, REGIONS } from '../data/regions';
+import { getHighestUnlockedStage, isStageUnlocked, STAGE_MAP } from '../data/stages';
+import { audioManager } from '../engine/AudioManager';
+import { computeHeroStats, getActiveFactionBonuses } from '../engine/CombatMath';
+import { usePwaInstall } from '../hooks/usePwaInstall';
+import { CODEX_MILESTONES, usePlayerStore } from '../store/usePlayerStore';
+import type { ScreenId } from '../types/game';
+import { ArtImage } from './ArtImage';
+import { GameIcon } from './GameIcon';
+import { RarityCrest, RoleBadge } from './RoleBadge';
+import { StarlightBackdrop } from './StarlightBackdrop';
+import { WorldMapOverlay } from './WorldMapOverlay';
+
+interface LobbyScreenProps {
+  onNavigate: (screen: ScreenId) => void;
+  onStartCombat: (stageId: string) => void;
+}
+
+export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCombat }) => {
+  const {
+    commanderName,
+    favoriteHeroId,
+    setFavoriteHero,
+    gold,
+    starlightCrystals,
+    squadIds,
+    roster,
+    equipmentInventory,
+    unlockedCodexIds,
+    claimedCodexMilestones,
+    clearedStages,
+    selectedStageId,
+    grantDebugResources,
+  } = usePlayerStore();
+
+  const { canInstall, promptInstall } = usePwaInstall();
+  const [muted, setMuted] = useState(audioManager.isMuted());
+  const [showMap, setShowMap] = useState(false);
+  const [showDialogue, setShowDialogue] = useState(true);
+  const [parallax, setParallax] = useState({ x: 0, y: 0 });
+
+  const ownedHeroIds = Object.keys(roster);
+  const displayHeroId = roster[favoriteHeroId] ? favoriteHeroId : squadIds[0];
+  const displayHero = HERO_MAP[displayHeroId] ?? HERO_MAP.vaelen;
+  const displayOwned = roster[displayHero.id];
+
+  const squadPower = useMemo(
+    () =>
+      squadIds.reduce((sum, id) => {
+        const def = HERO_MAP[id];
+        const owned = roster[id];
+        if (!def || !owned) return sum;
+        return (
+          sum +
+          computeHeroStats(def, owned, equipmentInventory, squadIds, unlockedCodexIds.length)
+            .powerRating
+        );
+      }, 0),
+    [squadIds, roster, equipmentInventory, unlockedCodexIds.length],
+  );
+
+  const activeFactions = useMemo(() => getActiveFactionBonuses(squadIds), [squadIds]);
+  const claimableCodex = CODEX_MILESTONES.some(
+    (m) => unlockedCodexIds.length >= m.threshold && !claimedCodexMilestones.includes(m.threshold),
+  );
+
+  // Respect strict sequential progression: fallback to highest unlocked stage if saved stage is locked
+  const selectedStage = useMemo(() => {
+    const saved = STAGE_MAP[selectedStageId];
+    if (saved && isStageUnlocked(saved, clearedStages)) return saved;
+    return getHighestUnlockedStage(clearedStages);
+  }, [selectedStageId, clearedStages]);
+
+  const selectedRegion = REGION_MAP[selectedStage.regionId] ?? REGIONS[0];
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const nx = (e.clientX / window.innerWidth - 0.5) * 2;
+    const ny = (e.clientY / window.innerHeight - 0.5) * 2;
+    setParallax({ x: nx, y: ny });
+  };
+
+  const cycleFavorite = () => {
+    const idx = ownedHeroIds.indexOf(displayHero.id);
+    const nextId = ownedHeroIds[(idx + 1) % ownedHeroIds.length];
+    if (nextId) {
+      setFavoriteHero(nextId);
+      setShowDialogue(true);
+      audioManager.playSfx('button');
+    }
+  };
+
+  return (
+    <div
+      onMouseMove={handleMouseMove}
+      className="relative w-full h-full overflow-hidden select-none"
+    >
+      {/* LAYER 0: Painted Aurelia Sky Terrace + Animated Embers */}
+      <StarlightBackdrop variant="LOBBY" accentColor={displayHero.themeColor} />
+
+      {/* LAYER 1: Full-Height Standing Anime Champion (True Transparent Cutout OR Seamless Full-Bleed Splash — ZERO Boxy Edges!) */}
+      {displayHero.assets.standing.includes('/assets/standing/') ? (
+        <div
+          className="pointer-events-none absolute inset-0 sm:inset-y-0 sm:left-0 sm:w-[58%] md:w-[62%] flex items-end justify-center sm:justify-start sm:pl-4 md:pl-10 lg:pl-14 z-10 overflow-hidden pb-36 sm:pb-8 md:pb-10"
+          style={{
+            transform: `translate3d(${parallax.x * -12}px, ${parallax.y * -5}px, 0)`,
+            transition: 'transform 0.18s ease-out',
+          }}
+        >
+          {/* Ambient Faction Backlight Halo behind shoulders */}
+          <div
+            className="absolute bottom-[20%] left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-[12%] w-[280px] sm:w-[380px] md:w-[460px] h-[280px] sm:h-[380px] md:h-[460px] rounded-full opacity-40 blur-3xl"
+            style={{
+              background: `radial-gradient(circle, ${displayHero.themeColor}cc 0%, transparent 70%)`,
+            }}
+          />
+
+          {/* Illuminated Celestial Magic Rune Pedestal beneath Hero's Boots */}
+          <div className="absolute bottom-[34%] sm:bottom-5 md:bottom-7 left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-[8%] md:left-[12%] w-[260px] sm:w-[360px] md:w-[440px] h-[72px] sm:h-[96px] flex items-center justify-center">
+            <div
+              className="absolute inset-0 rounded-full opacity-55 blur-xl"
+              style={{
+                background: `radial-gradient(ellipse at center, ${displayHero.themeColor}88 0%, transparent 72%)`,
+              }}
+            />
+            <div
+              className="w-[88%] h-[68%] rounded-full border-2 opacity-55 animate-pulse"
+              style={{
+                borderColor: displayHero.themeColor,
+                boxShadow: `0 0 28px ${displayHero.themeColor}88, inset 0 0 20px ${displayHero.themeColor}55`,
+              }}
+            />
+            <div className="absolute w-[62%] h-[42%] rounded-full bg-black/55 blur-md" />
+          </div>
+
+          {/* Crisp Full-Body Transparent Standing Cutout */}
+          <div
+            className="relative h-[56dvh] sm:h-[82dvh] md:h-[88dvh] max-h-[820px] flex items-end justify-center animate-breathe cursor-pointer pointer-events-auto"
+            onClick={() => setShowDialogue((d) => !d)}
+          >
+            <ArtImage
+              kind="HERO"
+              id={displayHero.id}
+              src={displayHero.assets.standing}
+              alt={displayHero.name}
+              className="h-full w-auto max-w-[92vw] sm:max-w-[54vw] object-contain object-bottom"
+              style={{
+                filter: `drop-shadow(0 18px 28px rgba(4,6,16,0.88)) drop-shadow(0 0 18px ${displayHero.themeColor}44)`,
+              }}
+            />
+          </div>
+        </div>
+      ) : (
+        /* Seamless Full-Bleed Splash Art fallback for heroes without transparent standing art yet (NO visible rectangle edge!) */
+        <div
+          className="pointer-events-none absolute inset-0 sm:inset-y-0 sm:left-0 sm:w-[66%] md:w-[68%] z-10 overflow-hidden"
+          style={{
+            transform: `translate3d(${parallax.x * -10}px, ${parallax.y * -5}px, 0)`,
+            transition: 'transform 0.18s ease-out',
+            WebkitMaskImage:
+              'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,0.96) 54%, rgba(0,0,0,0.45) 78%, rgba(0,0,0,0) 98%)',
+            maskImage:
+              'linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,0.96) 54%, rgba(0,0,0,0.45) 78%, rgba(0,0,0,0) 98%)',
+          }}
+        >
+          <div
+            className="relative w-full h-full animate-breathe cursor-pointer pointer-events-auto"
+            onClick={() => setShowDialogue((d) => !d)}
+          >
+            <ArtImage
+              kind="HERO"
+              id={displayHero.id}
+              src={displayHero.assets.standing}
+              alt={displayHero.name}
+              className="w-full h-full object-cover object-top"
+            />
+            {/* Smooth bottom & top atmospheric vignette blend */}
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#060916]/90 via-transparent to-[#060916]/40" />
+          </div>
+        </div>
+      )}
+
+      {/* LAYER 2: Floating Responsive Anime RPG HUD (Portrait, Mobile Landscape & Desktop!) */}
+      <div className="relative z-20 w-full h-full flex flex-col justify-between safe-area-pad sm:p-3 md:p-5 ls-compact-pad pointer-events-none">
+        {/* TOP FLOATING CORNERS */}
+        <div className="flex items-start justify-between gap-2">
+          {/* Top-Left: Commander Crest */}
+          <div className="pointer-events-auto flex items-center gap-2 sm:gap-2.5 rpg-panel-subtle px-2.5 sm:px-3.5 py-1 sm:py-1.5 border-l-4 border-l-amber-400 min-w-0">
+            <GameIcon name="summon" className="w-6 h-6 sm:w-8 sm:h-8" />
+            <div className="pl-0.5 min-w-0">
+              <div className="font-display text-xs sm:text-sm md:text-base font-extrabold tracking-[0.12em] sm:tracking-[0.16em] text-white text-glow-gold leading-none truncate">
+                STARLIGHT CHASERS
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-300 mt-0.5">
+                <span className="font-bold text-amber-300 hidden md:inline">{commanderName}</span>
+                <span className="text-slate-500 hidden md:inline">◆</span>
+                <span className="font-mono text-cyan-300 font-bold">
+                  PWR {squadPower.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Top-Right: Resource Capsules + PWA Install + Audio */}
+          <div className="pointer-events-auto flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
+            <div className="rpg-panel-subtle px-2 sm:px-3 py-1 sm:py-1.5 flex items-center gap-1.5 text-[11px] sm:text-xs font-bold">
+              <GameIcon name="crystal" className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="font-mono text-white">{starlightCrystals.toLocaleString()}</span>
+            </div>
+            <div className="rpg-panel-subtle px-2 sm:px-3 py-1 sm:py-1.5 hidden xs:flex sm:flex items-center gap-1.5 text-[11px] sm:text-xs font-bold">
+              <GameIcon name="gold" className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="font-mono text-amber-200">{gold.toLocaleString()}</span>
+            </div>
+            {canInstall && (
+              <button
+                onClick={() => {
+                  audioManager.playSfx('button');
+                  promptInstall();
+                }}
+                className="rpg-panel-subtle border-cyan-400/70 px-2.5 py-1 sm:py-1.5 text-[11px] font-black uppercase tracking-wider text-cyan-200 flex items-center gap-1 hover:bg-cyan-500/20"
+                title="Install Starlight Chasers PWA"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Install</span>
+              </button>
+            )}
+            <button
+              onClick={() => {
+                grantDebugResources();
+                audioManager.playSfx('ssr_reveal');
+              }}
+              title="Claim Commander Supply Drop (+3,200 Crystals, Gold & Gear)"
+              className="rpg-panel-subtle hover:border-amber-400 px-2 sm:px-3 py-1 sm:py-1.5 text-[11px] font-extrabold uppercase text-amber-300 flex items-center gap-1.5 transition"
+            >
+              <GameIcon name="supply" className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden md:inline">Supply</span>
+            </button>
+            <button
+              onClick={() => setMuted(audioManager.toggleMute())}
+              className="rpg-panel-subtle p-1.5 sm:p-2 text-slate-200 hover:text-amber-300 transition"
+              title="Toggle Music & SFX"
+            >
+              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+
+        {/* MIDDLE LAYER: Speech Ribbon (Left) + Sculpted RPG Command Crests (Right) */}
+        <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-end sm:justify-between gap-2 my-1 min-h-0">
+          {/* Left Floating Hero Dialogue & Switcher */}
+          <div className="flex flex-col items-start justify-end sm:h-full sm:pb-2 sm:pl-1 max-w-xs md:max-w-sm">
+            {showDialogue && (
+              <div className="pointer-events-auto hidden md:block ls-hide rpg-panel-subtle px-3.5 py-2.5 mb-2 border-l-2 border-l-cyan-400">
+                <div className="flex items-center gap-2 mb-1">
+                  <RarityCrest tier={displayHero.tier} size="xs" />
+                  <RoleBadge role={displayHero.role} variant="medallion" size="sm" />
+                  <span className="font-display font-bold text-sm text-white">
+                    {displayHero.name}
+                  </span>
+                  <span className="text-[10px] text-amber-300/90 uppercase truncate">
+                    • {displayHero.title}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-200 italic leading-snug flex items-start gap-1.5">
+                  <MessageSquare className="w-3.5 h-3.5 text-cyan-300 shrink-0 mt-0.5" />
+                  "{displayHero.quote}"
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={cycleFavorite}
+              className="pointer-events-auto rpg-panel-subtle hover:border-amber-400/80 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-200 hover:text-amber-300 flex items-center gap-1.5 transition"
+            >
+              <RefreshCw className="w-3 h-3 text-cyan-300" />
+              <span>
+                {displayHero.name} Lv.{displayOwned?.level ?? 1} ({ownedHeroIds.length}/{HEROES.length})
+              </span>
+            </button>
+          </div>
+
+          {/* Right Side Sculpted RPG Crest Menu Cards (No more awkward parallelograms!) */}
+          <div className="pointer-events-auto sm:ml-auto grid grid-cols-3 sm:flex sm:flex-col items-stretch gap-2 sm:gap-2 md:gap-2.5 w-full sm:w-[250px] md:w-[345px] ls-tight-gap">
+            {/* Crest Card 1: Heroes & Forge */}
+            <button
+              onClick={() => {
+                audioManager.playSfx('button');
+                onNavigate('SQUAD');
+              }}
+              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-3 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group"
+            >
+              <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3">
+                <div className="relative flex items-center justify-center shrink-0">
+                  <div className="absolute inset-0 rounded-full bg-amber-400/25 blur-md group-hover:bg-amber-400/45 transition" />
+                  <GameIcon
+                    name="heroes"
+                    className="relative w-9 h-9 sm:w-8 sm:h-8 md:w-11 md:h-11 group-hover:scale-110 transition"
+                  />
+                </div>
+                <div className="text-center sm:text-left">
+                  <div className="font-display font-black text-[11px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-amber-300 leading-tight">
+                    HEROES
+                  </div>
+                  <div className="hidden md:block ls-hide text-[11px] text-slate-400">
+                    Formation • +15 Gear • Relics
+                  </div>
+                </div>
+              </div>
+              <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-amber-400/15 border border-amber-400/40 font-mono text-[10px] font-bold text-amber-200">
+                {ownedHeroIds.length}/{HEROES.length}
+              </span>
+            </button>
+
+            {/* Crest Card 2: Starlight Summon */}
+            <button
+              onClick={() => {
+                audioManager.playSfx('button');
+                onNavigate('GACHA');
+              }}
+              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-3 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group border-cyan-400/50 hover:border-cyan-300"
+            >
+              <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3">
+                <div className="relative flex items-center justify-center shrink-0">
+                  <div className="absolute inset-0 rounded-full bg-cyan-400/25 blur-md group-hover:bg-cyan-400/45 transition" />
+                  <GameIcon
+                    name="summon"
+                    className="relative w-9 h-9 sm:w-8 sm:h-8 md:w-11 md:h-11 group-hover:scale-110 transition"
+                  />
+                </div>
+                <div className="text-center sm:text-left">
+                  <div className="font-display font-black text-[11px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-cyan-300 leading-tight">
+                    SUMMON
+                  </div>
+                  <div className="hidden md:block ls-hide text-[11px] text-cyan-200/75">
+                    Rate-Up: Aurelia & Zephyrion
+                  </div>
+                </div>
+              </div>
+              <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-cyan-400/20 border border-cyan-400/50 text-[10px] font-mono font-extrabold text-cyan-200">
+                {Math.floor(starlightCrystals / 160)}×
+              </span>
+            </button>
+
+            {/* Crest Card 3: Starlight Codex */}
+            <button
+              onClick={() => {
+                audioManager.playSfx('button');
+                onNavigate('CODEX');
+              }}
+              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-3 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group relative border-fuchsia-400/45 hover:border-fuchsia-300"
+            >
+              <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3">
+                <div className="relative flex items-center justify-center shrink-0">
+                  <div className="absolute inset-0 rounded-full bg-fuchsia-400/25 blur-md group-hover:bg-fuchsia-400/45 transition" />
+                  <GameIcon
+                    name="codex"
+                    className="relative w-9 h-9 sm:w-8 sm:h-8 md:w-11 md:h-11 group-hover:scale-110 transition"
+                  />
+                </div>
+                <div className="text-center sm:text-left">
+                  <div className="font-display font-black text-[11px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-fuchsia-300 leading-tight">
+                    CODEX
+                  </div>
+                  <div className="hidden md:block ls-hide text-[11px] text-slate-400">
+                    +{Math.floor(unlockedCodexIds.length / 5)}% Global Account Stats
+                  </div>
+                </div>
+              </div>
+              {claimableCodex ? (
+                <span className="sm:static absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.85)]">
+                  !
+                </span>
+              ) : (
+                <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-fuchsia-400/15 border border-fuchsia-400/40 font-mono text-[10px] text-fuchsia-200">
+                  {unlockedCodexIds.length}/{HEROES.length + RELICS.length + ENEMIES.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* BOTTOM DOCK: Active Squad Emblem Strip + Royal Gold Sculpted BATTLE Crest */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-2 sm:gap-3 mt-1">
+          {/* Active Deployed Squad Portraits */}
+          <button
+            onClick={() => {
+              audioManager.playSfx('button');
+              onNavigate('SQUAD');
+            }}
+            className="pointer-events-auto rpg-panel-subtle px-2.5 sm:px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2.5 hover:border-amber-400/75 transition group"
+          >
+            <div className="flex items-center gap-1.5">
+              {squadIds.map((hid) => {
+                const h = HERO_MAP[hid];
+                if (!h) return null;
+                return (
+                  <div
+                    key={hid}
+                    className="relative w-9 h-9 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-lg overflow-hidden border-2 bg-slate-950 shadow-md"
+                    style={{ borderColor: h.themeColor }}
+                  >
+                    <ArtImage
+                      kind="HERO"
+                      id={hid}
+                      src={h.assets.card}
+                      alt={h.name}
+                      className="w-full h-full object-cover object-top"
+                    />
+                    <span className="absolute bottom-0 inset-x-0 bg-black/85 text-[8px] font-mono font-bold text-center text-amber-300 leading-tight">
+                      {roster[hid]?.level ?? 1}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="text-right sm:text-left pr-1">
+              <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold group-hover:text-amber-300 leading-none">
+                Active Squad
+              </div>
+              {activeFactions.length > 0 ? (
+                <div className="flex items-center justify-end sm:justify-start gap-1 text-[11px] font-bold mt-1">
+                  <Crown
+                    className="w-3 h-3"
+                    style={{ color: FACTIONS[activeFactions[0].faction].color }}
+                  />
+                  <span style={{ color: FACTIONS[activeFactions[0].faction].color }}>
+                    {FACTIONS[activeFactions[0].faction].name.split(' ')[0]} ({activeFactions[0].count}/3)
+                  </span>
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-300 mt-0.5">Edit Formation</div>
+              )}
+            </div>
+          </button>
+
+          {/* Royal Sculpted Gold BATTLE Crest CTA */}
+          <button
+            onClick={() => {
+              audioManager.playSfx('button');
+              setShowMap(true);
+            }}
+            className="pointer-events-auto rpg-battle-cta w-full sm:w-auto px-5 sm:px-7 md:px-10 py-2.5 sm:py-2 md:py-3.5 text-slate-950 flex items-center justify-center gap-3 group sm:ml-auto"
+          >
+            <div className="w-10 h-10 sm:w-9 sm:h-9 md:w-12 md:h-12 rounded-full bg-slate-950/90 border-2 border-amber-100/90 p-1 flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.65)]">
+              <GameIcon
+                name="battle"
+                className="w-full h-full group-hover:scale-110 transition"
+              />
+            </div>
+            <div className="text-left">
+              <div className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-950/85 flex items-center gap-1 leading-none">
+                <GameIcon name="worldmap" className="w-3.5 h-3.5" />
+                <span>
+                  CH.{selectedRegion.chapter} {selectedRegion.name.toUpperCase()}
+                </span>
+              </div>
+              <div className="font-display text-lg sm:text-xl md:text-3xl font-black tracking-[0.14em] leading-none mt-0.5">
+                BATTLE
+              </div>
+              <div className="ls-hide text-[10px] md:text-[11px] font-extrabold text-amber-950/80 mt-0.5 truncate max-w-[210px]">
+                {selectedStage.code} {selectedStage.name}
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {showMap && (
+        <WorldMapOverlay
+          squadPower={squadPower}
+          onClose={() => setShowMap(false)}
+          onDeploy={(stageId) => {
+            setShowMap(false);
+            onStartCombat(stageId);
+          }}
+        />
+      )}
+    </div>
+  );
+};

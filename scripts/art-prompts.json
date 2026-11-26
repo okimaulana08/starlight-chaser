@@ -1,0 +1,108 @@
+{
+  "note": "Vaelen, Seraphina, and Elara (3:4 portraits + focal Cut-Ins) were generated with AI image-gen. The remaining 27 entries below hit HTTP 429 quota (~5h cooldown) and currently use high-craft procedural WebP assets in public/assets/. Drop regenerated AI images into the target paths with zero code changes.",
+  "aiGeneratedCompleted": [
+    "public/assets/heroes/hero_vaelen_card.webp",
+    "public/assets/heroes/hero_seraphina_card.webp",
+    "public/assets/heroes/hero_elara_card.webp",
+    "public/assets/cutins/cutin_vaelen.webp",
+    "public/assets/cutins/cutin_seraphina.webp",
+    "public/assets/cutins/cutin_elara.webp"
+  ],
+  "remainingAiPrompts": [
+    {
+      "target": "public/assets/heroes/hero_draven_card.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy painterly illustration, crisp linework. Imposing muscular male vanguard juggernaut of Ashen Legion with fierce amber eyes, short dark volcanic hair, and glowing lava veins etched across dark obsidian-and-copper heavy battle armor. Gripping a colossal molten-core warhammer resting on his shoulder, magma embers and volcanic ash swirling around him, massive glowing underground forge caldera background, intense orange rim lighting. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/heroes/hero_garrick_card.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy painterly illustration, crisp linework. Broad-shouldered veteran paladin guardian of Solaris Vanguard with short scarred jawline and iron-grey hair, clad in heavy white-steel and gold plated armor. Planting a massive hexagonal golden-trimmed tower shield glowing with kinetic barrier runes into cracked marble ground, heroic low-angle perspective, sunlit sky fortress pillars behind him. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/heroes/hero_lyra_card.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy painterly illustration, crisp linework. Gentle elven-styled spirit healer of Verdant Covenant with braided emerald-white hair adorned with luminous blossoms, wearing flowing ivory-and-sage silken vestments. Holding a wooden crescent chime staff releasing swirling golden-green healing petals and glowing dew droplets, enchanted sunlit ancient forest background, warm radiant lighting. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/heroes/hero_raze_card.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy painterly illustration, crisp linework. Fierce agile male mercenary of Ashen Legion with spiky ash-blonde hair, a dark leather half-cloak, and jagged bronze shoulder guards. Swinging a glowing red-hot chained war-scythe wrapped in blazing embers, dynamic lunging action pose, sparks flying across a smoky industrial lava canyon background, dramatic crimson-orange backlighting. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/heroes/hero_orion_card.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy painterly illustration, crisp linework. Cool composed male marksman of Astral Sanctum with sleek slate-blue hair and a glowing holographic monocle over one eye, wearing a tailored dark indigo-and-silver longcoat with brass astronomy buckles. Dual-wielding intricate crystal-powered astral flintlock pistols emitting bright cyan plasma trails, hovering star beacon behind him, starry twilight tower backdrop. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/heroes/hero_kael_card.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy painterly illustration, crisp linework. Agile young male wind archer of Verdant Covenant with tousled windswept auburn hair, wearing a lightweight forest-green leather scarf and scout cloak. Drawing a recurve bow nocked with a glowing emerald-cyan wind arrow, swirling air currents and flying leaves around him, dynamic mid-leap forest cliff background. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/heroes/hero_nyx_card.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy painterly illustration, crisp linework. Confident young female pyromancer of Ashen Legion with sharp crimson eyes and wavy charcoal-black hair glowing with ember tips, wearing a dark bronze-and-crimson hooded coat with mechanical brass clasps. Conjuring swirling molten ember orbs in both hands, volcanic ash sparks and glowing forge ruins in background, intense orange rim lighting. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/heroes/hero_titus_card.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy painterly illustration, crisp linework. Steadfast young male sentinel of Astral Sanctum with short midnight-navy hair and focused silver eyes, clad in polished silver-indigo crystal-inlaid medium armor. Bracing behind a translucent faceted prism buckler reflecting streaks of violet magic, glowing crystalline courtyard backdrop, crisp cool moonlight shading. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/heroes/hero_clara_card.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy painterly illustration, crisp linework. Warm cheerful young female acolyte of Solaris Vanguard with wavy golden-blonde hair and bright sky-blue eyes, wearing a crisp white-and-gold trimmed ceremonial cloak. Raising an ornate brass sunburst lantern radiating soft golden healing light, sunlit marble archway with floating dust motes in background, uplifting warm daylight lighting. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/relics/relic_first_eclipse.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy item illustration, crisp linework, painterly lighting. Legendary ornate celestial longsword floating vertically, half forged from radiant sun-gold metal and half infused with dark violet eclipse crystal energy, swirling starlight motes around the blade, dramatic dark indigo atmospheric background. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/relics/relic_astrolabe_lumina.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy item illustration, crisp linework, painterly lighting. Intricate antique silver-and-gold celestial astrolabe with rotating concentric star rings encasing a hovering glowing cyan galaxy core, shimmering constellation runes orbiting in mid-air, deep starlight violet background. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/relics/relic_obsidian_forge.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy item illustration, crisp linework, painterly lighting. Massive jagged volcanic obsidian crystal core cracked with blazing rivers of molten gold-orange lava, bound by intricate heavy dark-iron forge rings floating in mid-air, rising glowing embers and heat shimmer against a dark volcanic cavern backdrop. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/relics/relic_falling_star_bow.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy item illustration, crisp linework, painterly lighting. Ethereal crystalline silver-and-emerald recurve longbow hovering diagonally, its bowstring woven from pure glowing cyan starlight filaments with a radiant arrow of condensed moonlight hovering on the rest, floating glowing petals and stardust in a deep twilight forest backdrop. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/relics/relic_world_tree_tear.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy item illustration, crisp linework, painterly lighting. Luminous teardrop-shaped emerald crystal artifact cradled inside delicate golden vine filigree, glowing warm healing dewlight radiating from within, floating luminous pollen and tiny green leaves against a soft twilight forest backdrop. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/relics/relic_cinder_chain.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy item illustration, crisp linework, painterly lighting. Heavy coiled blackened-steel war chains linked to a glowing ember-forged hook blade, incandescent red-orange runes etched into every link, floating volcanic sparks against a dark smoky copper background. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/relics/relic_prism_aegis.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy item illustration, crisp linework, painterly lighting. Ornate hexagonal translucent sapphire-and-silver crystal shield crest floating upright, refracting vivid rainbow-cyan starlight beams outward with geometric arcane barrier rings, dark starry indigo backdrop. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/relics/relic_dawnlight_lantern.webp",
+      "size": "600x800",
+      "prompt": "Vertical 3:4 portrait, high-detail Japanese anime-fantasy item illustration, crisp linework, painterly lighting. Delicate antique gold-and-ivory filigree lantern containing a floating miniature sun flame, casting warm golden rays and sparkling light motes against a soft dawn blue-and-peach sky backdrop. No text, no card frame, no border, no logo, no watermark."
+    },
+    {
+      "target": "public/assets/environments/env_aurelia_floor.webp",
+      "size": "2560x1440",
+      "prompt": "Top-down 2.5D isometric sunlit marble sky-fortress courtyard floor of Aurelia Bastion, soft-saturation 35-45% white-cream cracked marble tiles with delicate pale gold inlay compass geometry, floating sky ruins along outer edges, even readability lighting for action RPG combat. No characters, no text, no UI."
+    },
+    {
+      "target": "public/assets/enemies/boss_aurelian_sentinel.webp",
+      "size": "1024x1024",
+      "prompt": "High-detail Japanese anime-fantasy boss illustration of Aurelian Sentinel (Corrupted), colossal stone-and-gold armored construct knight wearing a fractured golden crown, blazing purple Void energy erupting through cracks in its chestplate, gripping a giant glowing halberd, dark starry aura background. No text, no borders."
+    }
+  ]
+}

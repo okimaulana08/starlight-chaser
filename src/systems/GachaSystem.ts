@@ -1,0 +1,145 @@
+import { HERO_MAP } from '../data/heroes';
+import { RELIC_MAP } from '../data/relics';
+import type { BannerDef, GachaPullResult, Tier } from '../types/game';
+
+/**
+ * Exact Soft/Hard Pity formula from GDD Section 4.4:
+ * Hero Banner: base 2.5%, soft pity at 60 (+4.5% per pull), hard pity at 80.
+ * Relic Banner: base 2.5%, soft pity at 45 (+5.5% per pull), hard pity at 60.
+ */
+export function getSSRProbability(pityCount: number, banner: BannerDef): number {
+  const nextPullNumber = pityCount + 1;
+  if (nextPullNumber >= banner.hardPity) return 1.0;
+  if (nextPullNumber < banner.softPity) return 0.025;
+  const slope = banner.type === 'HERO' ? 0.045 : 0.055;
+  return Math.min(1.0, 0.025 + slope * (nextPullNumber - (banner.softPity - 1)));
+}
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+export interface PullStateInput {
+  pityCounter: number;
+  guaranteedFeatured: boolean;
+  ownedIds: Set<string>;
+}
+
+export interface PullBatchOutput {
+  results: GachaPullResult[];
+  nextPityCounter: number;
+  nextGuaranteedFeatured: boolean;
+}
+
+export function executeGachaPulls(
+  banner: BannerDef,
+  count: 1 | 10,
+  input: PullStateInput,
+): PullBatchOutput {
+  let pity = input.pityCounter;
+  let guaranteed = input.guaranteedFeatured;
+  const owned = new Set(input.ownedIds);
+  const results: GachaPullResult[] = [];
+  let gotSRPlus = false;
+
+  for (let i = 0; i < count; i++) {
+    const ssrChance = getSSRProbability(pity, banner);
+    const srChance = 0.175;
+    const roll = Math.random();
+
+    let tier: Tier;
+    if (roll < ssrChance) {
+      tier = 'SSR';
+    } else if (roll < ssrChance + srChance) {
+      tier = 'SR';
+    } else {
+      tier = 'R';
+    }
+
+    // 10-pull guarantees at least one SR or higher on the 10th slot
+    if (count === 10 && i === 9 && !gotSRPlus && tier === 'R') {
+      tier = 'SR';
+    }
+
+    if (tier === 'SSR' || tier === 'SR') {
+      gotSRPlus = true;
+    }
+
+    let pickedId: string;
+    let isFeatured = false;
+
+    if (tier === 'SSR') {
+      pity = 0;
+      const winFeatured = guaranteed || Math.random() < 0.5;
+      if (winFeatured) {
+        pickedId = pickRandom(banner.featuredIds);
+        isFeatured = true;
+        guaranteed = false;
+      } else {
+        const offBanner = banner.poolSSR.filter((id) => !banner.featuredIds.includes(id));
+        pickedId = offBanner.length > 0 ? pickRandom(offBanner) : pickRandom(banner.poolSSR);
+        isFeatured = false;
+        guaranteed = true;
+      }
+    } else {
+      pity += 1;
+      pickedId = tier === 'SR' ? pickRandom(banner.poolSR) : pickRandom(banner.poolR);
+    }
+
+    const isNew = !owned.has(pickedId);
+    owned.add(pickedId);
+
+    // Duplicate rewards
+    let shardsGained = 0;
+    let starDustGained = 0;
+    if (!isNew) {
+      if (tier === 'SSR') {
+        shardsGained = banner.type === 'HERO' ? 20 : 0;
+        starDustGained = 50;
+      } else if (tier === 'SR') {
+        shardsGained = banner.type === 'HERO' ? 10 : 0;
+        starDustGained = 20;
+      } else {
+        shardsGained = banner.type === 'HERO' ? 5 : 0;
+        starDustGained = 8;
+      }
+    }
+
+    if (banner.type === 'HERO') {
+      const hero = HERO_MAP[pickedId];
+      results.push({
+        kind: 'HERO',
+        id: pickedId,
+        name: hero.name,
+        tier,
+        isFeatured,
+        isNew,
+        shardsGained,
+        starDustGained,
+        assetCard: hero.assets.card,
+        themeColor: hero.themeColor,
+        quote: hero.quote,
+      });
+    } else {
+      const relic = RELIC_MAP[pickedId];
+      results.push({
+        kind: 'RELIC',
+        id: pickedId,
+        name: relic.name,
+        tier,
+        isFeatured,
+        isNew,
+        shardsGained,
+        starDustGained,
+        assetCard: relic.assetCard,
+        themeColor: tier === 'SSR' ? '#f5c84c' : tier === 'SR' ? '#a855f7' : '#38bdf8',
+      });
+    }
+  }
+
+  return {
+    results,
+    nextPityCounter: pity,
+    nextGuaranteedFeatured: guaranteed,
+  };
+}
