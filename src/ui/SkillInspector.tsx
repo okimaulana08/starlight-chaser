@@ -236,6 +236,18 @@ export const SkillInspector: React.FC<SkillInspectorProps> = ({ hero, owned }) =
 
   return (
     <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto pr-0.5">
+      {/* 0. UR EXCLUSIVE SOVEREIGN LEADER AURA PLAQUE */}
+      {hero.sovereignAura && (
+        <div className="rounded-xl p-2.5 bg-gradient-to-r from-amber-500/15 via-fuchsia-500/20 to-cyan-500/15 border border-fuchsia-300/65 shadow-[0_0_22px_rgba(232,121,249,0.28)]">
+          <div className="flex items-center gap-1.5 text-[10px] font-display font-black uppercase tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-white to-fuchsia-200">
+            <span>❖ UR SOVEREIGN AUTHORITY — {hero.sovereignAura.name}</span>
+          </div>
+          <p className="text-[11px] text-fuchsia-100/90 leading-relaxed mt-1">
+            {renderHighlightedText(hero.sovereignAura.description)}
+          </p>
+        </div>
+      )}
+
       {/* 1. INTERACTIVE 4-MEDALLION SKILL SELECTOR BAR */}
       <div className="grid grid-cols-4 gap-2">
         {slots.map((slot) => {

@@ -11,6 +11,15 @@ export interface AttackSpriteConfig {
  * CombatEngine ONLY fetches URLs listed here — guaranteeing 0 failed 404 network requests!
  */
 export const HERO_ATTACK_SPRITES: Partial<Record<string, AttackSpriteConfig>> = {
+  // UR Sovereign & New SSR
+  astraea: {
+    url: '/assets/sprites/battle_astraea_atk.webp',
+    scaleBoost: 1.12,
+  },
+  vespera: {
+    url: '/assets/sprites/battle_vespera_atk.webp',
+    scaleBoost: 1.14,
+  },
   // Batch 1 — Starter Squad
   vaelen: {
     url: '/assets/sprites/battle_vaelen_atk.webp',

@@ -39,6 +39,138 @@ export function playHeroSkillVfx(
     ctx.triggerShake(16);
 
     switch (hero.heroId) {
+      case 'astraea': {
+        // ASTRAEA UR ULT: EDICT OF THE SHATTERED SKY — Almighty Prismatic Astrolabe + 8 Constellation Sky-Lances + Rainbow Nova!
+        ctx.triggerArenaDim(0x160836, 2.2, 0.56);
+        fx({
+          tex: 'magicCircle',
+          x: tx,
+          y: ty,
+          spin: 1.6,
+          scaleX: 1.25,
+          scaleY: 0.78,
+          endScaleX: 2.9,
+          endScaleY: 1.82,
+          tint: 0xfde047,
+          alpha: 1,
+          life: 1.45,
+          darkHalo: true,
+          groundLayer: true,
+        });
+        fx({
+          tex: 'magicCircle',
+          x: tx,
+          y: ty,
+          spin: -2.1,
+          scaleX: 0.9,
+          scaleY: 0.56,
+          endScaleX: 2.35,
+          endScaleY: 1.46,
+          tint: 0xe879f9,
+          alpha: 0.96,
+          life: 1.35,
+          darkHalo: true,
+          groundLayer: true,
+        });
+        const prismColors = [0xfde047, 0x38e8ff, 0xe879f9, 0xffffff];
+        for (let i = 0; i < 8; i++) {
+          const a = (i * Math.PI * 2) / 8;
+          const dist = i === 0 ? 0 : 75 + (i % 2) * 85;
+          const lx = tx + Math.cos(a) * dist;
+          const ly = ty + Math.sin(a) * dist * 0.58;
+          const col = prismColors[i % prismColors.length];
+          const delay = i * 0.075;
+          ctx.spawnSkyPillar(lx, ly, 92, col, true);
+          fx({
+            tex: 'lightningBolt',
+            x: lx,
+            y: ly - 55,
+            rotation: (Math.random() - 0.5) * 0.45,
+            scaleX: 1.5,
+            scaleY: 1.2,
+            endScaleX: 2.2,
+            endScaleY: 0.25,
+            tint: col,
+            alpha: 1,
+            life: 0.42,
+            delay,
+            darkHalo: true,
+          });
+          fx({
+            tex: 'impactFlare',
+            x: lx,
+            y: ly - 18,
+            spin: 2.0,
+            scaleX: 0.85,
+            endScaleX: 2.4,
+            tint: 0xffffff,
+            alpha: 1,
+            life: 0.44,
+            delay,
+          });
+        }
+        fx({
+          tex: 'ringHalo',
+          x: tx,
+          y: ty,
+          scaleX: 0.5,
+          scaleY: 0.32,
+          endScaleX: 3.1,
+          endScaleY: 1.95,
+          tint: 0x38e8ff,
+          alpha: 0.98,
+          life: 0.82,
+          delay: 0.45,
+          darkHalo: true,
+          groundLayer: true,
+        });
+        ctx.spawnBurst(tx, ty - 34, 0xfde047, 32, 110);
+        ctx.spawnBurst(tx, ty - 34, 0xe879f9, 24, 90);
+        return;
+      }
+
+      case 'vespera': {
+        // VESPERA SSR ULT: CALDERA ORBITAL CANNON — Massive Molten Plasma Railbeam + Volcanic Detonation Waves!
+        ctx.triggerArenaDim(0x280906, 1.35, 0.48);
+        const ex = hero.x + Math.cos(angle) * skill.range;
+        const ey = hero.y + Math.sin(angle) * skill.range;
+        ctx.spawnBeam(hero.x, hero.y - 30, ex, ey - 30, 0xff4d2e, 54);
+        ctx.spawnBeam(hero.x, hero.y - 30, ex, ey - 30, 0xfef08a, 24);
+        for (let i = 0; i < 6; i++) {
+          const t = (i + 1) / 6;
+          const px = hero.x + (ex - hero.x) * t;
+          const py = hero.y + (ey - hero.y) * t;
+          const delay = i * 0.08;
+          fx({
+            tex: 'impactFlare',
+            x: px,
+            y: py - 24,
+            scaleX: 0.85,
+            endScaleX: 2.1,
+            tint: i % 2 === 0 ? 0xfde047 : 0xff4d2e,
+            alpha: 1,
+            life: 0.42,
+            delay,
+          });
+          fx({
+            tex: 'fireWisp',
+            x: px,
+            y: py - 18,
+            vy: -95,
+            scaleX: 0.9,
+            endScaleX: 0.18,
+            tint: 0xf97316,
+            alpha: 0.95,
+            life: 0.55,
+            delay,
+            darkHalo: true,
+          });
+          ctx.spawnRingWave(px, py, 120, 0xff4d2e, 0.45);
+        }
+        ctx.spawnBurst(tx, ty - 24, 0xff4d2e, 28, 92);
+        return;
+      }
+
       case 'vaelen': {
         // VAELEN ULT: DIMENSIONAL SEVERANCE — Reality-rending 5-cut eclipse storm + pulsing Starlight Rift
         ctx.triggerArenaDim(0x1e103d, 1.25, 0.48);
@@ -1291,6 +1423,70 @@ export function playHeroSkillVfx(
         life: 0.28,
         darkHalo: true,
       });
+      return;
+    }
+    case 'astraea_s1': {
+      // Astral Convergence: golden-prismatic gravity seal + converging starlight blades
+      fx({
+        tex: 'magicCircle',
+        x: tx,
+        y: ty,
+        spin: -2.4,
+        scaleX: 1.55,
+        scaleY: 0.96,
+        endScaleX: 0.45,
+        endScaleY: 0.28,
+        tint: 0xe879f9,
+        alpha: 0.96,
+        life: 0.52,
+        darkHalo: true,
+        groundLayer: true,
+      });
+      ctx.spawnRingWave(tx, ty, effectiveRadius, 0xfde047, 0.46);
+      ctx.spawnBurst(tx, ty - 24, 0x38e8ff, 16, 56);
+      return;
+    }
+    case 'astraea_s2': {
+      // Prismatic Judgment: 6 cascading sky-lances of gold/cyan/fuchsia
+      const cols = [0xfde047, 0x38e8ff, 0xe879f9];
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI * 2) / 6;
+        const px = tx + Math.cos(a) * (effectiveRadius * 0.42);
+        const py = ty + Math.sin(a) * (effectiveRadius * 0.28);
+        ctx.spawnSkyPillar(px, py, 56, cols[i % 3], false);
+      }
+      ctx.spawnRingWave(tx, ty, effectiveRadius, 0xe879f9, 0.5);
+      return;
+    }
+    case 'vespera_s1': {
+      // Scorch Railshot: blistering molten sniper beam + ember trail
+      const ex = hero.x + Math.cos(angle) * skill.range;
+      const ey = hero.y + Math.sin(angle) * skill.range;
+      ctx.spawnBeam(hero.x, hero.y - 26, ex, ey - 26, 0xff4d2e, 26);
+      ctx.spawnBeam(hero.x, hero.y - 26, ex, ey - 26, 0xfef08a, 10);
+      ctx.spawnBurst(tx, ty - 20, 0xf97316, 14, 42);
+      return;
+    }
+    case 'vespera_s2': {
+      // Ember Cluster Barrage: 5 fiery mortar explosions + scorch ring
+      for (let i = 0; i < 5; i++) {
+        const a = (i * Math.PI * 2) / 5;
+        const mx = tx + Math.cos(a) * (effectiveRadius * 0.46);
+        const my = ty + Math.sin(a) * (effectiveRadius * 0.3);
+        fx({
+          tex: 'fireWisp',
+          x: mx,
+          y: my - 16,
+          vy: -85,
+          scaleX: 0.72,
+          endScaleX: 0.14,
+          tint: i % 2 === 0 ? 0xff4d2e : 0xfde047,
+          life: 0.48,
+          delay: i * 0.06,
+          darkHalo: true,
+        });
+      }
+      ctx.spawnRingWave(tx, ty, effectiveRadius, 0xff4d2e, 0.5);
       return;
     }
     case 'kael_s1': {

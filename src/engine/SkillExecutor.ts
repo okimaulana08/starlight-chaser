@@ -189,11 +189,13 @@ export class SkillExecutor {
       const baseUltCd =
         skill.cooldown > 1
           ? skill.cooldown
-          : hero.def.tier === 'SSR'
-            ? 20
-            : hero.def.tier === 'SR'
-              ? 18
-              : 16;
+          : hero.def.tier === 'UR'
+            ? 22
+            : hero.def.tier === 'SSR'
+              ? 20
+              : hero.def.tier === 'SR'
+                ? 18
+                : 16;
       const effectiveUltCd = Math.max(
         10,
         Number((baseUltCd * (1 - Math.min(0.25, hero.stats.cdr))).toFixed(1)),
@@ -219,6 +221,36 @@ export class SkillExecutor {
     const effectiveCd = Math.max(1.2, skill.cooldown * (1 - hero.stats.cdr));
     if (slot === 1) hero.cd1 = effectiveCd;
     else hero.cd2 = effectiveCd;
+
+    // Astraea UR Passive (Crown of Six Stars): Any ally casting an active skill ignites 1 Starlight Blade (max 6)!
+    const astraea = ctx.heroes.find((h) => h.alive && h.heroId === 'astraea');
+    if (astraea) {
+      astraea.starlightBlades = Math.min(6, astraea.starlightBlades + 1);
+      if (astraea.starlightBlades >= 6) {
+        astraea.starlightBlades = 0;
+        const target =
+          ctx.enemies.find((e) => e.alive && e.def.isBoss) ??
+          ctx.enemies.find((e) => e.alive);
+        if (target) {
+          ctx.addSp(0.6);
+          ctx.spawnDamageText(astraea.x, astraea.y - 68, '✦ SIX-STAR BARRAGE! +0.6 SP', 0xf0abfc, true);
+          for (let b = 0; b < 6; b++) {
+            const ang = (b * Math.PI * 2) / 6;
+            const ox = astraea.x + Math.cos(ang) * 42;
+            const oy = astraea.y - 54 + Math.sin(ang) * 24;
+            ctx.spawnBeam(ox, oy, target.x, target.y - 26, b % 2 === 0 ? 0xfde047 : 0x38e8ff, 9);
+          }
+          ctx.spawnRingWave(target.x, target.y, 130, 0xe879f9, 0.45);
+          ctx.damageEnemy(astraea, target, {
+            multiplier: 2.2,
+            isSkill: true,
+            isTrueDamage: true,
+            hitShieldHits: 6,
+            breakDamage: 18,
+          });
+        }
+      }
+    }
 
     this.executeSkillPayload(ctx, hero, skill, slot, tx, ty);
     return true;
@@ -494,11 +526,56 @@ export class SkillExecutor {
 
     // OFFENSIVE / HYBRID SKILLS (Single hit, Multi-hit, Zones, Gather, Pull, Burn Detonate)
     const effectiveRadius =
-      skill.id === 'seraphina_s2' ? radius * (1 + consumedOrbs * 0.15) : radius;
+      skill.id === 'seraphina_s2'
+        ? radius * (1 + consumedOrbs * 0.15)
+        : skill.id === 'astraea_s1' && hero.ascensionTimer > 0
+          ? radius * 1.25
+          : radius;
     const orbBonusMult = skill.id === 'seraphina_s2' ? 1 + consumedOrbs * 0.35 : 1.0;
 
-    // Special zones spawned by Ultimates
-    if (skill.id === 'vaelen_ult') {
+    // Special zones & UR/SSR signature enhancements
+    if (skill.id === 'astraea_ult') {
+      // UR CELESTIAL DOMAIN (9s) + ASCENSION FORM + SQUAD ATK/ATKSPD BUFF!
+      hero.ascensionTimer = 9.0;
+      for (const ally of ctx.heroes) {
+        if (!ally.alive) continue;
+        ally.atkBuffTimer = Math.max(ally.atkBuffTimer, 9.0);
+        ally.atkBuffValue = Math.max(ally.atkBuffValue, 0.2);
+        ally.atkSpdBuffTimer = Math.max(ally.atkSpdBuffTimer, 9.0);
+        ally.atkSpdBuffValue = Math.max(ally.atkSpdBuffValue, 0.15);
+      }
+      ctx.addZone({
+        id: `celestial_domain_${Date.now()}`,
+        kind: 'CELESTIAL_DOMAIN',
+        ownerHeroId: hero.heroId,
+        x: tx,
+        y: ty,
+        radius: 410,
+        remaining: 9.0,
+        maxDuration: 9.0,
+        tickTimer: 1.2,
+        color: 0xe879f9,
+      });
+      ctx.notifyBanner('❖ CELESTIAL DOMAIN EXPANDED — ASTRAEA ASCENSION FORM! ❖');
+    } else if (skill.id === 'astraea_s2') {
+      // Prismatic Judgment also cloaks the squad in a 15% Max HP Starlight Aegis!
+      for (const ally of ctx.heroes) {
+        if (!ally.alive) continue;
+        const shAmt = Math.round(ally.maxHp * 0.15 * hero.stats.shieldPower);
+        ctx.grantShield(hero, ally, shAmt, false);
+      }
+    } else if (skill.id === 'astraea_s1' && hero.ascensionTimer > 0) {
+      // Ascension Form: echoing prismatic starlight pulse 0.24s later!
+      ctx.delayedStrikes.push({
+        delay: 0.24,
+        fn: () => {
+          if (!hero.alive) return;
+          ctx.spawnRingWave(tx, ty, effectiveRadius, 0x38e8ff, 0.42);
+          ctx.spawnBurst(tx, ty - 24, 0xfde047, 14, 48);
+          this.applyDamageInArea(ctx, hero, skill, false, tx, ty, effectiveRadius, angle, 0.55, false);
+        },
+      });
+    } else if (skill.id === 'vaelen_ult') {
       ctx.addZone({
         id: `rift_${Date.now()}`,
         kind: 'STARLIGHT_RIFT',
@@ -801,12 +878,29 @@ export class SkillExecutor {
       extraAtkMultiplier: extraAtkMult * scaleFactor,
       isSkill: true,
       isUlt,
-      bonusCritRate: skill.id === 'kael_s1' ? 0.25 : skill.id === 'zephyrion_s2' ? 0.2 : 0,
+      bonusCritRate:
+        skill.id === 'astraea_s2' && hero.ascensionTimer > 0
+          ? 1.0
+          : skill.id === 'kael_s1'
+            ? 0.25
+            : skill.id === 'zephyrion_s2'
+              ? 0.2
+              : 0,
       bonusDmgMult: bonusDmg,
       hitShieldHits: 1,
       breakDamage,
       canTriggerMark: applyCC,
     });
+    // Vespera S2 (Ember Cluster Barrage): Thermal Mini-Detonation on targets with 3+ Burn stacks WITHOUT consuming Burn!
+    if (applyCC && skill.id === 'vespera_s2' && enemy.alive && enemy.burnStacks >= 3) {
+      ctx.damageEnemy(hero, enemy, {
+        multiplier: 0.65 * enemy.burnStacks,
+        isSkill: true,
+        canTriggerMark: false,
+      });
+      ctx.spawnBurst(enemy.x, enemy.y - 24, 0xff4d2e, 14, 38);
+      ctx.spawnDamageText(enemy.x, enemy.y - 52, 'THERMAL DETONATE!', 0xfdba74, true);
+    }
     if (hero.heroId === 'zephyrion' && res.isCrit) {
       hero.cd1 = Math.max(0, hero.cd1 - 0.5);
       hero.cd2 = Math.max(0, hero.cd2 - 0.5);
@@ -871,7 +965,8 @@ export class SkillExecutor {
       .filter((h) => this.canCast(ctx, h, 'ULT', h.def.ultimate))
       .sort((a, b) => {
         const score = (h: HeroUnit) => {
-          let s = h.def.tier === 'SSR' ? 30 : h.def.tier === 'SR' ? 20 : 10;
+          let s =
+            h.def.tier === 'UR' ? 42 : h.def.tier === 'SSR' ? 30 : h.def.tier === 'SR' ? 20 : 10;
           if (ctx.linkWindowTimer > 0 && ctx.linkPartnerHeroId && h.heroId !== ctx.linkPartnerHeroId) {
             s += 65; // Chain Starlight Link Burst immediately!
           }

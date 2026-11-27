@@ -133,7 +133,7 @@ export const RarityCrest: React.FC<RarityCrestProps> = ({
   showStars = false,
   className = '',
 }) => {
-  const starCount = tier === 'SSR' ? 5 : tier === 'SR' ? 4 : 3;
+  const starCount = tier === 'UR' ? 6 : tier === 'SSR' ? 5 : tier === 'SR' ? 4 : 3;
 
   const textSize =
     size === 'xs'
@@ -154,6 +154,13 @@ export const RarityCrest: React.FC<RarityCrestProps> = ({
           : 'px-2.5 py-0.5';
 
   const plaqueStyle: Record<Tier, React.CSSProperties> = {
+    UR: {
+      background:
+        'linear-gradient(125deg, rgba(24,8,44,0.96) 0%, rgba(74,16,96,0.92) 38%, rgba(16,46,74,0.92) 72%, rgba(56,28,8,0.96) 100%)',
+      borderColor: 'rgba(255, 255, 255, 0.92)',
+      boxShadow:
+        '0 4px 18px rgba(0,0,0,0.85), 0 0 22px rgba(232,121,249,0.7), 0 0 12px rgba(253,224,71,0.75), inset 0 1px 0 rgba(255,255,255,0.8)',
+    },
     SSR: {
       background:
         'linear-gradient(125deg, rgba(24,14,4,0.92) 0%, rgba(56,28,8,0.88) 55%, rgba(28,12,42,0.92) 100%)',
@@ -178,11 +185,13 @@ export const RarityCrest: React.FC<RarityCrestProps> = ({
   };
 
   const textClass =
-    tier === 'SSR'
-      ? 'rarity-text-ssr'
-      : tier === 'SR'
-        ? 'rarity-text-sr'
-        : 'rarity-text-r';
+    tier === 'UR'
+      ? 'rarity-text-ur'
+      : tier === 'SSR'
+        ? 'rarity-text-ssr'
+        : tier === 'SR'
+          ? 'rarity-text-sr'
+          : 'rarity-text-r';
 
   return (
     <div className={`inline-flex flex-col items-start gap-0.5 ${className}`}>
@@ -193,6 +202,9 @@ export const RarityCrest: React.FC<RarityCrestProps> = ({
           clipPath: 'polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%)',
         }}
       >
+        {tier === 'UR' && (
+          <span className="text-[9px] text-amber-200 animate-pulse leading-none select-none">❖</span>
+        )}
         {tier === 'SSR' && (
           <span className="text-[9px] text-amber-200 animate-pulse leading-none select-none">✦</span>
         )}
@@ -201,6 +213,9 @@ export const RarityCrest: React.FC<RarityCrestProps> = ({
         >
           {tier}
         </span>
+        {tier === 'UR' && (
+          <span className="text-[9px] text-fuchsia-200 animate-pulse leading-none select-none">❖</span>
+        )}
         {tier === 'SSR' && (
           <span className="text-[8px] text-cyan-200 animate-pulse leading-none select-none">✦</span>
         )}
@@ -213,13 +228,26 @@ export const RarityCrest: React.FC<RarityCrestProps> = ({
               key={i}
               className="text-[8px] leading-none"
               style={{
-                color: tier === 'SSR' ? '#fde047' : tier === 'SR' ? '#d8b4fe' : '#7dd3fc',
+                color:
+                  tier === 'UR'
+                    ? i % 3 === 0
+                      ? '#fde047'
+                      : i % 3 === 1
+                        ? '#67e8f9'
+                        : '#f0abfc'
+                    : tier === 'SSR'
+                      ? '#fde047'
+                      : tier === 'SR'
+                        ? '#d8b4fe'
+                        : '#7dd3fc',
                 textShadow:
-                  tier === 'SSR'
-                    ? '0 0 6px rgba(253,224,71,0.9)'
-                    : tier === 'SR'
-                      ? '0 0 5px rgba(192,132,252,0.85)'
-                      : '0 0 4px rgba(56,189,248,0.7)',
+                  tier === 'UR'
+                    ? '0 0 8px rgba(232,121,249,0.95), 0 0 4px rgba(253,224,71,0.95)'
+                    : tier === 'SSR'
+                      ? '0 0 6px rgba(253,224,71,0.9)'
+                      : tier === 'SR'
+                        ? '0 0 5px rgba(192,132,252,0.85)'
+                        : '0 0 4px rgba(56,189,248,0.7)',
               }}
             >
               ★

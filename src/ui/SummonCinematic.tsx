@@ -75,6 +75,21 @@ const TIER_THEMES: Record<Tier, TierVisualTheme> = {
     flashBg:
       'radial-gradient(circle at 50% 50%, #ffffff 0%, #fef9c3 48%, #fde047 100%)',
   },
+  UR: {
+    label: 'ALMIGHTY SOVEREIGN EDICT',
+    badgeText: '❖ UR ❖',
+    badgeClass:
+      'border-white bg-gradient-to-r from-amber-300/35 via-fuchsia-500/40 to-cyan-400/35 text-white shadow-[0_0_32px_rgba(232,121,249,0.9),0_0_16px_rgba(253,224,71,0.85)]',
+    coreHex: '#ffffff',
+    accentHex: '#e879f9',
+    edgeGlow: 'rgba(232, 121, 249, 0.78)',
+    climaxFilter: 'saturate(1.38) contrast(1.1) brightness(1.14)',
+    burstColorVeil:
+      'conic-gradient(from 0deg at 50% 48%, rgba(253,224,71,0.45), rgba(56,232,255,0.42), rgba(232,121,249,0.5), rgba(255,255,255,0.52), rgba(253,224,71,0.45))',
+    burstVeilOpacity: 0.62,
+    flashBg:
+      'radial-gradient(circle at 50% 50%, #ffffff 0%, #f5d0fe 36%, #67e8f9 68%, #fde047 100%)',
+  },
 };
 
 function clamp01(v: number): number {
@@ -157,7 +172,11 @@ export const SummonCinematic: React.FC<SummonCinematicProps> = ({
       // 4.65s: Crystal fractures into radial supernova halo!
       if (!sfxFlagsRef.current.impact && t >= 4.65) {
         sfxFlagsRef.current.impact = true;
-        if (highestTier === 'SSR') {
+        if (highestTier === 'UR') {
+          audioManager.playSfx('ssr_reveal', 0);
+          audioManager.playSfx('ult_impact', 0.02);
+          audioManager.playSfx('ult_chime', 0.12);
+        } else if (highestTier === 'SSR') {
           audioManager.playSfx('ssr_reveal', 0.02);
           audioManager.playSfx('ult_impact', 0.05);
         } else if (highestTier === 'SR') {
@@ -199,20 +218,20 @@ export const SummonCinematic: React.FC<SummonCinematicProps> = ({
     ? clamp01((elapsed - 2.35) / 0.75)
     : clamp01((elapsed - 5.38) / 0.56);
 
-  // SSR dramatic fakeout flash pulse right at 3.55s–4.15s as violet anticipation shatters into gold!
+  // SSR / UR dramatic fakeout flash pulse right at 3.55s–4.15s as violet anticipation shatters!
   const ssrFakeoutPulse =
-    highestTier === 'SSR'
-      ? Math.max(0, 1 - Math.abs(elapsed - 3.72) / 0.36)
+    highestTier === 'UR' || highestTier === 'SSR'
+      ? Math.max(0, 1 - Math.abs(elapsed - 3.72) / 0.42)
       : 0;
 
-  // Reveal the true tier badge only once the crystal awakens (>= 3.65s) so SSR keeps its surprise!
+  // Reveal the true tier badge only once the crystal awakens (>= 3.65s) so SSR/UR keeps its surprise!
   const tierRevealed = elapsed >= 3.65;
 
   // Micro impact camera shake on crystal strike (4.55s–5.35s)
   const shakeActive =
     enableScreenShake && elapsed >= 4.55 && elapsed <= 5.35;
   const shakeAmp = shakeActive
-    ? (highestTier === 'SSR' ? 7 : highestTier === 'SR' ? 4 : 2) *
+    ? (highestTier === 'UR' ? 11 : highestTier === 'SSR' ? 7 : highestTier === 'SR' ? 4 : 2) *
       (1 - (elapsed - 4.55) / 0.8)
     : 0;
   const shakeX = shakeActive ? Math.sin(elapsed * 95) * shakeAmp : 0;
@@ -227,9 +246,11 @@ export const SummonCinematic: React.FC<SummonCinematicProps> = ({
           ? 'STARFALL CONVERGENCE • 10×'
           : 'STARFALL DESCENT'
         : elapsed < 4.7
-          ? highestTier === 'SSR'
-            ? 'CELESTIAL OVERDRIVE!'
-            : 'CRYSTAL RESONANCE'
+          ? highestTier === 'UR'
+            ? '❖ FIFTH PILLAR AWAKENING — SOVEREIGN RIFT! ❖'
+            : highestTier === 'SSR'
+              ? 'CELESTIAL OVERDRIVE!'
+              : 'CRYSTAL RESONANCE'
           : theme.label;
 
   return (
@@ -278,10 +299,8 @@ export const SummonCinematic: React.FC<SummonCinematicProps> = ({
           />
         )}
 
-        {/* TIER-REACTIVE COLOR-GRADE VEIL ON CRYSTAL BURST
-            (Re-tints the crystal supernova cleanly to Sapphire for R or Amethyst for SR,
-            while letting the native golden-prismatic rainbow shine at full glory for SSR!) */}
-        {highestTier !== 'SSR' && burstProgress > 0 && (
+        {/* TIER-REACTIVE COLOR-GRADE VEIL ON CRYSTAL BURST */}
+        {highestTier !== 'SSR' && highestTier !== 'UR' && burstProgress > 0 && (
           <div
             className="pointer-events-none absolute inset-0"
             style={{
@@ -292,28 +311,57 @@ export const SummonCinematic: React.FC<SummonCinematicProps> = ({
           />
         )}
 
+        {/* UR EXCLUSIVE PRISMATIC ASTROLABE FRACTURE HALO DURING CLIMAX */}
+        {highestTier === 'UR' && climaxProgress > 0.05 && (
+          <div
+            className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
+            style={{ opacity: Math.min(1, climaxProgress * 1.15) }}
+          >
+            <div
+              className="w-[140vmax] h-[140vmax] animate-spin"
+              style={{
+                animationDuration: '8s',
+                background:
+                  'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.38) 0deg 4deg, rgba(56,232,255,0.34) 4deg 8deg, rgba(232,121,249,0.42) 8deg 12deg, transparent 12deg 24deg)',
+                mixBlendMode: 'screen',
+              }}
+            />
+            <div
+              className="absolute w-72 h-72 sm:w-[440px] sm:h-[440px] rounded-full border-2 border-amber-200/80 border-dashed animate-spin"
+              style={{
+                animationDuration: '6s',
+                boxShadow: '0 0 64px rgba(232,121,249,0.75), inset 0 0 42px rgba(56,232,255,0.55)',
+              }}
+            />
+          </div>
+        )}
+
         {/* LUMINOUS RADIAL AURA BLOOM (expands around center crystal during impact) */}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              highestTier === 'SSR'
-                ? `radial-gradient(circle at 50% 48%, rgba(255,255,255,0.42) 0%, rgba(253,224,71,0.36) 24%, rgba(244,114,182,0.2) 48%, transparent 74%)`
-                : `radial-gradient(circle at 50% 48%, ${theme.coreHex}55 0%, ${theme.accentHex}2a 32%, transparent 70%)`,
+              highestTier === 'UR'
+                ? 'radial-gradient(circle at 50% 48%, rgba(255,255,255,0.68) 0%, rgba(253,224,71,0.48) 22%, rgba(232,121,249,0.42) 46%, rgba(56,232,255,0.28) 68%, transparent 82%)'
+                : highestTier === 'SSR'
+                  ? `radial-gradient(circle at 50% 48%, rgba(255,255,255,0.42) 0%, rgba(253,224,71,0.36) 24%, rgba(244,114,182,0.2) 48%, transparent 74%)`
+                  : `radial-gradient(circle at 50% 48%, ${theme.coreHex}55 0%, ${theme.accentHex}2a 32%, transparent 70%)`,
             mixBlendMode: 'screen',
             opacity: climaxProgress * 0.65 + burstProgress * 0.45,
           }}
         />
 
-        {/* SSR GOLDEN-PRISMATIC FAKEOUT SHOCKWAVE & RAINBOW FLARE (3.55s–5.6s) */}
-        {highestTier === 'SSR' && ssrFakeoutPulse > 0.01 && (
+        {/* SSR / UR GOLDEN-PRISMATIC FAKEOUT SHOCKWAVE & RAINBOW FLARE (3.55s–5.6s) */}
+        {(highestTier === 'UR' || highestTier === 'SSR') && ssrFakeoutPulse > 0.01 && (
           <div
             className="pointer-events-none absolute inset-0"
             style={{
               background:
-                'radial-gradient(circle at 50% 48%, rgba(255,255,255,0.85) 0%, rgba(253,224,71,0.65) 26%, rgba(244,114,182,0.28) 54%, transparent 80%)',
+                highestTier === 'UR'
+                  ? 'radial-gradient(circle at 50% 48%, rgba(255,255,255,0.95) 0%, rgba(232,121,249,0.75) 26%, rgba(56,232,255,0.55) 52%, rgba(253,224,71,0.35) 74%, transparent 90%)'
+                  : 'radial-gradient(circle at 50% 48%, rgba(255,255,255,0.85) 0%, rgba(253,224,71,0.65) 26%, rgba(244,114,182,0.28) 54%, transparent 80%)',
               mixBlendMode: 'screen',
-              opacity: ssrFakeoutPulse * 0.85,
+              opacity: ssrFakeoutPulse * (highestTier === 'UR' ? 0.95 : 0.85),
             }}
           />
         )}

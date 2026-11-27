@@ -341,6 +341,14 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
                   <p className="text-xs text-amber-200 italic">"{inspect.data.quote}"</p>
                   <p className="text-xs text-slate-200 leading-relaxed">{inspect.data.lore}</p>
                   <div className="space-y-1.5 pt-2 border-t border-slate-800 text-xs">
+                    {inspect.data.sovereignAura && (
+                      <div className="rounded-lg p-2 bg-gradient-to-r from-amber-500/15 via-fuchsia-500/20 to-cyan-500/15 border border-fuchsia-300/65">
+                        <strong className="text-fuchsia-200 uppercase tracking-wider text-[10px] block">
+                          ❖ UR Sovereign Authority ({inspect.data.sovereignAura.name})
+                        </strong>
+                        <span className="text-slate-100">{inspect.data.sovereignAura.description}</span>
+                      </div>
+                    )}
                     <div>
                       <strong className="text-amber-300">Passive ({inspect.data.passive.name}):</strong>{' '}
                       <span className="text-slate-300">{inspect.data.passive.description}</span>
@@ -369,7 +377,9 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
                           className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-amber-400/20 via-fuchsia-500/20 to-cyan-400/20 border border-amber-300/60 hover:border-amber-200 text-amber-200 text-xs font-display font-black uppercase tracking-wider flex items-center justify-center gap-2 transition"
                         >
                           <Film className="w-4 h-4 text-amber-300" />
-                          <span>Preview Animated SSR Ultimate Cut-In</span>
+                          <span>
+                            Preview Animated {inspect.data.tier} Ultimate Cut-In
+                          </span>
                         </button>
                       ) : (
                         <div

@@ -42,23 +42,25 @@ const CelebrationCanvas: React.FC<AmbientParticlesProps> = ({ tier, themeColor }
     window.addEventListener('resize', resize);
 
     const palette =
-      tier === 'SSR'
-        ? ['#fde047', '#ffffff', '#f472b6', '#38e8ff', themeColor]
-        : tier === 'SR'
-          ? ['#c084fc', '#f5d0fe', '#818cf8', themeColor]
-          : ['#38bdf8', '#bae6fd', '#60a5fa', themeColor];
+      tier === 'UR'
+        ? ['#ffffff', '#fde047', '#38e8ff', '#e879f9', '#f472b6', themeColor]
+        : tier === 'SSR'
+          ? ['#fde047', '#ffffff', '#f472b6', '#38e8ff', themeColor]
+          : tier === 'SR'
+            ? ['#c084fc', '#f5d0fe', '#818cf8', themeColor]
+            : ['#38bdf8', '#bae6fd', '#60a5fa', themeColor];
 
-    const count = tier === 'SSR' ? 88 : tier === 'SR' ? 56 : 38;
+    const count = tier === 'UR' ? 130 : tier === 'SSR' ? 88 : tier === 'SR' ? 56 : 38;
     const motes = Array.from({ length: count }, (_, i) => ({
       x: Math.random() * w,
       y: Math.random() * h,
-      vx: (Math.random() - 0.5) * 28,
-      vy: -(24 + Math.random() * 64),
-      size: Math.random() * (tier === 'SSR' ? 4.4 : 3.2) + 1.4,
+      vx: (Math.random() - 0.5) * (tier === 'UR' ? 38 : 28),
+      vy: -(24 + Math.random() * (tier === 'UR' ? 82 : 64)),
+      size: Math.random() * (tier === 'UR' ? 5.2 : tier === 'SSR' ? 4.4 : 3.2) + 1.4,
       color: palette[i % palette.length],
       phase: Math.random() * Math.PI * 2,
       speed: 1.5 + Math.random() * 2.5,
-      isStar: i % 4 === 0,
+      isStar: tier === 'UR' ? i % 3 === 0 : i % 4 === 0,
     }));
 
     let last = performance.now();
@@ -152,12 +154,17 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
   const hero = result.kind === 'HERO' ? HERO_MAP[result.id] : null;
   const relic = result.kind === 'RELIC' ? RELIC_MAP[result.id] : null;
   const hasSsrVideo = Boolean(
-    enableUltVideo && hero && result.tier === 'SSR' && hero.assets.cutInVideo,
+    enableUltVideo &&
+      hero &&
+      (result.tier === 'UR' || result.tier === 'SSR') &&
+      hero.assets.cutInVideo,
   );
 
-  // Choreography sub-stage: SILHOUETTE -> (VIDEO for SSR Hero) -> STAGE
+  // Choreography sub-stage: SILHOUETTE -> (VIDEO for UR / SSR Hero) -> STAGE
   const [subPhase, setSubPhase] = useState<'SILHOUETTE' | 'VIDEO' | 'STAGE'>(() =>
-    hero && (result.tier === 'SSR' || result.tier === 'SR') ? 'SILHOUETTE' : 'STAGE',
+    hero && (result.tier === 'UR' || result.tier === 'SSR' || result.tier === 'SR')
+      ? 'SILHOUETTE'
+      : 'STAGE',
   );
   const [videoFailed, setVideoFailed] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -165,14 +172,16 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
   // Reset choreography whenever spotlight item changes
   useEffect(() => {
     setVideoFailed(false);
-    const shouldSilhouette = Boolean(hero && (result.tier === 'SSR' || result.tier === 'SR'));
+    const shouldSilhouette = Boolean(
+      hero && (result.tier === 'UR' || result.tier === 'SSR' || result.tier === 'SR'),
+    );
     setSubPhase(shouldSilhouette ? 'SILHOUETTE' : 'STAGE');
   }, [result.id, queueIndex, hero, result.tier]);
 
-  // Auto-advance SILHOUETTE -> VIDEO (for SSR Hero) or STAGE
+  // Auto-advance SILHOUETTE -> VIDEO (for UR/SSR Hero) or STAGE
   useEffect(() => {
     if (subPhase !== 'SILHOUETTE') return;
-    const ms = result.tier === 'SSR' ? 680 : 440;
+    const ms = result.tier === 'UR' ? 820 : result.tier === 'SSR' ? 680 : 440;
     const timer = window.setTimeout(() => {
       if (hasSsrVideo && !videoFailed) {
         setSubPhase('VIDEO');
@@ -207,14 +216,24 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
   // Accent SFX when Grand Standing Stage opens
   useEffect(() => {
     if (subPhase === 'STAGE') {
-      audioManager.playSfx(result.tier === 'SSR' ? 'ssr_reveal' : 'ult_chime', 0.04);
+      audioManager.playSfx(
+        result.tier === 'UR' || result.tier === 'SSR' ? 'ssr_reveal' : 'ult_chime',
+        0.04,
+      );
     }
   }, [subPhase, result.tier, result.id]);
 
   const accentColor =
     hero?.themeColor ??
-    (result.tier === 'SSR' ? '#f5c84c' : result.tier === 'SR' ? '#c084fc' : '#38bdf8');
-  const starCount = result.tier === 'SSR' ? 5 : result.tier === 'SR' ? 4 : 3;
+    (result.tier === 'UR'
+      ? '#e879f9'
+      : result.tier === 'SSR'
+        ? '#f5c84c'
+        : result.tier === 'SR'
+          ? '#c084fc'
+          : '#38bdf8');
+  const starCount =
+    result.tier === 'UR' ? 6 : result.tier === 'SSR' ? 5 : result.tier === 'SR' ? 4 : 3;
 
   const handleStageClick = () => {
     if (subPhase === 'SILHOUETTE') {
@@ -250,11 +269,13 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
         className="pointer-events-none fixed inset-0 z-40"
         style={{
           background:
-            result.tier === 'SSR'
-              ? 'radial-gradient(circle, #ffffff 0%, #fef08a 60%, #f59e0b 100%)'
-              : result.tier === 'SR'
-                ? 'radial-gradient(circle, #ffffff 0%, #e9d5ff 60%, #9333ea 100%)'
-                : 'radial-gradient(circle, #ffffff 0%, #bae6fd 65%, #0284c7 100%)',
+            result.tier === 'UR'
+              ? 'radial-gradient(circle, #ffffff 0%, #f5d0fe 35%, #67e8f9 68%, #fde047 100%)'
+              : result.tier === 'SSR'
+                ? 'radial-gradient(circle, #ffffff 0%, #fef08a 60%, #f59e0b 100%)'
+                : result.tier === 'SR'
+                  ? 'radial-gradient(circle, #ffffff 0%, #e9d5ff 60%, #9333ea 100%)'
+                  : 'radial-gradient(circle, #ffffff 0%, #bae6fd 65%, #0284c7 100%)',
         }}
       />
 
@@ -265,9 +286,11 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
             className="pointer-events-none absolute inset-0"
             style={{
               background:
-                result.tier === 'SSR'
-                  ? 'radial-gradient(circle at 50% 48%, rgba(253,224,71,0.38) 0%, rgba(124,45,18,0.22) 38%, rgba(4,6,18,0.98) 78%)'
-                  : 'radial-gradient(circle at 50% 48%, rgba(192,132,252,0.34) 0%, rgba(59,7,100,0.22) 40%, rgba(4,6,18,0.98) 78%)',
+                result.tier === 'UR'
+                  ? 'radial-gradient(circle at 50% 48%, rgba(232,121,249,0.48) 0%, rgba(56,232,255,0.26) 28%, rgba(253,224,71,0.18) 48%, rgba(4,6,18,0.98) 80%)'
+                  : result.tier === 'SSR'
+                    ? 'radial-gradient(circle at 50% 48%, rgba(253,224,71,0.38) 0%, rgba(124,45,18,0.22) 38%, rgba(4,6,18,0.98) 78%)'
+                    : 'radial-gradient(circle at 50% 48%, rgba(192,132,252,0.34) 0%, rgba(59,7,100,0.22) 40%, rgba(4,6,18,0.98) 78%)',
             }}
           />
           {/* High-contrast spinning speed rays (full-bleed at any resolution) */}
@@ -275,11 +298,13 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
             <div
               className="w-[260vmax] h-[260vmax] shrink-0 opacity-35 animate-spin"
               style={{
-                animationDuration: '12s',
+                animationDuration: result.tier === 'UR' ? '8s' : '12s',
                 background:
-                  result.tier === 'SSR'
-                    ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.72) 0deg 5deg, transparent 5deg 16deg)'
-                    : 'repeating-conic-gradient(from 0deg, rgba(192,132,252,0.68) 0deg 5deg, transparent 5deg 18deg)',
+                  result.tier === 'UR'
+                    ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.72) 0deg 4deg, rgba(56,232,255,0.65) 4deg 8deg, rgba(232,121,249,0.75) 8deg 12deg, transparent 12deg 20deg)'
+                    : result.tier === 'SSR'
+                      ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.72) 0deg 5deg, transparent 5deg 16deg)'
+                      : 'repeating-conic-gradient(from 0deg, rgba(192,132,252,0.68) 0deg 5deg, transparent 5deg 18deg)',
               }}
             />
           </div>
@@ -298,9 +323,11 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
               className="h-full w-auto object-contain object-bottom"
               style={{
                 filter:
-                  result.tier === 'SSR'
-                    ? 'brightness(0) drop-shadow(0 0 28px rgba(253,224,71,0.98)) drop-shadow(0 0 60px rgba(244,114,182,0.7))'
-                    : 'brightness(0) drop-shadow(0 0 26px rgba(192,132,252,0.95))',
+                  result.tier === 'UR'
+                    ? 'brightness(0) drop-shadow(0 0 32px rgba(255,255,255,0.98)) drop-shadow(0 0 60px rgba(232,121,249,0.95)) drop-shadow(0 0 90px rgba(56,232,255,0.75))'
+                    : result.tier === 'SSR'
+                      ? 'brightness(0) drop-shadow(0 0 28px rgba(253,224,71,0.98)) drop-shadow(0 0 60px rgba(244,114,182,0.7))'
+                      : 'brightness(0) drop-shadow(0 0 26px rgba(192,132,252,0.95))',
               }}
             />
           </motion.div>
@@ -351,16 +378,26 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
             }}
           />
 
-          {/* Top Left SSR Arrival Badge */}
+          {/* Top Left UR / SSR Arrival Badge */}
           <motion.div
             initial={{ x: -30, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ delay: 0.18 }}
-            className="pointer-events-none absolute top-5 left-5 sm:top-7 sm:left-8 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-slate-950/80 border border-amber-300/70 backdrop-blur-md shadow-[0_0_24px_rgba(253,224,71,0.4)]"
+            className={`pointer-events-none absolute top-5 left-5 sm:top-7 sm:left-8 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-slate-950/85 border backdrop-blur-md ${
+              result.tier === 'UR'
+                ? 'border-white shadow-[0_0_32px_rgba(232,121,249,0.85),0_0_16px_rgba(253,224,71,0.75)]'
+                : 'border-amber-300/70 shadow-[0_0_24px_rgba(253,224,71,0.4)]'
+            }`}
           >
-            <RarityCrest tier="SSR" size="xs" />
-            <span className="font-display font-black text-[10px] sm:text-xs uppercase tracking-[0.24em] text-amber-200">
-              ✦ CELESTIAL RESONANCE ARRIVAL
+            <RarityCrest tier={result.tier} size="xs" />
+            <span
+              className={`font-display font-black text-[10px] sm:text-xs uppercase tracking-[0.24em] ${
+                result.tier === 'UR' ? 'text-white' : 'text-amber-200'
+              }`}
+            >
+              {result.tier === 'UR'
+                ? '❖ ALMIGHTY SOVEREIGN ARRIVAL ❖'
+                : '✦ CELESTIAL RESONANCE ARRIVAL'}
             </span>
           </motion.div>
 
@@ -391,11 +428,13 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
             className="pointer-events-none absolute inset-0"
             style={{
               background:
-                result.tier === 'SSR'
-                  ? `radial-gradient(circle at 38% 50%, ${accentColor}48 0%, rgba(245,200,76,0.18) 32%, rgba(4,6,18,0.97) 75%)`
-                  : result.tier === 'SR'
-                    ? `radial-gradient(circle at 38% 50%, ${accentColor}40 0%, rgba(168,85,247,0.18) 36%, rgba(4,6,18,0.97) 75%)`
-                    : `radial-gradient(circle at 38% 50%, ${accentColor}34 0%, rgba(56,189,248,0.15) 36%, rgba(4,6,18,0.97) 75%)`,
+                result.tier === 'UR'
+                  ? 'radial-gradient(circle at 38% 50%, rgba(232,121,249,0.42) 0%, rgba(56,232,255,0.24) 24%, rgba(253,224,71,0.2) 44%, rgba(4,6,18,0.97) 78%)'
+                  : result.tier === 'SSR'
+                    ? `radial-gradient(circle at 38% 50%, ${accentColor}48 0%, rgba(245,200,76,0.18) 32%, rgba(4,6,18,0.97) 75%)`
+                    : result.tier === 'SR'
+                      ? `radial-gradient(circle at 38% 50%, ${accentColor}40 0%, rgba(168,85,247,0.18) 36%, rgba(4,6,18,0.97) 75%)`
+                      : `radial-gradient(circle at 38% 50%, ${accentColor}34 0%, rgba(56,189,248,0.15) 36%, rgba(4,6,18,0.97) 75%)`,
             }}
           />
 
@@ -404,13 +443,15 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
             <div
               className="w-[260vmax] h-[260vmax] shrink-0 opacity-25 animate-spin"
               style={{
-                animationDuration: result.tier === 'SSR' ? '26s' : '38s',
+                animationDuration: result.tier === 'UR' ? '18s' : result.tier === 'SSR' ? '26s' : '38s',
                 background:
-                  result.tier === 'SSR'
-                    ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.68) 0deg 7deg, transparent 7deg 22deg)'
-                    : result.tier === 'SR'
-                      ? 'repeating-conic-gradient(from 0deg, rgba(192,132,252,0.58) 0deg 8deg, transparent 8deg 26deg)'
-                      : 'repeating-conic-gradient(from 0deg, rgba(56,189,248,0.48) 0deg 8deg, transparent 8deg 28deg)',
+                  result.tier === 'UR'
+                    ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.68) 0deg 5deg, rgba(56,232,255,0.6) 5deg 10deg, rgba(232,121,249,0.68) 10deg 15deg, transparent 15deg 26deg)'
+                    : result.tier === 'SSR'
+                      ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.68) 0deg 7deg, transparent 7deg 22deg)'
+                      : result.tier === 'SR'
+                        ? 'repeating-conic-gradient(from 0deg, rgba(192,132,252,0.58) 0deg 8deg, transparent 8deg 26deg)'
+                        : 'repeating-conic-gradient(from 0deg, rgba(56,189,248,0.48) 0deg 8deg, transparent 8deg 28deg)',
               }}
             />
           </div>
@@ -503,11 +544,17 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
                     className="text-lg sm:text-2xl leading-none"
                     style={{
                       color:
-                        result.tier === 'SSR'
-                          ? '#fde047'
-                          : result.tier === 'SR'
-                            ? '#d8b4fe'
-                            : '#7dd3fc',
+                        result.tier === 'UR'
+                          ? i % 3 === 0
+                            ? '#fde047'
+                            : i % 3 === 1
+                              ? '#67e8f9'
+                              : '#f0abfc'
+                          : result.tier === 'SSR'
+                            ? '#fde047'
+                            : result.tier === 'SR'
+                              ? '#d8b4fe'
+                              : '#7dd3fc',
                       textShadow: `0 0 14px ${accentColor}`,
                     }}
                   >
@@ -680,6 +727,7 @@ export const SummonResultsStage: React.FC<SummonResultsStageProps> = ({
   onSummonAgain,
   onInspectResult,
 }) => {
+  const urCount = results.filter((r) => r.tier === 'UR').length;
   const ssrCount = results.filter((r) => r.tier === 'SSR').length;
   const srCount = results.filter((r) => r.tier === 'SR').length;
   const rCount = results.filter((r) => r.tier === 'R').length;
@@ -702,11 +750,13 @@ export const SummonResultsStage: React.FC<SummonResultsStageProps> = ({
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            highestTier === 'SSR'
-              ? 'radial-gradient(circle at 50% 24%, rgba(253,224,71,0.22) 0%, rgba(244,114,182,0.08) 38%, rgba(4,6,18,0.98) 76%)'
-              : highestTier === 'SR'
-                ? 'radial-gradient(circle at 50% 24%, rgba(192,132,252,0.22) 0%, rgba(79,70,229,0.08) 40%, rgba(4,6,18,0.98) 76%)'
-                : 'radial-gradient(circle at 50% 24%, rgba(56,189,248,0.18) 0%, rgba(14,116,144,0.08) 40%, rgba(4,6,18,0.98) 76%)',
+            highestTier === 'UR'
+              ? 'radial-gradient(circle at 50% 22%, rgba(232,121,249,0.28) 0%, rgba(56,232,255,0.14) 28%, rgba(253,224,71,0.12) 48%, rgba(4,6,18,0.98) 78%)'
+              : highestTier === 'SSR'
+                ? 'radial-gradient(circle at 50% 24%, rgba(253,224,71,0.22) 0%, rgba(244,114,182,0.08) 38%, rgba(4,6,18,0.98) 76%)'
+                : highestTier === 'SR'
+                  ? 'radial-gradient(circle at 50% 24%, rgba(192,132,252,0.22) 0%, rgba(79,70,229,0.08) 40%, rgba(4,6,18,0.98) 76%)'
+                  : 'radial-gradient(circle at 50% 24%, rgba(56,189,248,0.18) 0%, rgba(14,116,144,0.08) 40%, rgba(4,6,18,0.98) 76%)',
         }}
       />
       <CelebrationCanvas tier={highestTier} themeColor={banner.accentColor} />
@@ -720,6 +770,11 @@ export const SummonResultsStage: React.FC<SummonResultsStageProps> = ({
         <h2 className="font-display text-2xl sm:text-4xl font-black text-white tracking-[0.22em] text-glow-gold">
           SUMMON RESULTS
         </h2>
+        {highestTier === 'UR' && (
+          <div className="text-[11px] sm:text-xs font-black uppercase tracking-[0.28em] text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-cyan-200 to-fuchsia-300 mt-0.5 animate-pulse">
+            ❖ ALMIGHTY UR CELESTIAL SOVEREIGN SUMMONED ❖
+          </div>
+        )}
         {highestTier === 'SSR' && (
           <div className="text-[11px] sm:text-xs font-black uppercase tracking-[0.28em] text-amber-300 mt-0.5 animate-pulse">
             ★ CELESTIAL SSR RESONANCE ACHIEVED ★
@@ -727,6 +782,11 @@ export const SummonResultsStage: React.FC<SummonResultsStageProps> = ({
         )}
 
         <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs font-mono font-bold">
+          {urCount > 0 && (
+            <span className="px-2.5 py-0.5 rounded-full bg-gradient-to-r from-amber-400/25 via-fuchsia-500/30 to-cyan-400/25 border border-white text-white shadow-[0_0_16px_rgba(232,121,249,0.85)]">
+              ❖ {urCount} UR
+            </span>
+          )}
           {ssrCount > 0 && (
             <span className="px-2.5 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/70 text-amber-200">
               ★ {ssrCount} SSR
@@ -789,19 +849,26 @@ export const SummonResultsStage: React.FC<SummonResultsStageProps> = ({
               onClick={() => onInspectResult(res)}
               className="relative cursor-pointer group"
             >
-              {/* Rarity Landing Pulse Ring for SSR & SR */}
-              {(res.tier === 'SSR' || res.tier === 'SR') && (
+              {/* Rarity Landing Pulse Ring for UR, SSR & SR */}
+              {(res.tier === 'UR' || res.tier === 'SSR' || res.tier === 'SR') && (
                 <motion.div
-                  initial={{ opacity: 0.9, scale: 0.7 }}
-                  animate={{ opacity: 0, scale: 1.45 }}
-                  transition={{ delay: flipDelay + 0.12, duration: 0.65, ease: 'easeOut' }}
+                  initial={{ opacity: 0.95, scale: 0.7 }}
+                  animate={{ opacity: 0, scale: res.tier === 'UR' ? 1.65 : 1.45 }}
+                  transition={{ delay: flipDelay + 0.12, duration: 0.72, ease: 'easeOut' }}
                   className="pointer-events-none absolute -inset-2 rounded-2xl border-2"
                   style={{
-                    borderColor: res.tier === 'SSR' ? '#fde047' : '#c084fc',
+                    borderColor:
+                      res.tier === 'UR'
+                        ? '#ffffff'
+                        : res.tier === 'SSR'
+                          ? '#fde047'
+                          : '#c084fc',
                     boxShadow:
-                      res.tier === 'SSR'
-                        ? '0 0 36px rgba(253,224,71,0.85)'
-                        : '0 0 24px rgba(192,132,252,0.75)',
+                      res.tier === 'UR'
+                        ? '0 0 46px rgba(232,121,249,0.95), 0 0 26px rgba(253,224,71,0.9)'
+                        : res.tier === 'SSR'
+                          ? '0 0 36px rgba(253,224,71,0.85)'
+                          : '0 0 24px rgba(192,132,252,0.75)',
                   }}
                 />
               )}

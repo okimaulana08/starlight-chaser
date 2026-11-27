@@ -49,6 +49,9 @@ export interface HeroUnit {
   basicCount: number;
   // Hero-specific passive states
   starOrbs: number; // Seraphina (0-3)
+  starlightBlades: number; // Astraea UR (0-6)
+  ascensionTimer: number; // Astraea UR Ascension Form (9s)
+  heatRounds: number; // Vespera SSR (0-5)
   heatStacks: number; // Draven (0-10)
   tailwindStacks: number; // Kael (0-3)
   tailwindTimer: number;
@@ -105,12 +108,14 @@ export interface HeroUnit {
   liveMesh: LiveMeshActor;
   idleTexture?: Texture;
   attackTexture?: Texture;
+  ascendedTexture?: Texture;
   attackScaleBoost?: number;
-  activePose?: 'IDLE' | 'ATTACK';
+  activePose?: 'IDLE' | 'ATTACK' | 'ASCENDED';
   castShadowSprite: Sprite;
   shadowGfx: Graphics;
   auraPivot: Container;
   auraSprite: Sprite;
+  backRuneSprite?: Sprite | null;
   shieldSprite: Sprite;
   visualFilter: ActorVisualFilter | null;
   ambientVfxTimer: number;
@@ -230,7 +235,7 @@ export interface EnemyUnit {
 
 export interface GroundZone {
   id: string;
-  kind: 'STARLIGHT_RIFT' | 'LAVA_CALDERA' | 'SANCTUARY_BLOOM' | 'ASTRAL_BEACON';
+  kind: 'STARLIGHT_RIFT' | 'LAVA_CALDERA' | 'SANCTUARY_BLOOM' | 'ASTRAL_BEACON' | 'CELESTIAL_DOMAIN';
   ownerHeroId: string;
   x: number;
   y: number;

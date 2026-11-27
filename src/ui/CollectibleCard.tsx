@@ -34,6 +34,17 @@ const TIER_PALETTE: Record<
     titleColor: string;
   }
 > = {
+  UR: {
+    accent: '#ffffff',
+    secondary: '#e879f9',
+    innerBorder: 'rgba(255, 255, 255, 0.78)',
+    vignetteTop:
+      'radial-gradient(ellipse 100% 52% at 50% 0%, rgba(253, 224, 71, 0.34) 0%, rgba(232, 121, 249, 0.22) 38%, rgba(56, 232, 255, 0.14) 68%, transparent 100%)',
+    vignetteBottom:
+      'linear-gradient(to top, rgba(14, 4, 28, 0.97) 0%, rgba(36, 12, 66, 0.82) 28%, rgba(232, 121, 249, 0.18) 54%, transparent 78%)',
+    nameColor: '#ffffff',
+    titleColor: '#f5d0fe',
+  },
   SSR: {
     accent: '#fde047',
     secondary: '#38e8ff',
@@ -75,6 +86,9 @@ const MOTE_SEEDS = [
   { left: '66%', bottom: '20%', delay: '0.5s', dur: '3.4s', size: 4 },
   { left: '84%', bottom: '30%', delay: '1.9s', dur: '4.1s', size: 3 },
   { left: '50%', bottom: '14%', delay: '2.5s', dur: '3.6s', size: 3.5 },
+  { left: '22%', bottom: '44%', delay: '0.8s', dur: '2.9s', size: 4.5 },
+  { left: '76%', bottom: '52%', delay: '1.6s', dur: '3.1s', size: 4 },
+  { left: '46%', bottom: '36%', delay: '2.1s', dur: '3.5s', size: 4.5 },
 ];
 
 /**
@@ -82,9 +96,21 @@ const MOTE_SEEDS = [
  */
 const FiligreeOverlay: React.FC<{ tier: Tier; compact?: boolean }> = ({ tier, compact }) => {
   const stroke =
-    tier === 'SSR' ? '#fde047' : tier === 'SR' ? '#d8b4fe' : '#7dd3fc';
+    tier === 'UR'
+      ? '#fff7cc'
+      : tier === 'SSR'
+        ? '#fde047'
+        : tier === 'SR'
+          ? '#d8b4fe'
+          : '#7dd3fc';
   const strokeSub =
-    tier === 'SSR' ? '#38e8ff' : tier === 'SR' ? '#a855f7' : '#38bdf8';
+    tier === 'UR'
+      ? '#e879f9'
+      : tier === 'SSR'
+        ? '#38e8ff'
+        : tier === 'SR'
+          ? '#a855f7'
+          : '#38bdf8';
 
   return (
     <svg
@@ -97,9 +123,33 @@ const FiligreeOverlay: React.FC<{ tier: Tier; compact?: boolean }> = ({ tier, co
         d="M 16 7 L 284 7 L 293 16 L 293 384 L 284 393 L 16 393 L 7 384 L 7 16 Z"
         fill="none"
         stroke={stroke}
-        strokeOpacity={tier === 'SSR' ? 0.65 : tier === 'SR' ? 0.5 : 0.4}
-        strokeWidth={compact ? 1.8 : 1.4}
+        strokeOpacity={tier === 'UR' ? 0.92 : tier === 'SSR' ? 0.65 : tier === 'SR' ? 0.5 : 0.4}
+        strokeWidth={tier === 'UR' ? (compact ? 2.2 : 1.9) : compact ? 1.8 : 1.4}
       />
+
+      {/* UR Almighty Inner Celestial Second Frame & Twin Astrolabe Crown Wings */}
+      {tier === 'UR' && (
+        <g>
+          <path
+            d="M 22 13 L 278 13 L 287 22 L 287 378 L 278 387 L 22 387 L 13 378 L 13 22 Z"
+            fill="none"
+            stroke="#38e8ff"
+            strokeOpacity="0.52"
+            strokeWidth="1"
+            strokeDasharray="6 4"
+          />
+          {/* Grand Sovereign Celestial Crown Apex */}
+          <path d="M 96 7 L 130 16 L 150 24 L 170 16 L 204 7" fill="none" stroke="#fde047" strokeWidth="2.2" />
+          <path d="M 118 12 L 150 21 L 182 12" fill="none" stroke="#e879f9" strokeWidth="1.5" strokeOpacity="0.95" />
+          <polygon points="150,2 159,12 150,22 141,12" fill="#fde047" />
+          <polygon points="150,5 155,12 150,19 145,12" fill="#ffffff" />
+          <polygon points="122,9 127,13 122,17 117,13" fill="#38e8ff" />
+          <polygon points="178,9 183,13 178,17 173,13" fill="#e879f9" />
+          {/* Side Starlight Pillar Wing Accents */}
+          <polygon points="4,200 10,190 14,200 10,210" fill="#fde047" fillOpacity="0.9" />
+          <polygon points="296,200 290,190 286,200 290,210" fill="#fde047" fillOpacity="0.9" />
+        </g>
+      )}
 
       {/* Top-Center Crown Gem Apex */}
       {tier === 'SSR' && (
@@ -125,10 +175,30 @@ const FiligreeOverlay: React.FC<{ tier: Tier; compact?: boolean }> = ({ tier, co
             d="M 7 42 L 7 16 L 16 7 L 42 7"
             fill="none"
             stroke={stroke}
-            strokeWidth={tier === 'SSR' ? 3.2 : 2.5}
+            strokeWidth={tier === 'UR' ? 3.8 : tier === 'SSR' ? 3.2 : 2.5}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
+          {tier === 'UR' && (
+            <>
+              <path
+                d="M 13 38 L 13 18 L 18 13 L 38 13"
+                fill="none"
+                stroke="#38e8ff"
+                strokeWidth="1.8"
+                strokeOpacity="0.95"
+              />
+              <path
+                d="M 19 30 L 19 21 L 21 19 L 30 19"
+                fill="none"
+                stroke={strokeSub}
+                strokeWidth="1.4"
+                strokeOpacity="0.9"
+              />
+              <polygon points="15,15 24,15 15,24" fill="#fde047" />
+              <circle cx="17.5" cy="17.5" r="2.2" fill="#ffffff" />
+            </>
+          )}
           {tier === 'SSR' && (
             <>
               <path
@@ -184,29 +254,35 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
   const pal = TIER_PALETTE[tier];
 
   const shellClass =
-    tier === 'SSR'
-      ? 'card-shell-ssr'
-      : tier === 'SR'
-        ? 'card-shell-sr'
-        : 'card-shell-r';
+    tier === 'UR'
+      ? 'card-shell-ur'
+      : tier === 'SSR'
+        ? 'card-shell-ssr'
+        : tier === 'SR'
+          ? 'card-shell-sr'
+          : 'card-shell-r';
 
   const conicClass =
-    tier === 'SSR'
-      ? 'card-conic-ssr'
-      : tier === 'SR'
-        ? 'card-conic-sr'
-        : 'card-conic-r';
+    tier === 'UR'
+      ? 'card-conic-ur'
+      : tier === 'SSR'
+        ? 'card-conic-ssr'
+        : tier === 'SR'
+          ? 'card-conic-sr'
+          : 'card-conic-r';
 
   const artGradeClass = locked
     ? 'grade-art-locked'
-    : tier === 'SSR'
-      ? 'grade-art-ssr'
-      : tier === 'SR'
-        ? 'grade-art-sr'
-        : 'grade-art-r';
+    : tier === 'UR'
+      ? 'grade-art-ur'
+      : tier === 'SSR'
+        ? 'grade-art-ssr'
+        : tier === 'SR'
+          ? 'grade-art-sr'
+          : 'grade-art-r';
 
   const WrapperTag = onClick ? 'button' : 'div';
-  const moteCount = locked ? 0 : tier === 'SSR' ? 5 : tier === 'SR' ? 3 : 0;
+  const moteCount = locked ? 0 : tier === 'UR' ? 8 : tier === 'SSR' ? 5 : tier === 'SR' ? 3 : 0;
 
   return (
     <WrapperTag
@@ -217,7 +293,11 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
       } ${shellClass} ${className}`}
     >
       {/* OUTER CHAMFERED METALLIC BEZEL WITH ANIMATED CONIC RARITY BORDER */}
-      <div className="relative w-full h-full card-chamfer p-[2.5px] sm:p-[3px] overflow-hidden bg-slate-950">
+      <div
+        className={`relative w-full h-full card-chamfer overflow-hidden bg-slate-950 ${
+          tier === 'UR' ? 'p-[3.5px] sm:p-[4px]' : 'p-[2.5px] sm:p-[3px]'
+        }`}
+      >
         {/* Spinning Holographic Conic Foil Layer */}
         <div
           className={`pointer-events-none absolute top-1/2 left-1/2 w-[180%] h-[180%] ${conicClass} ${
@@ -241,7 +321,7 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
           {/* LAYER 2: Tier Atmospheric Color Grading & Rim Halo Overlays */}
           <div
             className={`pointer-events-none absolute inset-0 z-10 ${
-              tier === 'SSR' ? 'animate-card-aura' : ''
+              tier === 'UR' || tier === 'SSR' ? 'animate-card-aura' : ''
             }`}
             style={{ background: pal.vignetteTop }}
           />
@@ -249,34 +329,53 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
             className="pointer-events-none absolute inset-0 z-10"
             style={{ background: pal.vignetteBottom }}
           />
+          {/* UR Exclusive Holographic Celestial Lattice + Rotating Astrolabe Crest */}
+          {!locked && tier === 'UR' && (
+            <>
+              <div className="pointer-events-none absolute inset-0 z-10 ur-holo-lattice opacity-65" />
+              <div
+                className="pointer-events-none absolute left-1/2 bottom-10 -translate-x-1/2 w-36 h-36 rounded-full border border-amber-200/25 border-dashed animate-spin z-10"
+                style={{ animationDuration: '20s' }}
+              />
+            </>
+          )}
           {/* Subtle inner color-graded edge glow */}
           <div
             className="pointer-events-none absolute inset-0 z-10"
             style={{
               boxShadow: locked
                 ? 'inset 0 0 28px rgba(4, 7, 18, 0.85)'
-                : tier === 'SSR'
-                  ? 'inset 0 0 22px rgba(253, 224, 71, 0.34), inset 0 0 42px rgba(244, 114, 182, 0.14)'
-                  : tier === 'SR'
-                    ? 'inset 0 0 20px rgba(192, 132, 252, 0.32)'
-                    : 'inset 0 0 16px rgba(56, 189, 248, 0.24)',
+                : tier === 'UR'
+                  ? 'inset 0 0 26px rgba(255, 255, 255, 0.42), inset 0 0 46px rgba(232, 121, 249, 0.34), inset 0 0 64px rgba(56, 232, 255, 0.2)'
+                  : tier === 'SSR'
+                    ? 'inset 0 0 22px rgba(253, 224, 71, 0.34), inset 0 0 42px rgba(244, 114, 182, 0.14)'
+                    : tier === 'SR'
+                      ? 'inset 0 0 20px rgba(192, 132, 252, 0.32)'
+                      : 'inset 0 0 16px rgba(56, 189, 248, 0.24)',
             }}
           />
 
           {/* LAYER 3: Animated Holographic Diagonal Shimmer Sweep */}
-          {!locked && (tier === 'SSR' || tier === 'SR') && (
+          {!locked && (tier === 'UR' || tier === 'SSR' || tier === 'SR') && (
             <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
               <div
-                className={`absolute inset-y-0 -left-1/2 w-[70%] ${
-                  tier === 'SSR' ? 'card-shimmer-ssr' : 'card-shimmer-sr'
+                className={`absolute inset-y-0 -left-1/2 w-[72%] ${
+                  tier === 'UR'
+                    ? 'card-shimmer-ur'
+                    : tier === 'SSR'
+                      ? 'card-shimmer-ssr'
+                      : 'card-shimmer-sr'
                 }`}
               />
+              {tier === 'UR' && (
+                <div className="absolute inset-y-0 -left-1/2 w-[62%] card-shimmer-ur-secondary" />
+              )}
             </div>
           )}
           {/* Hover specular flash for all tiers (including R) */}
           <div className="pointer-events-none absolute inset-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-tr from-transparent via-white/10 to-white/20" />
 
-          {/* LAYER 3B: Rising Starlight Sparkle Motes inside SSR & SR cards */}
+          {/* LAYER 3B: Rising Starlight Sparkle Motes inside UR, SSR & SR cards */}
           {moteCount > 0 && (
             <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
               {MOTE_SEEDS.slice(0, moteCount).map((m, idx) => (
@@ -291,15 +390,25 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
                     animationDelay: m.delay,
                     animationDuration: m.dur,
                     background:
-                      tier === 'SSR'
-                        ? idx % 2 === 0
-                          ? '#fef08a'
-                          : '#67e8f9'
-                        : '#e9d5ff',
+                      tier === 'UR'
+                        ? idx % 3 === 0
+                          ? '#ffffff'
+                          : idx % 3 === 1
+                            ? '#fde047'
+                            : idx % 2 === 0
+                              ? '#38e8ff'
+                              : '#f0abfc'
+                        : tier === 'SSR'
+                          ? idx % 2 === 0
+                            ? '#fef08a'
+                            : '#67e8f9'
+                          : '#e9d5ff',
                     boxShadow:
-                      tier === 'SSR'
-                        ? '0 0 8px rgba(253, 224, 71, 0.95)'
-                        : '0 0 7px rgba(192, 132, 252, 0.9)',
+                      tier === 'UR'
+                        ? '0 0 10px rgba(255, 255, 255, 0.95), 0 0 16px rgba(232, 121, 249, 0.9)'
+                        : tier === 'SSR'
+                          ? '0 0 8px rgba(253, 224, 71, 0.95)'
+                          : '0 0 7px rgba(192, 132, 252, 0.9)',
                   }}
                 />
               ))}
@@ -381,6 +490,11 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
               />
             </div>
 
+            {tier === 'UR' && !compact && (
+              <div className="text-[8px] font-display font-black uppercase tracking-[0.26em] text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-cyan-200 to-fuchsia-200 mb-0.5">
+                ❖ CELESTIAL SOVEREIGN ❖
+              </div>
+            )}
             <div
               className={`font-display font-black tracking-[0.06em] truncate leading-tight ${
                 compact ? 'text-xs' : 'text-sm sm:text-base'
@@ -388,9 +502,11 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
               style={{
                 color: pal.nameColor,
                 textShadow:
-                  tier === 'SSR'
-                    ? '0 2px 10px rgba(0,0,0,0.95), 0 0 14px rgba(245,200,76,0.5)'
-                    : '0 2px 8px rgba(0,0,0,0.95)',
+                  tier === 'UR'
+                    ? '0 2px 12px rgba(0,0,0,0.98), 0 0 16px rgba(232,121,249,0.85), 0 0 26px rgba(253,224,71,0.55)'
+                    : tier === 'SSR'
+                      ? '0 2px 10px rgba(0,0,0,0.95), 0 0 14px rgba(245,200,76,0.5)'
+                      : '0 2px 8px rgba(0,0,0,0.95)',
               }}
             >
               {name}

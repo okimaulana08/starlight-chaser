@@ -156,6 +156,7 @@ export class SquadController {
       hero.cd1 = Math.max(0, hero.cd1 - dt);
       hero.cd2 = Math.max(0, hero.cd2 - dt);
       hero.ultCd = Math.max(0, hero.ultCd - dt);
+      hero.ascensionTimer = Math.max(0, hero.ascensionTimer - dt);
       hero.basicTimer = Math.max(0, hero.basicTimer - dt);
       hero.hitFlashTimer = Math.max(0, hero.hitFlashTimer - dt);
       hero.attackSwingTimer = Math.max(0, hero.attackSwingTimer - dt);
@@ -446,10 +447,38 @@ export class SquadController {
         ctx.spawnDamageText(hitEnemy.x, hitEnemy.y - 45, 'LUNAR TRACE', 0x6ee7b7);
       }
 
+      // Vespera SSR Passive: Thermal Overcharge — basic hits vs Burning enemies build Heat Rounds (max 5 -> Molten Railbolt 180% ATK!)
+      if (hero.heroId === 'vespera') {
+        if (hero.heatRounds >= 5) {
+          hero.heatRounds = 0;
+          mult = 1.8;
+          hitEnemy.burnTimer = Math.max(hitEnemy.burnTimer, 6.0);
+          ctx.spawnBeam(hero.x, hero.y - 28, hitEnemy.x, hitEnemy.y - 28, 0xff4d2e, 14);
+          ctx.spawnRingWave(hitEnemy.x, hitEnemy.y, 68, 0xf97316, 0.34);
+          ctx.spawnDamageText(hitEnemy.x, hitEnemy.y - 52, 'MOLTEN RAILBOLT!', 0xfdba74, true);
+        } else if (hitEnemy.burnStacks > 0) {
+          hero.heatRounds = Math.min(5, hero.heatRounds + 1);
+        }
+      }
+
       const res = ctx.damageEnemy(hero, hitEnemy, {
         multiplier: mult,
         isSkill: false,
       });
+
+      // Astraea UR Ascension Form: basic attacks launch twin prismatic star-lances at up to 2 extra foes (65% ATK)!
+      if (hero.heroId === 'astraea' && hero.ascensionTimer > 0) {
+        const extraTargets = ctx.enemies
+          .filter((e) => e.alive && e.uid !== hitEnemy.uid)
+          .slice(0, 2);
+        for (const extra of extraTargets) {
+          ctx.spawnBeam(hero.x, hero.y - 46, extra.x, extra.y - 28, 0xe879f9, 8);
+          ctx.damageEnemy(hero, extra, {
+            multiplier: 0.65,
+            isSkill: false,
+          });
+        }
+      }
 
       // Vaelen Passive: Every 3rd basic attack implants Starfall Mark (6s)
       if (hero.heroId === 'vaelen' && hero.basicCount % 3 === 0) {

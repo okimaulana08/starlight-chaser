@@ -1,12 +1,34 @@
 import type { BannerDef } from '../types/game';
 
+export const HERO_BANNER_UR: BannerDef = {
+  id: 'banner_hero_sovereign_ur',
+  type: 'HERO',
+  name: 'Sovereign of the Fifth Pillar',
+  subtitle:
+    'LIMITED UR EVENT — Featured: Astraea (UR Celestial Sovereign) & Vespera (SSR Cinder-Rail Valkyrie)',
+  featuredIds: ['astraea', 'vespera'],
+  poolUR: ['astraea'],
+  poolSSR: ['vespera', 'aurelia', 'zephyrion', 'vaelen', 'seraphina', 'draven', 'elara'],
+  poolSR: ['ignis', 'garrick', 'lyra', 'raze', 'orion'],
+  poolR: ['bram', 'kael', 'nyx', 'titus', 'clara'],
+  isLimitedEvent: true,
+  urBaseRate: 0.006,
+  softPity: 70,
+  hardPity: 100,
+  singleCost: 160,
+  tenCost: 1600,
+  sparkCost: 160,
+  accentColor: '#e879f9',
+  backgroundAsset: '/assets/banners/bg_summon_sovereign_ur.webp',
+};
+
 export const HERO_BANNER_NEW: BannerDef = {
   id: 'banner_hero_chrono_bloom',
   type: 'HERO',
   name: 'Chrono & Eternal Bloom',
-  subtitle: 'NEW Featured SSR Rate-Up: Aurelia (SSR Healer) & Zephyrion (Chrono Blade)',
+  subtitle: 'Featured SSR Rate-Up: Aurelia (SSR Healer) & Zephyrion (Chrono Blade)',
   featuredIds: ['aurelia', 'zephyrion'],
-  poolSSR: ['aurelia', 'zephyrion', 'vaelen', 'seraphina', 'draven', 'elara'],
+  poolSSR: ['aurelia', 'zephyrion', 'vespera', 'vaelen', 'seraphina', 'draven', 'elara'],
   poolSR: ['ignis', 'garrick', 'lyra', 'raze', 'orion'],
   poolR: ['bram', 'kael', 'nyx', 'titus', 'clara'],
   softPity: 60,
@@ -24,7 +46,7 @@ export const HERO_BANNER: BannerDef = {
   name: 'Eclipse & Constellation',
   subtitle: 'Featured SSR Rate-Up: Vaelen & Seraphina',
   featuredIds: ['vaelen', 'seraphina'],
-  poolSSR: ['vaelen', 'seraphina', 'draven', 'elara', 'aurelia', 'zephyrion'],
+  poolSSR: ['vaelen', 'seraphina', 'vespera', 'draven', 'elara', 'aurelia', 'zephyrion'],
   poolSR: ['garrick', 'lyra', 'raze', 'orion', 'ignis'],
   poolR: ['kael', 'nyx', 'titus', 'clara', 'bram'],
   softPity: 60,
@@ -59,4 +81,4 @@ export const RELIC_BANNER: BannerDef = {
   backgroundAsset: '/assets/banners/bg_summon_relics.webp',
 };
 
-export const BANNERS = [HERO_BANNER_NEW, HERO_BANNER, RELIC_BANNER];
+export const BANNERS = [HERO_BANNER_UR, HERO_BANNER_NEW, HERO_BANNER, RELIC_BANNER];

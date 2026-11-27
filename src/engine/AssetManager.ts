@@ -69,7 +69,13 @@ export function getProceduralHeroTexture(renderer: Renderer, hero: HeroDef): Tex
  */
 export function attachHeroPortraitCrest(container: Container, hero: HeroDef): Sprite {
   const tierHex =
-    hero.tier === 'SSR' ? 0xf5c84c : hero.tier === 'SR' ? 0xc084fc : 0x38bdf8;
+    hero.tier === 'UR'
+      ? 0xe879f9
+      : hero.tier === 'SSR'
+        ? 0xf5c84c
+        : hero.tier === 'SR'
+          ? 0xc084fc
+          : 0x38bdf8;
   const themeHex = hexStringToNumber(hero.themeColor);
 
   const w = 68;

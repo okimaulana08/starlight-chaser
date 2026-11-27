@@ -1,7 +1,187 @@
 import type { HeroDef } from '../types/game';
 
 export const HEROES: HeroDef[] = [
-  // ==================== TIER SSR (4 FLAGSHIP HEROES) ====================
+  // ==================== TIER UR (CELESTIAL SOVEREIGN) ====================
+  {
+    id: 'astraea',
+    name: 'Astraea',
+    title: 'Sovereign of the Fifth Pillar',
+    tier: 'UR',
+    role: 'MAGE',
+    faction: 'SOLARIS',
+    themeColor: '#e879f9',
+    baseStats: {
+      hp: 1380,
+      atk: 268,
+      def: 108,
+      critRate: 0.18,
+      critDmg: 1.65,
+      atkSpeed: 1.08,
+      moveSpeed: 204,
+      attackRange: 330,
+    },
+    sovereignAura: {
+      name: 'Sovereign Authority',
+      description:
+        'Celestial Wildcard: harmonizes with your squad’s Faction Resonance or completes 4-Faction Harmony. Grants all allies +12% Final DMG, +10% Crit DMG, and upgrades Astraea Starlight Link Bursts to +50% Bonus DMG.',
+      squadFinalDmgBonus: 0.12,
+      squadCritDmgBonus: 0.1,
+      linkBurstBonus: 0.5,
+      wildcardFaction: true,
+    },
+    passive: {
+      id: 'crown_of_six_stars',
+      name: 'Crown of Six Stars',
+      description:
+        'Whenever any ally casts an active skill, Astraea ignites 1 Starlight Blade (max 6). At 6 stacks, all blades unleash a True Cosmic Barrage (220% ATK True DMG) and restore +0.6 SP to the squad.',
+    },
+    skills: [
+      {
+        id: 'astraea_s1',
+        name: 'Astral Convergence',
+        description:
+          'Opens a sovereign constellation seal pulling enemies inward (Gather) for 175% ATK, shredding DEF by 20% (5s) and interrupting Boss casts (Stun Cancel). During Ascension Form: +25% AoE radius and echoing starlight pulse.',
+        spCost: 1,
+        cooldown: 6.5,
+        aimType: 'CIRCLE',
+        range: 380,
+        radius: 190,
+        multiplier: 1.75,
+        effects: ['GATHER', 'DEF_SHRED', 'STUN_CANCEL'],
+        vfxKey: 'astraea_s1',
+      },
+      {
+        id: 'astraea_s2',
+        name: 'Prismatic Judgment',
+        description:
+          'Drops 6 crystalline constellation lances (320% ATK total, Multi-Hit, +40% Execute vs <35% HP) while shrouding the squad in a 15% Max HP Starlight Aegis (5s). Guaranteed Critical Hits during Ascension Form.',
+        spCost: 2,
+        cooldown: 10,
+        aimType: 'CIRCLE',
+        range: 400,
+        radius: 200,
+        multiplier: 3.2,
+        hitCount: 6,
+        effects: ['MULTI_HIT', 'EXECUTE', 'SHIELD'],
+        vfxKey: 'astraea_s2',
+      },
+    ],
+    ultimate: {
+      id: 'astraea_ult',
+      name: 'Edict of the Shattered Sky',
+      description:
+        'Shatters the celestial vault for 640% ATK (8 hits), Freezing non-bosses (2.5s) and expanding a 9s Celestial Domain: Astraea transforms into her radiant 6-winged Ascension Form, orbital star-lances rain every 1.2s (75% ATK AoE), and all allies gain +20% ATK & +15% AtkSpd.',
+      spCost: 0,
+      gaugeCost: 50,
+      cooldown: 22,
+      aimType: 'CIRCLE',
+      range: 440,
+      radius: 280,
+      multiplier: 6.4,
+      hitCount: 8,
+      effects: ['MULTI_HIT', 'FREEZE', 'ATK_BUFF'],
+      vfxKey: 'ult_astraea',
+      cutInKey: 'cutin_astraea',
+    },
+    lore: 'Eternal Sovereign of the hidden Fifth Star Pillar who vanished at the exact instant the Starfall Shattering fractured Aetheria. Long whispered of only inside Seraphina’s forbidden starcharts, Astraea has descended from the cosmic fracture in answer to the Commander’s Starlight Link.',
+    quote: 'When the Fifth Pillar awakens, even fractured heavens bow to our edict.',
+    bondStory:
+      'Though centuries separate her from mortal realms, Astraea quietly listens to the laughter of the Chasers around Aurelia’s evening braziers. She confides to the Commander that her shattered halo only shines whole when fighting beside hearts that refuse to surrender the dawn.',
+    assets: {
+      card: '/assets/heroes/hero_astraea_card.webp',
+      standing: '/assets/standing/standing_astraea.webp',
+      sprite: '/assets/sprites/battle_astraea.webp',
+      ascendedSprite: '/assets/sprites/battle_astraea_ascended.webp',
+      cutIn: '/assets/cutins/cutin_astraea.webp',
+      cutInVideo: '/assets/cutins/cutin_astraea.mp4',
+    },
+  },
+
+  // ==================== TIER SSR (FLAGSHIP HEROES) ====================
+  {
+    id: 'vespera',
+    name: 'Vespera',
+    title: 'The Cinder-Rail Valkyrie',
+    tier: 'SSR',
+    role: 'RANGER',
+    faction: 'ASHEN',
+    themeColor: '#ff4d2e',
+    baseStats: {
+      hp: 1210,
+      atk: 232,
+      def: 86,
+      critRate: 0.2,
+      critDmg: 1.62,
+      atkSpeed: 1.24,
+      moveSpeed: 206,
+      attackRange: 345,
+    },
+    passive: {
+      id: 'thermal_overcharge',
+      name: 'Thermal Overcharge',
+      description:
+        'Basic attacks against Burning enemies load +1 Heat Round (max 5). At 5 stacks, her next attack fires a piercing Molten Railbolt (180% ATK) that refreshes Burn duration.',
+    },
+    skills: [
+      {
+        id: 'vespera_s1',
+        name: 'Scorch Railshot',
+        description:
+          'Fires a superheated volcanic rail-beam down a corridor for 175% ATK, inflicting 2 Burn stacks and shredding enemy DEF by 18% for 5s.',
+        spCost: 1,
+        cooldown: 6,
+        aimType: 'LINE',
+        range: 440,
+        radius: 84,
+        multiplier: 1.75,
+        effects: ['BURN', 'DEF_SHRED'],
+        vfxKey: 'vespera_s1',
+      },
+      {
+        id: 'vespera_s2',
+        name: 'Ember Cluster Barrage',
+        description:
+          'Launches 5 guided magma mortars (290% ATK total, Multi-Hit). Targets carrying 3+ Burn stacks suffer a Thermal Mini-Detonation (+65% ATK per stack) without clearing Burn.',
+        spCost: 2,
+        cooldown: 9.5,
+        aimType: 'CIRCLE',
+        range: 410,
+        radius: 185,
+        multiplier: 2.9,
+        hitCount: 5,
+        effects: ['MULTI_HIT', 'BURN'],
+        vfxKey: 'vespera_s2',
+      },
+    ],
+    ultimate: {
+      id: 'vespera_ult',
+      name: 'Caldera Orbital Cannon',
+      description:
+        'Fuses her twin volcanic rail-cannons into a colossal molten plasma beam (560% ATK, 6 hits), Interrupting Boss casts (Stun Cancel) and detonating all Burn stacks across the corridor.',
+      spCost: 0,
+      gaugeCost: 45,
+      cooldown: 20,
+      aimType: 'LINE',
+      range: 460,
+      radius: 155,
+      multiplier: 5.6,
+      hitCount: 6,
+      effects: ['MULTI_HIT', 'BURN_DETONATE', 'STUN_CANCEL'],
+      vfxKey: 'ult_vespera',
+      cutInKey: 'cutin_vespera',
+    },
+    lore: 'Chief marksman of the Ashen Legion’s siege battery who engineered condensed volcanic core-rails inside Ferrum Caldera. Perched atop smoking obsidian spires, she turns Draven’s molten frontlines into blistering kill-zones.',
+    quote: 'Target locked at four hundred meters. Once the coils peak, nothing walks away.',
+    bondStory:
+      'Between expeditions, Vespera tunes her orange targeting visor beside Draven’s forge, secretly calibrating custom recoil dampers for the younger recruits so nobody burns their hands on volcanic alloy.',
+    assets: {
+      card: '/assets/heroes/hero_vespera_card.webp',
+      standing: '/assets/standing/standing_vespera.webp',
+      sprite: '/assets/sprites/battle_vespera.webp',
+      cutIn: '/assets/cutins/cutin_vespera.webp',
+      cutInVideo: '/assets/cutins/cutin_vespera.mp4',
+    },
+  },
   {
     id: 'vaelen',
     name: 'Vaelen',

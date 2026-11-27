@@ -1,4 +1,4 @@
-export type Tier = 'R' | 'SR' | 'SSR';
+export type Tier = 'R' | 'SR' | 'SSR' | 'UR';
 export type Role = 'TANK' | 'ASSAULT' | 'RANGER' | 'MAGE' | 'HEALER';
 export type Faction = 'SOLARIS' | 'ASTRAL' | 'VERDANT' | 'ASHEN';
 export type AimType = 'CIRCLE' | 'CONE' | 'LINE' | 'DASH' | 'SELF';
@@ -133,6 +133,14 @@ export interface HeroDef {
   faction: Faction;
   themeColor: string;
   baseStats: BaseStats;
+  sovereignAura?: {
+    name: string;
+    description: string;
+    squadFinalDmgBonus: number;
+    squadCritDmgBonus: number;
+    linkBurstBonus: number;
+    wildcardFaction?: boolean;
+  };
   passive: { id: string; name: string; description: string };
   skills: [SkillDef, SkillDef];
   ultimate: SkillDef;
@@ -143,6 +151,7 @@ export interface HeroDef {
     card: string;
     standing: string;
     sprite: string;
+    ascendedSprite?: string;
     cutIn?: string;
     cutInVideo?: string;
   };
@@ -350,9 +359,12 @@ export interface BannerDef {
   name: string;
   subtitle: string;
   featuredIds: string[];
+  poolUR?: string[];
   poolSSR: string[];
   poolSR: string[];
   poolR: string[];
+  isLimitedEvent?: boolean;
+  urBaseRate?: number;
   softPity: number;
   hardPity: number;
   singleCost: number;
@@ -402,8 +414,10 @@ export interface PlayerSaveState {
   relicFragments: number;
   factionEssences: Record<Faction, number>;
   bondGifts: number;
+  pityCounterUR?: number;
   pityCounterHero: number;
   pityCounterRelic: number;
+  guaranteedFeaturedUR?: boolean;
   guaranteedFeaturedHero: boolean;
   guaranteedFeaturedRelic: boolean;
   squadIds: [string, string, string, string];

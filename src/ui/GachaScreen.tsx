@@ -1,12 +1,12 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ShoppingBag } from 'lucide-react';
-import { HERO_BANNER, HERO_BANNER_NEW, RELIC_BANNER } from '../data/banners';
+import { HERO_BANNER, HERO_BANNER_NEW, HERO_BANNER_UR, RELIC_BANNER } from '../data/banners';
 import { HERO_MAP } from '../data/heroes';
 import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
 import { usePlayerStore } from '../store/usePlayerStore';
-import { getSSRProbability } from '../systems/GachaSystem';
+import { getSSRProbability, getURProbability, isURBanner } from '../systems/GachaSystem';
 import type { GachaPullResult } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { CollectibleCard } from './CollectibleCard';
@@ -31,15 +31,17 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
   const {
     starlightCrystals,
     starlightTokens,
+    pityCounterUR,
     pityCounterHero,
     pityCounterRelic,
+    guaranteedFeaturedUR,
     guaranteedFeaturedHero,
     guaranteedFeaturedRelic,
     pullBanner,
     sparkExchange,
   } = usePlayerStore();
 
-  const [bannerTab, setBannerTab] = useState<'NEW_HERO' | 'HERO' | 'RELIC'>('NEW_HERO');
+  const [bannerTab, setBannerTab] = useState<'UR_EVENT' | 'NEW_HERO' | 'HERO' | 'RELIC'>('UR_EVENT');
   const [phase, setPhase] = useState<'IDLE' | 'CINEMATIC' | 'SPOTLIGHT' | 'REVEAL'>('IDLE');
   const [pendingResults, setPendingResults] = useState<GachaPullResult[]>([]);
   const [spotlightIndex, setSpotlightIndex] = useState(0);
@@ -51,12 +53,14 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
 
   // Build spotlight showcase queue:
   // - 1× pull: always spotlight the pulled Hero or Relic directly
-  // - 10× pull: spotlight every SSR (Hero & Relic); if none, spotlight the best/first new SR pull
+  // - 10× pull: spotlight every UR & SSR (UR first!); if none, spotlight the best/first new SR pull
   const spotlightQueue = useMemo<GachaPullResult[]>(() => {
     if (pendingResults.length === 0) return [];
     if (pendingResults.length === 1) return [pendingResults[0]];
-    const ssrs = pendingResults.filter((r) => r.tier === 'SSR');
-    if (ssrs.length > 0) return ssrs;
+    const highTiers = pendingResults
+      .filter((r) => r.tier === 'UR' || r.tier === 'SSR')
+      .sort((a, b) => (a.tier === 'UR' ? -1 : b.tier === 'UR' ? 1 : 0));
+    if (highTiers.length > 0) return highTiers;
     const newSr = pendingResults.find((r) => r.tier === 'SR' && r.isNew);
     if (newSr) return [newSr];
     const anySr = pendingResults.find((r) => r.tier === 'SR');
@@ -66,11 +70,11 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
   const currentSpotlight = spotlightQueue[spotlightIndex] ?? null;
   const isStandaloneSingle = pendingResults.length === 1;
 
-  // Preload pulled SSR Heroes' 1080p Sakuga Cut-In MP4s silently while the 4.25s meteor cinematic plays!
+  // Preload pulled UR & SSR Heroes' 1080p Sakuga Cut-In MP4s silently while the meteor cinematic plays!
   const preloadSsrVideos = useMemo(() => {
     const urls = new Set<string>();
     for (const r of pendingResults) {
-      if (r.kind === 'HERO' && r.tier === 'SSR') {
+      if (r.kind === 'HERO' && (r.tier === 'UR' || r.tier === 'SSR')) {
         const vid = HERO_MAP[r.id]?.assets.cutInVideo;
         if (vid) urls.add(vid);
       }
@@ -79,20 +83,34 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
   }, [pendingResults]);
 
   const banner =
-    bannerTab === 'NEW_HERO'
-      ? HERO_BANNER_NEW
-      : bannerTab === 'HERO'
-        ? HERO_BANNER
-        : RELIC_BANNER;
-  const pity = bannerTab === 'RELIC' ? pityCounterRelic : pityCounterHero;
-  const guaranteed = bannerTab === 'RELIC' ? guaranteedFeaturedRelic : guaranteedFeaturedHero;
+    bannerTab === 'UR_EVENT'
+      ? HERO_BANNER_UR
+      : bannerTab === 'NEW_HERO'
+        ? HERO_BANNER_NEW
+        : bannerTab === 'HERO'
+          ? HERO_BANNER
+          : RELIC_BANNER;
+  const isUrEvent = isURBanner(banner);
+  const pity = isUrEvent
+    ? (pityCounterUR ?? 0)
+    : bannerTab === 'RELIC'
+      ? pityCounterRelic
+      : pityCounterHero;
+  const guaranteed = isUrEvent
+    ? Boolean(guaranteedFeaturedUR)
+    : bannerTab === 'RELIC'
+      ? guaranteedFeaturedRelic
+      : guaranteedFeaturedHero;
+  const nextUrRate = getURProbability(pity, banner);
   const nextSsrRate = getSSRProbability(pity, banner);
 
-  const highestTier = pendingResults.some((r) => r.tier === 'SSR')
-    ? 'SSR'
-    : pendingResults.some((r) => r.tier === 'SR')
-      ? 'SR'
-      : 'R';
+  const highestTier = pendingResults.some((r) => r.tier === 'UR')
+    ? 'UR'
+    : pendingResults.some((r) => r.tier === 'SSR')
+      ? 'SSR'
+      : pendingResults.some((r) => r.tier === 'SR')
+        ? 'SR'
+        : 'R';
 
   const handleSummon = useCallback(
     (count: 1 | 10) => {
@@ -121,8 +139,8 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
   }, [spotlightQueue.length]);
 
   const handleCinematicSkip = useCallback(() => {
-    const hasSsr = pendingResults.some((r) => r.tier === 'SSR');
-    if (hasSsr && spotlightQueue.length > 0) {
+    const hasHigh = pendingResults.some((r) => r.tier === 'UR' || r.tier === 'SSR');
+    if (hasHigh && spotlightQueue.length > 0) {
       setSpotlightIndex(0);
       setPhase('SPOTLIGHT');
     } else if (isStandaloneSingle && spotlightQueue.length > 0) {
@@ -217,6 +235,7 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
             value={bannerTab}
             onChange={setBannerTab}
             items={[
+              { key: 'UR_EVENT', label: '❖ UR Event', icon: 'summon', accent: 'gold' },
               { key: 'NEW_HERO', label: 'New SSR', icon: 'summon', accent: 'gold' },
               { key: 'HERO', label: 'Eclipse', icon: 'heroes', accent: 'gold' },
               { key: 'RELIC', label: 'Relics', icon: 'relic', accent: 'cyan' },
@@ -245,8 +264,24 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
         <div className="sm:col-span-6 lg:col-span-7 relative flex items-end justify-center pt-1 sm:pt-0 h-[36dvh] sm:h-full">
           {banner.type === 'HERO' ? (
             <div className="relative flex items-end justify-center w-full h-full max-h-[600px]">
-              {/* Dual Standing SSR Champions Over Celestial Summon Pedestal */}
-              <div className="pointer-events-none absolute bottom-3 w-[82%] max-w-md h-14 rounded-full border-2 border-amber-300/45 bg-amber-400/10 blur-[1px] shadow-[0_0_40px_rgba(245,200,76,0.35)]" />
+              {/* UR Exclusive Prismatic Celestial Astrolabe Pedestal Ring */}
+              {isUrEvent && (
+                <div
+                  className="pointer-events-none absolute bottom-[22%] w-64 h-64 sm:w-96 sm:h-96 rounded-full border-2 border-dashed border-amber-200/45 animate-spin z-0"
+                  style={{
+                    animationDuration: '24s',
+                    boxShadow: '0 0 65px rgba(232,121,249,0.38), inset 0 0 42px rgba(56,232,255,0.28)',
+                  }}
+                />
+              )}
+              {/* Dual Standing Champions Over Celestial Summon Pedestal */}
+              <div
+                className={`pointer-events-none absolute bottom-3 w-[82%] max-w-md h-14 rounded-full border-2 blur-[1px] ${
+                  isUrEvent
+                    ? 'border-fuchsia-300/70 bg-gradient-to-r from-amber-400/20 via-fuchsia-500/25 to-cyan-400/20 shadow-[0_0_52px_rgba(232,121,249,0.55)]'
+                    : 'border-amber-300/45 bg-amber-400/10 shadow-[0_0_40px_rgba(245,200,76,0.35)]'
+                }`}
+              />
               {featuredItems.map((item, i) => (
                 <div
                   key={item.id}
@@ -255,8 +290,13 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                   }`}
                 >
                   <div
-                    className="pointer-events-none absolute bottom-[22%] w-40 sm:w-56 h-40 sm:h-56 rounded-full blur-3xl opacity-35"
-                    style={{ background: item.themeColor }}
+                    className="pointer-events-none absolute bottom-[22%] w-40 sm:w-56 h-40 sm:h-56 rounded-full blur-3xl opacity-45"
+                    style={{
+                      background:
+                        item.tier === 'UR'
+                          ? 'radial-gradient(circle, #ffffff, #fde047 35%, #e879f9 75%)'
+                          : item.themeColor,
+                    }}
                   />
                   <ArtImage
                     kind="HERO"
@@ -265,17 +305,30 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                     alt={item.name}
                     className="relative h-full w-auto max-w-[46vw] sm:max-w-[30vw] object-contain object-bottom animate-breathe"
                     style={{
-                      filter: `drop-shadow(0 16px 28px rgba(4,6,16,0.92)) drop-shadow(0 0 18px ${item.themeColor}55)`,
+                      filter:
+                        item.tier === 'UR'
+                          ? 'drop-shadow(0 18px 34px rgba(4,6,16,0.95)) drop-shadow(0 0 26px rgba(232,121,249,0.72)) drop-shadow(0 0 14px rgba(253,224,71,0.55))'
+                          : `drop-shadow(0 16px 28px rgba(4,6,16,0.92)) drop-shadow(0 0 18px ${item.themeColor}55)`,
                     }}
                   />
-                  {/* Floating SSR Rate-Up Nameplate */}
-                  <div className="relative z-30 -mt-6 px-3 py-1 rounded-full bg-slate-950/90 border border-amber-300/60 backdrop-blur-md flex items-center gap-1.5 shadow-xl">
+                  {/* Floating Rate-Up Nameplate */}
+                  <div
+                    className={`relative z-30 -mt-6 px-3 py-1 rounded-full bg-slate-950/92 backdrop-blur-md flex items-center gap-1.5 shadow-xl border ${
+                      item.tier === 'UR'
+                        ? 'border-white/85 shadow-[0_0_24px_rgba(232,121,249,0.75)]'
+                        : 'border-amber-300/60'
+                    }`}
+                  >
                     <RarityCrest tier={item.tier} size="xs" />
                     <span className="font-display font-black text-xs sm:text-sm text-white tracking-wider">
                       {item.name}
                     </span>
-                    <span className="hidden md:inline text-[9px] font-black uppercase text-amber-300">
-                      ★ RATE-UP
+                    <span
+                      className={`hidden md:inline text-[9px] font-black uppercase ${
+                        item.tier === 'UR' ? 'text-fuchsia-200' : 'text-amber-300'
+                      }`}
+                    >
+                      {item.tier === 'UR' ? '❖ LIMITED UR' : '★ RATE-UP'}
                     </span>
                   </div>
                 </div>
@@ -310,11 +363,22 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
         <div className="relative sm:col-span-6 lg:col-span-5 rpg-panel p-3 sm:p-4 md:p-6 flex flex-col gap-2.5 sm:gap-3.5 border-amber-400/40 max-h-full overflow-y-auto">
           <CornerFiligree color={banner.accentColor} size={10} opacity={0.6} />
           <div>
-            <div
-              className="text-[9px] sm:text-[10px] font-display font-black uppercase tracking-[0.24em]"
-              style={{ color: banner.accentColor }}
-            >
-              {banner.type === 'HERO' ? 'STARLIGHT RESONANCE BANNER' : 'ANCIENT RELIC ALTAR'}
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className="text-[9px] sm:text-[10px] font-display font-black uppercase tracking-[0.24em]"
+                style={{ color: banner.accentColor }}
+              >
+                {isUrEvent
+                  ? '❖ LIMITED CELESTIAL SOVEREIGN EVENT ❖'
+                  : banner.type === 'HERO'
+                    ? 'STARLIGHT RESONANCE BANNER'
+                    : 'ANCIENT RELIC ALTAR'}
+              </div>
+              {isUrEvent && (
+                <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-300/25 via-fuchsia-500/30 to-cyan-400/25 border border-white/75 text-[9px] font-display font-black uppercase tracking-widest text-white shadow-[0_0_14px_rgba(232,121,249,0.7)] animate-pulse">
+                  UR DEBUT
+                </span>
+              )}
             </div>
             <h1 className="font-display text-xl sm:text-2xl md:text-4xl font-black text-white text-glow-gold mt-0.5 leading-tight">
               {banner.name}
@@ -327,10 +391,11 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
             <CornerFiligree color={banner.accentColor} size={7} opacity={0.55} />
             <div className="flex items-center justify-between text-xs">
               <span className="font-display text-slate-300 uppercase tracking-[0.16em] text-[10px] font-bold">
-                SSR Pity Counter
+                {isUrEvent ? 'UR Sovereign Pity' : 'SSR Pity Counter'}
               </span>
               <span className="font-mono font-bold text-sm text-white">
-                <span className="text-amber-300">{pity}</span> / {banner.hardPity}{' '}
+                <span className={isUrEvent ? 'text-fuchsia-300' : 'text-amber-300'}>{pity}</span> /{' '}
+                {banner.hardPity}{' '}
                 <span className="text-slate-400 text-[11px] font-sans">(Soft @{banner.softPity})</span>
               </span>
             </div>
@@ -344,26 +409,47 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
             />
 
             <div className="flex items-center justify-between text-xs">
-              <span className="font-mono text-amber-300 font-bold">
-                SSR Rate: {(nextSsrRate * 100).toFixed(1)}%
+              <span
+                className={`font-mono font-bold ${isUrEvent ? 'text-fuchsia-200' : 'text-amber-300'}`}
+              >
+                {isUrEvent
+                  ? `UR: ${(nextUrRate * 100).toFixed(1)}% • SSR: ${(nextSsrRate * 100).toFixed(1)}%`
+                  : `SSR Rate: ${(nextSsrRate * 100).toFixed(1)}%`}
               </span>
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-display font-black uppercase tracking-wider border ${
-                  guaranteed
-                    ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-300'
-                    : 'bg-cyan-500/15 border-cyan-400/45 text-cyan-200'
+                  isUrEvent
+                    ? 'bg-fuchsia-500/20 border-fuchsia-300/70 text-fuchsia-100'
+                    : guaranteed
+                      ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-300'
+                      : 'bg-cyan-500/15 border-cyan-400/45 text-cyan-200'
                 }`}
               >
-                {guaranteed ? '★ 100% Featured' : '50/50 Featured Rate-Up'}
+                {isUrEvent
+                  ? '❖ 100% Astraea on UR'
+                  : guaranteed
+                    ? '★ 100% Featured'
+                    : '50/50 Featured Rate-Up'}
               </span>
             </div>
           </div>
 
           <div className="text-[11px] text-slate-400 leading-relaxed">
-            Base: <strong className="text-amber-300">SSR 2.5%</strong> •{' '}
-            <strong className="text-fuchsia-300">SR 17.5%</strong> •{' '}
-            <strong className="text-sky-300">R 80%</strong>. Every pull awards +1 Starlight Token.
-            10× guarantees SR+.
+            {isUrEvent ? (
+              <>
+                Base: <strong className="text-fuchsia-200">UR 0.6%</strong> •{' '}
+                <strong className="text-amber-300">SSR 2.5% (Vespera 50% Up)</strong> •{' '}
+                <strong className="text-violet-300">SR 17.5%</strong>. SSR pulls keep UR Pity intact!
+                10× guarantees SR+.
+              </>
+            ) : (
+              <>
+                Base: <strong className="text-amber-300">SSR 2.5%</strong> •{' '}
+                <strong className="text-fuchsia-300">SR 17.5%</strong> •{' '}
+                <strong className="text-sky-300">R 80%</strong>. Every pull awards +1 Starlight Token.
+                10× guarantees SR+.
+              </>
+            )}
           </div>
 
           {errorMsg && (
@@ -496,7 +582,7 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                   STARLIGHT SPARK EXCHANGE
                 </h3>
                 <p className="text-xs text-slate-300">
-                  Redeem 120 Starlight Tokens for any SSR Hero or Relic (Balance:{' '}
+                  Redeem 160 Tokens for UR Sovereign or 120 Tokens for any SSR Hero / Relic (Balance:{' '}
                   <span className="text-amber-300 font-mono font-bold text-sm">{starlightTokens}</span>)
                 </p>
               </div>
@@ -506,6 +592,38 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              {(HERO_BANNER_UR.poolUR ?? []).map((hid) => {
+                const h = HERO_MAP[hid];
+                if (!h) return null;
+                return (
+                  <div key={hid} className="flex flex-col gap-1.5">
+                    <CollectibleCard
+                      kind="HERO"
+                      id={hid}
+                      src={h.assets.card}
+                      name={h.name}
+                      subtitle={h.title}
+                      tier={h.tier}
+                      role={h.role}
+                      topBannerLabel="❖ LIMITED UR"
+                      compact
+                      interactive={false}
+                    />
+                    <RpgButton
+                      variant="gold"
+                      size="xs"
+                      disabled={starlightTokens < 160}
+                      onClick={() => {
+                        if (sparkExchange('HERO', hid)) audioManager.playSfx('ssr_reveal');
+                      }}
+                      className="w-full font-display font-black uppercase tracking-wider"
+                    >
+                      Exchange 160
+                    </RpgButton>
+                  </div>
+                );
+              })}
+
               {HERO_BANNER.poolSSR.map((hid) => {
                 const h = HERO_MAP[hid];
                 return (

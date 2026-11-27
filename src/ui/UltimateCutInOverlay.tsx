@@ -119,11 +119,22 @@ export const UltimateCutInOverlay: React.FC = () => {
           <div
             key={`${activeCutIn.heroId}_${activeCutIn.ultName}`}
             className={`relative w-[114vw] ${
-              showVideo ? 'h-44 sm:h-60 md:h-[340px]' : 'h-36 sm:h-52 md:h-72'
-            } overflow-hidden animate-cutin-slide border-y-4 shadow-[0_0_80px_rgba(0,0,0,0.96)]`}
+              activeCutIn.tier === 'UR'
+                ? 'h-52 sm:h-72 md:h-[390px]'
+                : showVideo
+                  ? 'h-44 sm:h-60 md:h-[340px]'
+                  : 'h-36 sm:h-52 md:h-72'
+            } overflow-hidden animate-cutin-slide border-y-4 shadow-[0_0_96px_rgba(0,0,0,0.96)]`}
             style={{
-              borderColor: activeCutIn.themeColor,
-              background: `linear-gradient(105deg, #070913 0%, ${activeCutIn.themeColor}55 44%, #0c1229 100%)`,
+              borderColor: activeCutIn.tier === 'UR' ? '#fde047' : activeCutIn.themeColor,
+              boxShadow:
+                activeCutIn.tier === 'UR'
+                  ? '0 0 65px rgba(232,121,249,0.7), 0 0 110px rgba(56,232,255,0.45)'
+                  : undefined,
+              background:
+                activeCutIn.tier === 'UR'
+                  ? 'linear-gradient(105deg, #070516 0%, rgba(232,121,249,0.5) 40%, rgba(56,232,255,0.32) 72%, #0c0924 100%)'
+                  : `linear-gradient(105deg, #070913 0%, ${activeCutIn.themeColor}55 44%, #0c1229 100%)`,
             }}
           >
             {/* Layer 1: High-Velocity Animated Diagonal Anime Speed-Lines */}
@@ -199,8 +210,14 @@ export const UltimateCutInOverlay: React.FC = () => {
                   {activeCutIn.heroName} — {activeCutIn.heroTitle}
                 </span>
                 {showVideo && (
-                  <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] bg-amber-400/20 border border-amber-300/70 text-amber-200">
-                    ✦ SSR ULTIMATE
+                  <span
+                    className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] border ${
+                      activeCutIn.tier === 'UR'
+                        ? 'bg-gradient-to-r from-amber-300/30 via-fuchsia-500/35 to-cyan-400/30 border-white text-white shadow-[0_0_16px_rgba(232,121,249,0.85)]'
+                        : 'bg-amber-400/20 border-amber-300/70 text-amber-200'
+                    }`}
+                  >
+                    {activeCutIn.tier === 'UR' ? '❖ UR SOVEREIGN EDICT ❖' : '✦ SSR ULTIMATE'}
                   </span>
                 )}
               </div>

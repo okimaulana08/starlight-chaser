@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { Faction } from '../types/game';
+import type { Faction, Tier } from '../types/game';
 import { ArtImage } from './ArtImage';
 
 interface Live2DLobbyStageProps {
@@ -7,6 +7,7 @@ interface Live2DLobbyStageProps {
   heroName: string;
   src: string;
   faction: Faction;
+  tier?: Tier;
   themeColor: string;
   parallaxX: number;
   parallaxY: number;
@@ -69,12 +70,14 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
   heroName,
   src,
   faction,
+  tier = 'SSR',
   themeColor,
   parallaxX,
   parallaxY,
   tapPulseKey,
   onTap,
 }) => {
+  const isUR = tier === 'UR';
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenRef = useRef<HTMLCanvasElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -155,9 +158,12 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
     const offCtx = off.getContext('2d');
     if (!offCtx) return;
 
-    const palette = getFactionPalette(faction, themeColor);
-    const particleKind: LobbyParticle['kind'] =
-      faction === 'ASHEN'
+    const palette = isUR
+      ? ['#ffffff', '#fde047', '#38e8ff', '#e879f9']
+      : getFactionPalette(faction, themeColor);
+    const particleKind: LobbyParticle['kind'] = isUR
+      ? 'spark'
+      : faction === 'ASHEN'
         ? 'ember'
         : faction === 'VERDANT'
           ? 'petal'
@@ -165,17 +171,17 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
             ? 'spark'
             : 'mote';
 
-    const particles: LobbyParticle[] = Array.from({ length: 30 }, (_, i) => ({
+    const particles: LobbyParticle[] = Array.from({ length: isUR ? 48 : 30 }, (_, i) => ({
       x: Math.random(),
       y: Math.random(),
-      vx: faction === 'VERDANT' ? 0.03 + Math.random() * 0.04 : (Math.random() - 0.5) * 0.025,
-      vy: faction === 'ASHEN' ? -(0.07 + Math.random() * 0.08) : -(0.03 + Math.random() * 0.05),
-      size: 2.2 + Math.random() * 4.4,
-      alpha: 0.35 + Math.random() * 0.55,
+      vx: faction === 'VERDANT' ? 0.03 + Math.random() * 0.04 : (Math.random() - 0.5) * 0.028,
+      vy: faction === 'ASHEN' ? -(0.07 + Math.random() * 0.08) : -(0.032 + Math.random() * 0.055),
+      size: (isUR ? 2.6 : 2.2) + Math.random() * (isUR ? 5.2 : 4.4),
+      alpha: (isUR ? 0.48 : 0.35) + Math.random() * 0.52,
       phase: Math.random() * Math.PI * 2,
-      speed: 1.4 + Math.random() * 2.2,
+      speed: 1.4 + Math.random() * 2.4,
       layer: i % 3 === 0 ? 'front' : 'back',
-      kind: particleKind,
+      kind: isUR && i % 3 === 1 ? 'mote' : particleKind,
       color: palette[i % palette.length],
       rot: Math.random() * Math.PI * 2,
       rotSpeed: (Math.random() - 0.5) * 2.6,
@@ -321,6 +327,63 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
       // 1. Back Faction Elemental Aura Particles
       drawParticleLayer(ctx, 'back', w, h);
 
+      // 1B. UR EXCLUSIVE ALMIGHTY CELESTIAL ASTROLABE MANDALA & PRISMATIC BACKDROP HALO!
+      if (isUR) {
+        const cx = w * 0.5 + smoothPtrX * 6;
+        const cy = h * 0.34 + smoothPtrY * 4;
+        const outerR = Math.min(w, h) * 0.36;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        // Soft prismatic nebula glow behind Sovereign
+        const nebula = ctx.createRadialGradient(cx, cy, outerR * 0.08, cx, cy, outerR * 1.45);
+        nebula.addColorStop(0, 'rgba(255, 255, 255, 0.24)');
+        nebula.addColorStop(0.32, 'rgba(253, 224, 71, 0.22)');
+        nebula.addColorStop(0.62, 'rgba(232, 121, 249, 0.16)');
+        nebula.addColorStop(0.84, 'rgba(56, 232, 255, 0.1)');
+        nebula.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = nebula;
+        ctx.beginPath();
+        ctx.arc(cx, cy, outerR * 1.45, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Outer rotating golden astrolabe ring + 8 constellation diamond spikes
+        ctx.translate(cx, cy);
+        ctx.rotate(clock * 0.22);
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.45)';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([8, 6]);
+        ctx.strokeStyle = 'rgba(56, 232, 255, 0.38)';
+        ctx.beginPath();
+        ctx.arc(0, 0, outerR * 0.84, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        for (let k = 0; k < 8; k++) {
+          const a = (k * Math.PI) / 4;
+          const sx = Math.cos(a) * outerR;
+          const sy = Math.sin(a) * outerR;
+          ctx.fillStyle = k % 2 === 0 ? 'rgba(253, 224, 71, 0.72)' : 'rgba(232, 121, 249, 0.65)';
+          drawStar4(ctx, sx, sy, k % 2 === 0 ? 7.5 : 5);
+        }
+        // Counter-rotating inner celestial octagon
+        ctx.rotate(-clock * 0.5);
+        ctx.strokeStyle = 'rgba(232, 121, 249, 0.34)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let k = 0; k < 8; k++) {
+          const a = (k * Math.PI) / 4;
+          const rx = Math.cos(a) * outerR * 0.68;
+          const ry = Math.sin(a) * outerR * 0.68;
+          if (k === 0) ctx.moveTo(rx, ry);
+          else ctx.lineTo(rx, ry);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+      }
+
       // 2. Tap Reaction Expanding Faction Resonance Ring behind Hero!
       if (sp.ringProgress < 1) {
         const rp = sp.ringProgress;
@@ -376,11 +439,12 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
           const ptrLean = smoothPtrX * 11 * upPow;
           const offsetX = windWave + ptrLean;
 
-          // Smooth vertical breathing lift + tap bounce lift (boots stay firmly pinned!)
+          // Smooth vertical breathing lift + tap bounce lift (UR levitates gently in celestial starlight!)
+          const urLevitateY = isUR ? Math.sin(clock * 1.65) * 6.5 - 6 : 0;
           const breatheLiftY = -breathe * 4.2 * upPow;
           const ptrLiftY = smoothPtrY * 3.5 * upPow;
           const tapLiftY = sp.bounce * 28 * up;
-          const dy = baseY + i * dstStripH * bounceSquashY + (drawH * (1 - bounceSquashY)) + breatheLiftY + ptrLiftY + tapLiftY;
+          const dy = baseY + i * dstStripH * bounceSquashY + (drawH * (1 - bounceSquashY)) + breatheLiftY + ptrLiftY + tapLiftY + urLevitateY;
           const sw = drawW * scaleX;
           const dx = baseX + (drawW - sw) * 0.5 + offsetX;
 
@@ -443,7 +507,7 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [imgLoaded, imgFailed, faction, themeColor]);
+  }, [imgLoaded, imgFailed, faction, isUR, themeColor]);
 
   if (imgFailed) {
     return (

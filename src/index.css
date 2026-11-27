@@ -354,6 +354,21 @@
 }
 
 /* Tier Outer Ambient Glows */
+.card-shell-ur {
+  box-shadow:
+    0 12px 38px rgba(0, 0, 0, 0.85),
+    0 0 34px rgba(253, 224, 71, 0.56),
+    0 0 56px rgba(232, 121, 249, 0.42),
+    0 0 82px rgba(56, 232, 255, 0.28);
+}
+.card-shell-ur:hover {
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.92),
+    0 0 48px rgba(255, 255, 255, 0.72),
+    0 0 74px rgba(232, 121, 249, 0.65),
+    0 0 98px rgba(56, 232, 255, 0.45);
+}
+
 .card-shell-ssr {
   box-shadow:
     0 10px 30px rgba(0, 0, 0, 0.75),
@@ -390,6 +405,21 @@
 }
 
 /* Rotating Conic Metallic Bezel Gradients */
+.card-conic-ur {
+  background: conic-gradient(
+    from 0deg,
+    #ffffff 0deg,
+    #fde047 42deg,
+    #38e8ff 95deg,
+    #e879f9 152deg,
+    #ffffff 204deg,
+    #f59e0b 252deg,
+    #818cf8 308deg,
+    #ffffff 360deg
+  );
+  animation: card-border-spin 3.8s linear infinite;
+}
+
 .card-conic-ssr {
   background: conic-gradient(
     from 0deg,
@@ -422,6 +452,53 @@
 }
 
 /* Diagonal Holographic Foil Shimmer Sweeps */
+.card-shimmer-ur {
+  background: linear-gradient(
+    112deg,
+    transparent 12%,
+    rgba(253, 224, 71, 0.24) 28%,
+    rgba(255, 255, 255, 0.68) 44%,
+    rgba(56, 232, 255, 0.42) 54%,
+    rgba(232, 121, 249, 0.44) 64%,
+    rgba(253, 224, 71, 0.2) 76%,
+    transparent 88%
+  );
+  animation: card-foil-sweep 3.2s ease-in-out infinite;
+}
+
+.card-shimmer-ur-secondary {
+  background: linear-gradient(
+    118deg,
+    transparent 24%,
+    rgba(56, 232, 255, 0.25) 44%,
+    rgba(255, 255, 255, 0.42) 52%,
+    rgba(232, 121, 249, 0.26) 62%,
+    transparent 78%
+  );
+  animation: card-foil-sweep 3.2s ease-in-out 1.6s infinite;
+}
+
+.ur-holo-lattice {
+  background-image:
+    radial-gradient(circle at 22% 28%, rgba(255, 255, 255, 0.26) 0%, transparent 32%),
+    radial-gradient(circle at 78% 68%, rgba(56, 232, 255, 0.22) 0%, transparent 36%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.04) 0px,
+      rgba(255, 255, 255, 0.04) 1px,
+      transparent 1px,
+      transparent 10px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      rgba(232, 121, 249, 0.045) 0px,
+      rgba(232, 121, 249, 0.045) 1px,
+      transparent 1px,
+      transparent 10px
+    );
+  mix-blend-mode: screen;
+}
+
 .card-shimmer-ssr {
   background: linear-gradient(
     115deg,
@@ -447,7 +524,28 @@
   animation: card-foil-sweep 6.4s ease-in-out infinite;
 }
 
-/* Sculpted Foil Rarity Lettering (SSR / SR / R) */
+/* Sculpted Foil Rarity Lettering (UR / SSR / SR / R) */
+.rarity-text-ur {
+  background: linear-gradient(
+    105deg,
+    #ffffff 0%,
+    #fde047 18%,
+    #67e8f9 38%,
+    #f0abfc 56%,
+    #ffffff 74%,
+    #fde047 88%,
+    #ffffff 100%
+  );
+  background-size: 260% 260%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rarity-text-shimmer 2.6s ease infinite;
+  filter: drop-shadow(0 1px 0 rgba(74, 4, 78, 0.95))
+    drop-shadow(0 0 10px rgba(253, 224, 71, 0.95))
+    drop-shadow(0 0 16px rgba(232, 121, 249, 0.85));
+}
+
 .rarity-text-ssr {
   background: linear-gradient(
     110deg,
@@ -488,6 +586,9 @@
 }
 
 /* Tier Color Grading Filters applied softly onto card artwork */
+.grade-art-ur {
+  filter: contrast(1.08) saturate(1.2) brightness(1.05);
+}
 .grade-art-ssr {
   filter: contrast(1.06) saturate(1.16) brightness(1.03);
 }

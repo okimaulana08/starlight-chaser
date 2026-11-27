@@ -255,7 +255,7 @@ export function getAwakeningCost(currentAwakening: number, tier: Tier): Awakenin
   if (currentAwakening >= 6) return null;
   const row = BASE_AWAKEN_TABLE[currentAwakening];
   if (!row) return null;
-  const tierMult = tier === 'SSR' ? 1.2 : tier === 'SR' ? 1.0 : 0.8;
+  const tierMult = tier === 'UR' ? 1.4 : tier === 'SSR' ? 1.2 : tier === 'SR' ? 1.0 : 0.8;
   return {
     nextStar: currentAwakening + 1,
     nextLevelCap: getHeroLevelCap(currentAwakening + 1),

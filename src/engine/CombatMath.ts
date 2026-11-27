@@ -51,13 +51,27 @@ export interface ComputedHeroStats {
   powerRating: number;
 }
 
-export function isFourFactionHarmony(squadIds: string[]): boolean {
-  const unique = new Set<Faction>();
+export function getActiveSovereignHero(squadIds: string[]): HeroDef | null {
   for (const id of squadIds) {
     const hero = HERO_MAP[id];
-    if (hero) unique.add(hero.faction);
+    if (hero?.sovereignAura) return hero;
   }
-  return unique.size >= 4;
+  return null;
+}
+
+export function isFourFactionHarmony(squadIds: string[]): boolean {
+  const uniqueNonWildcard = new Set<Faction>();
+  let wildcardCount = 0;
+  for (const id of squadIds) {
+    const hero = HERO_MAP[id];
+    if (!hero) continue;
+    if (hero.sovereignAura?.wildcardFaction) {
+      wildcardCount += 1;
+    } else {
+      uniqueNonWildcard.add(hero.faction);
+    }
+  }
+  return uniqueNonWildcard.size + wildcardCount >= 4 && squadIds.length >= 4;
 }
 
 export function getActiveFactionBonuses(squadIds: string[]): ActiveFactionBonus[] {
@@ -67,9 +81,26 @@ export function getActiveFactionBonuses(squadIds: string[]): ActiveFactionBonus[
     VERDANT: 0,
     ASHEN: 0,
   };
+  let wildcardCount = 0;
+  let wildcardBaseFaction: Faction = 'SOLARIS';
   for (const id of squadIds) {
     const hero = HERO_MAP[id];
-    if (hero) counts[hero.faction] += 1;
+    if (!hero) continue;
+    if (hero.sovereignAura?.wildcardFaction) {
+      wildcardCount += 1;
+      wildcardBaseFaction = hero.faction;
+    } else {
+      counts[hero.faction] += 1;
+    }
+  }
+  // Celestial Wildcard automatically harmonizes with the faction that achieves highest synergy!
+  for (let w = 0; w < wildcardCount; w++) {
+    const factions = Object.keys(counts) as Faction[];
+    const pick =
+      factions.find((f) => counts[f] === 2) ??
+      factions.find((f) => counts[f] === 1) ??
+      wildcardBaseFaction;
+    counts[pick] += 1;
   }
   return (Object.keys(counts) as Faction[])
     .filter((f) => counts[f] >= 2)
@@ -82,6 +113,16 @@ export function getActiveFactionBonuses(squadIds: string[]): ActiveFactionBonus[
 
 export function getSquadSynergyPills(squadIds: string[]): SquadSynergyPill[] {
   const pills: SquadSynergyPill[] = [];
+  const sovereign = getActiveSovereignHero(squadIds);
+  if (sovereign?.sovereignAura) {
+    pills.push({
+      id: `SOVEREIGN_${sovereign.id}`,
+      label: sovereign.sovereignAura.name,
+      shortLabel: '❖ SOVEREIGN',
+      color: '#e879f9',
+      desc: sovereign.sovereignAura.description,
+    });
+  }
   if (isFourFactionHarmony(squadIds)) {
     pills.push({
       id: 'HARMONY',
@@ -290,6 +331,13 @@ export function computeHeroStats(
         if (fb.tier === 3) defIgnore += 0.15;
       }
     }
+  }
+
+  // 4B. UR Celestial Sovereign Leader Aura (max 1 active Sovereign Aura per squad!)
+  const sovereign = getActiveSovereignHero(squadIds);
+  if (sovereign?.sovereignAura) {
+    atkPct += sovereign.sovereignAura.squadFinalDmgBonus;
+    critDmg += sovereign.sovereignAura.squadCritDmgBonus;
   }
 
   const maxHp = Math.round(flatHp * (1 + hpPct));

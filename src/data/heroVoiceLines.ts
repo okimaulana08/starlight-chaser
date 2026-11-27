@@ -6,6 +6,18 @@ import { HERO_MAP } from './heroes';
  * tactical remarks, and Bond reflections.
  */
 const HERO_EXTRA_LINES: Record<string, string[]> = {
+  astraea: [
+    'When the Fifth Pillar awakens, even fractured heavens bow to our edict.',
+    'Six constellation blades answer your command, Chaser Commander—speak, and the sky shall part.',
+    'Seraphina’s forbidden starchart only glimpsed my silhouette. Now I walk beside your vanguard in full starlight.',
+    'Align our Starlight Link and witness the true majesty of a Sovereign Domain.',
+  ],
+  vespera: [
+    'Target locked at four hundred meters. Once the magma coils peak, nothing walks away.',
+    'Tell Draven to keep them burning—my Ember Cluster Barrage loves a hot target.',
+    'Visor calibrated, Caldera Rail-Cannon pressurized. Point me at the toughest boss on the map.',
+    'Out in Ferrum Caldera, hesitation gets you melted. Good thing you’re quick on the call, Commander.',
+  ],
   vaelen: [
     'Even if the sky falls twice, my blade will sever the dark.',
     'Commander—say the word, and the Eclipse Vanguard cuts straight through the Rift.',

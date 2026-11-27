@@ -475,6 +475,18 @@ export class CombatEngine {
       auraSprite.scale.set(0.34);
       auraPivot.addChild(auraSprite);
 
+      // UR Sovereign Exclusive: Floating Rotating Celestial Back-Rune Halo behind hero!
+      let backRuneSprite: Sprite | null = null;
+      if (def.tier === 'UR') {
+        backRuneSprite = new Sprite(atlas.magicCircle);
+        backRuneSprite.anchor.set(0.5);
+        backRuneSprite.position.set(0, -84);
+        backRuneSprite.tint = 0xfde047;
+        backRuneSprite.blendMode = 'add';
+        backRuneSprite.alpha = 0.42;
+        backRuneSprite.scale.set(0.46);
+      }
+
       // Holographic Hex-Dome Shield Sprite wrapping shielded heroes (crisp on both bright & dark floors!)
       const shieldSprite = new Sprite(atlas.hexDome);
       shieldSprite.anchor.set(0.5);
@@ -493,6 +505,7 @@ export class CombatEngine {
       container.addChild(heroShadow);
       container.addChild(auraPivot);
       container.addChild(auraGfx);
+      if (backRuneSprite) container.addChild(backRuneSprite);
       container.addChild(liveMesh.mesh);
       container.addChild(fallbackCrestGroup);
       container.addChild(weaponGfx);
@@ -508,11 +521,13 @@ export class CombatEngine {
       const baseUltCd =
         def.ultimate.cooldown > 1
           ? def.ultimate.cooldown
-          : def.tier === 'SSR'
-            ? 20
-            : def.tier === 'SR'
-              ? 18
-              : 16;
+          : def.tier === 'UR'
+            ? 22
+            : def.tier === 'SSR'
+              ? 20
+              : def.tier === 'SR'
+                ? 18
+                : 16;
       const maxUltCd = Math.max(
         10,
         Number((baseUltCd * (1 - Math.min(0.25, stats.cdr))).toFixed(1)),
@@ -542,6 +557,9 @@ export class CombatEngine {
         basicTimer: 0.25 + idx * 0.1,
         basicCount: 0,
         starOrbs: heroId === 'seraphina' ? 1 : 0,
+        starlightBlades: 0,
+        ascensionTimer: 0,
+        heatRounds: 0,
         heatStacks: 0,
         tailwindStacks: 0,
         tailwindTimer: 0,
@@ -596,6 +614,7 @@ export class CombatEngine {
         shadowGfx: heroShadow,
         auraPivot,
         auraSprite,
+        backRuneSprite,
         shieldSprite,
         visualFilter,
         ambientVfxTimer: idx * 0.14,
@@ -632,6 +651,12 @@ export class CombatEngine {
           if (!atkLoaded || this.destroyed || liveMesh.mesh.destroyed) return;
           heroUnit.attackTexture = atkLoaded;
           heroUnit.attackScaleBoost = atkCfg.scaleBoost ?? 1.0;
+        });
+      }
+      if (def.assets.ascendedSprite) {
+        tryLoadPixiTexture(def.assets.ascendedSprite).then((ascLoaded) => {
+          if (!ascLoaded || this.destroyed || liveMesh.mesh.destroyed) return;
+          heroUnit.ascendedTexture = ascLoaded;
         });
       }
     });
@@ -1328,10 +1353,34 @@ export class CombatEngine {
       // Render animated ground decal
       const pulse = 0.85 + Math.sin(this.elapsedSec * 6) * 0.15;
       z.gfx.clear();
-      z.gfx
-        .ellipse(z.x, z.y, z.radius, z.radius * 0.66)
-        .fill({ color: z.color, alpha: 0.16 * pulse })
-        .stroke({ color: z.color, width: 3, alpha: 0.72 });
+      if (z.kind === 'CELESTIAL_DOMAIN') {
+        // UR EXCLUSIVE CELESTIAL DOMAIN: Colossal prismatic starlight constellation seal across the arena floor!
+        z.gfx
+          .ellipse(z.x, z.y, z.radius, z.radius * 0.62)
+          .fill({ color: 0x3b0764, alpha: 0.22 * pulse })
+          .stroke({ color: 0xfde047, width: 3.5, alpha: 0.85 });
+        z.gfx
+          .ellipse(z.x, z.y, z.radius * 0.78, z.radius * 0.48)
+          .stroke({ color: 0x38e8ff, width: 2, alpha: 0.72 });
+        z.gfx
+          .ellipse(z.x, z.y, z.radius * 0.46, z.radius * 0.28)
+          .stroke({ color: 0xe879f9, width: 2.2, alpha: 0.78 });
+        // Rotating 6-point sovereign constellation geometry on the floor
+        const rot = this.elapsedSec * 0.45;
+        for (let k = 0; k < 6; k++) {
+          const a1 = rot + (k * Math.PI) / 3;
+          const a2 = rot + ((k + 2) * Math.PI) / 3;
+          z.gfx
+            .moveTo(z.x + Math.cos(a1) * z.radius * 0.78, z.y + Math.sin(a1) * z.radius * 0.48)
+            .lineTo(z.x + Math.cos(a2) * z.radius * 0.78, z.y + Math.sin(a2) * z.radius * 0.48)
+            .stroke({ color: k % 2 === 0 ? 0xfde047 : 0x38e8ff, width: 1.5, alpha: 0.55 });
+        }
+      } else {
+        z.gfx
+          .ellipse(z.x, z.y, z.radius, z.radius * 0.66)
+          .fill({ color: z.color, alpha: 0.16 * pulse })
+          .stroke({ color: z.color, width: 3, alpha: 0.72 });
+      }
       z.gfx
         .ellipse(z.x, z.y, z.radius * 0.55, z.radius * 0.36)
         .stroke({ color: 0xffffff, width: 1.5, alpha: 0.35 });
@@ -1373,6 +1422,23 @@ export class CombatEngine {
               this.handleDamageEnemy(owner, e, { multiplier: 0.4, isSkill: true });
             }
           }
+        } else if (z.kind === 'CELESTIAL_DOMAIN') {
+          // Every 1.2s, rain prismatic orbital star-lances across enemies inside the Celestial Domain (75% ATK AoE)!
+          z.tickTimer = 1.2;
+          const aliveFoes = this.ctx.enemies.filter((e) => e.alive);
+          const targets = aliveFoes.slice(0, 3);
+          const cols = [0xfde047, 0x38e8ff, 0xe879f9];
+          targets.forEach((e, idx) => {
+            const col = cols[idx % cols.length];
+            this.pool.spawnSkyPillar(e.x, e.y, 68, col, false);
+            this.pool.spawnBurst(e.x, e.y - 26, col, 10, 36);
+            this.handleDamageEnemy(owner, e, {
+              multiplier: 0.75,
+              isSkill: true,
+              hitShieldHits: 1,
+              breakDamage: 6,
+            });
+          });
         }
       }
     }
@@ -1555,7 +1621,13 @@ export class CombatEngine {
     audioManager.playSfx('ult_impact', 0.04);
     audioManager.playSynthSfx('link_burst');
 
-    // Refund +1.5 Squad SP & blast ALL alive enemies with +35% Resonance Link Nova (+32 Break!)
+    // Refund +1.5 Squad SP & blast ALL alive enemies with Link Resonance (+50% when a UR Sovereign links!)
+    const sovereignBonus = Math.max(
+      partner.def.sovereignAura?.linkBurstBonus ?? 0,
+      finisher.def.sovereignAura?.linkBurstBonus ?? 0,
+    );
+    const linkBonusDmg = sovereignBonus > 0 ? sovereignBonus : 0.35;
+    const isSovereignLink = sovereignBonus > 0;
     this.ctx.addSp(1.5);
     let bonusTotal = 0;
     for (const e of aliveEnemies) {
@@ -1563,24 +1635,30 @@ export class CombatEngine {
       const resA = this.handleDamageEnemy(partner, e, {
         multiplier: 1.15,
         isUlt: true,
-        bonusDmgMult: 0.35,
-        breakDamage: breakDamage * 0.5,
-        hitShieldHits: 2,
+        bonusDmgMult: linkBonusDmg,
+        breakDamage: breakDamage * (isSovereignLink ? 0.65 : 0.5),
+        hitShieldHits: isSovereignLink ? 3 : 2,
       });
       bonusTotal += resA.damage;
       if (e.alive) {
         const resB = this.handleDamageEnemy(finisher, e, {
           multiplier: 1.35,
           isUlt: true,
-          bonusDmgMult: 0.35,
-          breakDamage: breakDamage * 0.5,
-          hitShieldHits: 2,
+          bonusDmgMult: linkBonusDmg,
+          breakDamage: breakDamage * (isSovereignLink ? 0.65 : 0.5),
+          hitShieldHits: isSovereignLink ? 3 : 2,
         });
         bonusTotal += resB.damage;
       }
     }
 
-    this.pool.spawnFloatingText(cx, cy - 112, '✦ STARLIGHT LINK BURST! ✦', 0xfde047, true);
+    this.pool.spawnFloatingText(
+      cx,
+      cy - 112,
+      isSovereignLink ? '❖ SOVEREIGN LINK BURST +50%! ❖' : '✦ STARLIGHT LINK BURST! ✦',
+      isSovereignLink ? 0xf0abfc : 0xfde047,
+      true,
+    );
     useCombatStore.getState().setActiveLinkBurst({
       id: Date.now() + Math.random(),
       heroAId: partner.heroId,
@@ -1907,25 +1985,47 @@ export class CombatEngine {
         const dp = Math.min(1, h.dashState.elapsed / Math.max(0.05, h.dashState.duration));
         dashArcY = -Math.sin(dp * Math.PI) * h.dashState.arcHeight;
       }
-      const strideHopY = h.alive
-        ? moveRatio > 0.08
-          ? -Math.abs(Math.sin(h.stridePhase)) * (5.5 + moveRatio * 5.5)
-          : Math.sin(h.animTime * 3.4) * 1.4
+      const isLevitatingUR = h.def.tier === 'UR' && h.alive;
+      const urHoverY = isLevitatingUR
+        ? -(h.ascensionTimer > 0 ? 18 : 10) + Math.sin(h.animTime * 2.8) * 5
         : 0;
-      const totalLiftY = strideHopY + dashArcY;
+      const strideHopY = h.alive
+        ? isLevitatingUR
+          ? 0
+          : moveRatio > 0.08
+            ? -Math.abs(Math.sin(h.stridePhase)) * (5.5 + moveRatio * 5.5)
+            : Math.sin(h.animTime * 3.4) * 1.4
+        : 0;
+      const totalLiftY = strideHopY + dashArcY + urHoverY;
 
-      // Multi-Pose Action Keyframe Swap (Idle <-> Attack/Cast, synced with 2.5D Cast Shadow!)
-      if (h.attackTexture && h.idleTexture) {
-        const nextPose: 'IDLE' | 'ATTACK' = h.alive && swingRemain > 0.02 ? 'ATTACK' : 'IDLE';
+      // Multi-Pose Action Keyframe Swap (Idle <-> Attack/Cast <-> UR Ascension Form!)
+      if (h.idleTexture) {
+        const nextPose: 'IDLE' | 'ATTACK' | 'ASCENDED' =
+          h.alive && h.ascensionTimer > 0 && h.ascendedTexture && swingRemain <= 0.04
+            ? 'ASCENDED'
+            : h.alive && swingRemain > 0.02 && h.attackTexture
+              ? 'ATTACK'
+              : 'IDLE';
         if (h.activePose !== nextPose) {
           h.activePose = nextPose;
-          const nextTex = nextPose === 'ATTACK' ? h.attackTexture : h.idleTexture;
+          const nextTex =
+            nextPose === 'ASCENDED' && h.ascendedTexture
+              ? h.ascendedTexture
+              : nextPose === 'ATTACK' && h.attackTexture
+                ? h.attackTexture
+                : h.idleTexture;
           h.liveMesh.swapTextureFast(nextTex);
           h.castShadowSprite.texture = nextTex;
         }
       }
 
-      const baseSc = (h.baseScaleY ?? 0.9) * (h.activePose === 'ATTACK' ? (h.attackScaleBoost ?? 1) : 1);
+      const baseSc =
+        (h.baseScaleY ?? 0.9) *
+        (h.activePose === 'ASCENDED'
+          ? 1.12
+          : h.activePose === 'ATTACK'
+            ? (h.attackScaleBoost ?? 1)
+            : 1);
       const hitBend = h.hitFlashTimer > 0 ? Math.min(1, h.hitFlashTimer / 0.15) : 0;
 
       // Apply Live2D-Lite real-time 5×7 vertex deformation!
@@ -1959,9 +2059,18 @@ export class CombatEngine {
         if (h.invincibleTimer > 0) {
           heroStatusHex = 0x38e8ff;
           heroStatusIntensity = 0.88;
+        } else if (h.def.tier === 'UR' && h.ascensionTimer > 0) {
+          // Prismatic shifting Sovereign rim light during Ascension Form!
+          const prismPalette = [0xfde047, 0x38e8ff, 0xe879f9];
+          heroStatusHex = prismPalette[Math.floor(this.elapsedSec * 2.4) % prismPalette.length];
+          heroStatusIntensity = 0.82;
         } else if (h.overdriveTimer > 0 || isLinkPartner) {
           heroStatusHex = 0xfde047;
           heroStatusIntensity = 0.78;
+        } else if (h.def.tier === 'UR') {
+          const prismPalette = [0xfde047, 0xe879f9, 0x38e8ff];
+          heroStatusHex = prismPalette[Math.floor(this.elapsedSec * 1.1) % prismPalette.length];
+          heroStatusIntensity = 0.44;
         } else if (isUltReady) {
           heroStatusHex = FACTIONS[h.def.faction].accentHex;
           heroStatusIntensity = 0.32;
@@ -2027,8 +2136,23 @@ export class CombatEngine {
         h.auraSprite.alpha = powered
           ? 0.54 + Math.sin(this.elapsedSec * 7 + h.slotIndex) * 0.12
           : 0.28;
-        const aSc = (powered ? 0.42 : 0.34) * auraPulse;
+        const aSc = (powered || h.def.tier === 'UR' ? 0.44 : 0.34) * auraPulse;
         h.auraSprite.scale.set(aSc);
+
+        if (h.backRuneSprite) {
+          const asc = h.ascensionTimer > 0;
+          h.backRuneSprite.visible = true;
+          h.backRuneSprite.position.set(lungeX, -88 + totalLiftY * 0.75);
+          h.backRuneSprite.rotation = -this.elapsedSec * (asc ? 1.8 : 0.65);
+          const brSc = (asc ? 0.72 : 0.46) * auraPulse;
+          h.backRuneSprite.scale.set(brSc);
+          h.backRuneSprite.tint = asc
+            ? Math.sin(this.elapsedSec * 5) > 0
+              ? 0xfde047
+              : 0xe879f9
+            : 0xfde047;
+          h.backRuneSprite.alpha = asc ? 0.72 : 0.36;
+        }
 
         if (h.shield > 0) {
           const shPulse = 1 + Math.sin(this.elapsedSec * 6.5 + h.slotIndex) * 0.035;
@@ -2065,6 +2189,7 @@ export class CombatEngine {
       } else {
         h.auraPivot.visible = false;
         h.shieldSprite.visible = false;
+        if (h.backRuneSprite) h.backRuneSprite.visible = false;
       }
 
       // Compact Faction Rune Pip + Seraphina Orbiting Star Orbs
@@ -3098,7 +3223,13 @@ export class CombatEngine {
     const heroesSnap: HeroCombatSnapshot[] = this.ctx.heroes.map((h) => {
       let stacksLabel: string | undefined;
       let stacksCount: number | undefined;
-      if (h.heroId === 'seraphina') {
+      if (h.heroId === 'astraea') {
+        stacksLabel = h.ascensionTimer > 0 ? 'ASCEND' : 'BLADES';
+        stacksCount = h.ascensionTimer > 0 ? Math.ceil(h.ascensionTimer) : h.starlightBlades;
+      } else if (h.heroId === 'vespera') {
+        stacksLabel = 'HEAT';
+        stacksCount = h.heatRounds;
+      } else if (h.heroId === 'seraphina') {
         stacksLabel = 'ORBS';
         stacksCount = h.starOrbs;
       } else if (h.heroId === 'draven') {

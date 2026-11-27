@@ -341,6 +341,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               heroName={displayHero.name}
               src={displayHero.assets.standing}
               faction={displayHero.faction}
+              tier={displayHero.tier}
               themeColor={displayHero.themeColor}
               parallaxX={parallax.x}
               parallaxY={parallax.y}
@@ -630,8 +631,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   <div className="font-display font-black text-[10px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-cyan-300 leading-tight">
                     SUMMON
                   </div>
-                  <div className="hidden md:block ls-hide text-[11px] text-cyan-200/75">
-                    Rate-Up: Aurelia & Zephyrion
+                  <div className="hidden md:block ls-hide text-[11px] text-fuchsia-200/90 font-semibold">
+                    ❖ UR Event: Astraea & Vespera
                   </div>
                 </div>
               </div>

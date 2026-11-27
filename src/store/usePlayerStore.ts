@@ -32,7 +32,7 @@ import {
   getEnhanceCost,
   getSalvageYield,
 } from '../systems/ForgeSystem';
-import { executeGachaPulls } from '../systems/GachaSystem';
+import { executeGachaPulls, isURBanner } from '../systems/GachaSystem';
 import type {
   BannerDef,
   CombatLootSummary,
@@ -146,8 +146,10 @@ export function buildDefaultSaveState(): PlayerSaveState {
       ASHEN: 2,
     },
     bondGifts: 3,
+    pityCounterUR: 0,
     pityCounterHero: 0,
     pityCounterRelic: 0,
+    guaranteedFeaturedUR: false,
     guaranteedFeaturedHero: false,
     guaranteedFeaturedRelic: false,
     squadIds: defaultSquad,
@@ -1557,7 +1559,8 @@ export const usePlayerStore = create<PlayerStore>()(
         const owned = state.roster[heroId];
         const def = HERO_MAP[heroId];
         if (!owned || !def) return { ok: false, message: 'Recruit this Chaser first.' };
-        const dustCost = def.tier === 'SSR' ? 20 : def.tier === 'SR' ? 12 : 8;
+        const dustCost =
+          def.tier === 'UR' ? 30 : def.tier === 'SSR' ? 20 : def.tier === 'SR' ? 12 : 8;
         const shardsAmount = 5;
         if (state.starDust < dustCost) {
           return { ok: false, message: `Need ${dustCost} Star Dust.` };
@@ -1593,13 +1596,20 @@ export const usePlayerStore = create<PlayerStore>()(
         }
 
         const isHero = banner.type === 'HERO';
+        const isUrEvent = isURBanner(banner);
         const ownedSet = new Set(isHero ? Object.keys(state.roster) : state.ownedRelics);
 
         const out = executeGachaPulls(banner, count, {
-          pityCounter: isHero ? state.pityCounterHero : state.pityCounterRelic,
-          guaranteedFeatured: isHero
-            ? state.guaranteedFeaturedHero
-            : state.guaranteedFeaturedRelic,
+          pityCounter: isUrEvent
+            ? (state.pityCounterUR ?? 0)
+            : isHero
+              ? state.pityCounterHero
+              : state.pityCounterRelic,
+          guaranteedFeatured: isUrEvent
+            ? Boolean(state.guaranteedFeaturedUR)
+            : isHero
+              ? state.guaranteedFeaturedHero
+              : state.guaranteedFeaturedRelic,
           ownedIds: ownedSet,
         });
 
@@ -1642,11 +1652,14 @@ export const usePlayerStore = create<PlayerStore>()(
           starlightTokens: state.starlightTokens + count,
           starDust: state.starDust + dustGain,
           relicFragments: nextRelicFragments,
-          pityCounterHero: isHero ? out.nextPityCounter : state.pityCounterHero,
+          pityCounterUR: isUrEvent ? out.nextPityCounter : (state.pityCounterUR ?? 0),
+          pityCounterHero: isHero && !isUrEvent ? out.nextPityCounter : state.pityCounterHero,
           pityCounterRelic: !isHero ? out.nextPityCounter : state.pityCounterRelic,
-          guaranteedFeaturedHero: isHero
+          guaranteedFeaturedUR: isUrEvent
             ? out.nextGuaranteedFeatured
-            : state.guaranteedFeaturedHero,
+            : Boolean(state.guaranteedFeaturedUR),
+          guaranteedFeaturedHero:
+            isHero && !isUrEvent ? out.nextGuaranteedFeatured : state.guaranteedFeaturedHero,
           guaranteedFeaturedRelic: !isHero
             ? out.nextGuaranteedFeatured
             : state.guaranteedFeaturedRelic,
@@ -1662,7 +1675,9 @@ export const usePlayerStore = create<PlayerStore>()(
 
       sparkExchange: (kind, id) => {
         const state = get();
-        if (state.starlightTokens < 120) return false;
+        const isUrHero = kind === 'HERO' && HERO_MAP[id]?.tier === 'UR';
+        const sparkCost = isUrHero ? 160 : 120;
+        if (state.starlightTokens < sparkCost) return false;
         const nextCodex = state.unlockedCodexIds.includes(id)
           ? state.unlockedCodexIds
           : [...state.unlockedCodexIds, id];
@@ -1671,12 +1686,15 @@ export const usePlayerStore = create<PlayerStore>()(
           if (!HERO_MAP[id]) return false;
           const nextRoster = { ...state.roster };
           if (nextRoster[id]) {
-            nextRoster[id] = { ...nextRoster[id], shards: nextRoster[id].shards + 25 };
+            nextRoster[id] = {
+              ...nextRoster[id],
+              shards: nextRoster[id].shards + (isUrHero ? 30 : 25),
+            };
           } else {
             nextRoster[id] = createOwnedHero(id, 1);
           }
           set({
-            starlightTokens: state.starlightTokens - 120,
+            starlightTokens: state.starlightTokens - sparkCost,
             roster: nextRoster,
             unlockedCodexIds: nextCodex,
           });
@@ -1691,7 +1709,7 @@ export const usePlayerStore = create<PlayerStore>()(
             id,
           );
           set({
-            starlightTokens: state.starlightTokens - 120,
+            starlightTokens: state.starlightTokens - sparkCost,
             ownedRelics: added.ownedRelics,
             relicRanks: added.relicRanks,
             unlockedCodexIds: added.unlockedCodexIds,

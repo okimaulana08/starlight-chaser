@@ -102,7 +102,7 @@ export const PartyManagerModal: React.FC<PartyManagerModalProps> = ({ open, onCl
   }, [currentHeroIds]);
 
   const filteredRoster = useMemo(() => {
-    const tierOrder = { SSR: 3, SR: 2, R: 1 };
+    const tierOrder = { UR: 4, SSR: 3, SR: 2, R: 1 };
     return HEROES.filter((h) => Boolean(roster[h.id]))
       .filter((h) => roleFilter === 'ALL' || h.role === roleFilter)
       .sort((a, b) => {
