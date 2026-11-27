@@ -125,6 +125,13 @@ export class EnemyAI {
       enemy.aiCooldown = Math.max(0, enemy.aiCooldown - dt);
       enemy.attackSwingTimer = Math.max(0, enemy.attackSwingTimer - dt);
 
+      // Pause offensive AI briefly while Boss Skyfall Slam / Rift Portal Entrance plays out!
+      if (enemy.spawnIntroTimer > 0) {
+        enemy.vx *= 0.8;
+        enemy.vy *= 0.8;
+        continue;
+      }
+
       // Always integrate decaying spring knockback (even while staggered/casting!)
       if (Math.abs(enemy.knockVx) > 1 || Math.abs(enemy.knockVy) > 1) {
         enemy.x = Math.max(ctx.bounds.minX + 40, Math.min(ctx.bounds.maxX - 40, enemy.x + enemy.knockVx * dt));

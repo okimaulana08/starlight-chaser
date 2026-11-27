@@ -32,6 +32,11 @@ import {
   releaseCombatTextures,
   tryLoadPixiTexture,
 } from './AssetManager';
+import {
+  createActorVisualFilter,
+  getBiomeLighting,
+  type BiomeLightingConfig,
+} from './ActorVisualFilter';
 import { audioManager } from './AudioManager';
 import { BiomeWeatherSystem } from './BiomeWeatherSystem';
 import {
@@ -48,6 +53,7 @@ import { ObjectPool } from './ObjectPool';
 import { SkillExecutor } from './SkillExecutor';
 import { SquadController } from './SquadController';
 import { UltimateDirector } from './UltimateDirector';
+import { VfxTextureAtlas } from './VfxTextureAtlas';
 
 const ARENA_W = 2560;
 const ARENA_H = 1440;
@@ -86,6 +92,7 @@ export class CombatEngine {
   private dimColor = 0x0b1026;
   private moveMarkerGfx = new Graphics();
   private weatherSystem: BiomeWeatherSystem | null = null;
+  private biomeLighting: BiomeLightingConfig = getBiomeLighting(1);
 
   private pool = new ObjectPool();
   private squadCtrl = new SquadController();
@@ -234,7 +241,8 @@ export class CombatEngine {
       this.floorLayer.addChild(g);
     }
 
-    // 2. 10-Chapter Dynamic Biome Weather & Atmospheric Lighting System (Zero-GC PixiJS v8)
+    // 2. 10-Chapter Dynamic Biome Weather, Directional Rim Lighting & Projected Shadow Config
+    this.biomeLighting = getBiomeLighting(stage.chapter, stage.dungeonId);
     this.weatherSystem = new BiomeWeatherSystem(
       this.ambientLayer,
       stage.chapter,
@@ -319,7 +327,7 @@ export class CombatEngine {
         this.pool.spawnHitImpact(x, y, style, color, isCrit);
       },
       spawnFootstepDust: (x, y, vx, vy, scale, tint) => {
-        this.pool.spawnFootstepDust(x, y, vx, vy, scale, tint);
+        this.pool.spawnFootstepDust(x, y, vx, vy, scale, tint ?? this.biomeLighting.dustTint);
       },
       spawnGhostAfterimage: (texture, x, y, scaleX, scaleY, tint, alpha, life) => {
         this.pool.spawnGhostAfterimage(texture, x, y, scaleX, scaleY, tint, alpha, life);
@@ -426,28 +434,67 @@ export class CombatEngine {
       );
       totalStartingGauge += stats.startingGauge;
 
+      const atlas = VfxTextureAtlas.get();
       const container = new Container();
       const auraGfx = new Graphics();
       const tex = getProceduralHeroTexture(this.app.renderer, def);
       const liveMesh = new LiveMeshActor(tex, 0.92);
       liveMesh.mesh.scale.set(0.9);
+      const visualFilter = createActorVisualFilter(this.biomeLighting);
+      if (visualFilter) {
+        liveMesh.mesh.filters = [visualFilter];
+      }
       const weaponGfx = buildHeroWeaponGraphic(def.role, def.themeColor);
       weaponGfx.position.set(34, -36);
       const hpBarGfx = new Graphics();
 
-      // Grounded dynamic contact shadow beneath boots
+      // True 2.5D Projected Cast Silhouette Shadow across the arena floor!
+      const castShadowSprite = new Sprite(tex);
+      castShadowSprite.anchor.set(0.5, 0.95);
+      castShadowSprite.position.set(0, 3);
+      castShadowSprite.tint = this.biomeLighting.shadowTint;
+      castShadowSprite.alpha = this.biomeLighting.shadowAlpha;
+      castShadowSprite.skew.x = this.biomeLighting.shadowSkewX;
+      castShadowSprite.visible = false;
+
+      // Grounded soft ambient-occlusion contact shadow beneath boots
       const heroShadow = new Graphics();
-      heroShadow.ellipse(0, 2, 34, 11).fill({ color: 0x050814, alpha: 0.46 });
+      heroShadow.ellipse(0, 2, 32, 10).fill({ color: 0x050814, alpha: 0.42 });
+
+      // Rotating feathered Faction Magic Circle inside perspective-flattened floor pivot!
+      const auraPivot = new Container();
+      auraPivot.position.set(0, 3);
+      auraPivot.scale.set(1, 0.36);
+      const auraSprite = new Sprite(atlas.magicCircle);
+      auraSprite.anchor.set(0.5);
+      auraSprite.tint = FACTIONS[def.faction].accentHex;
+      auraSprite.blendMode = 'normal';
+      auraSprite.alpha = 0.28;
+      auraSprite.scale.set(0.34);
+      auraPivot.addChild(auraSprite);
+
+      // Holographic Hex-Dome Shield Sprite wrapping shielded heroes (crisp on both bright & dark floors!)
+      const shieldSprite = new Sprite(atlas.hexDome);
+      shieldSprite.anchor.set(0.5);
+      shieldSprite.position.set(0, -64);
+      shieldSprite.tint = 0x38bdf8;
+      shieldSprite.blendMode = 'normal';
+      shieldSprite.alpha = 0;
+      shieldSprite.scale.set(0.5, 0.6);
+      shieldSprite.visible = false;
 
       // Fallback portrait crest container (auto-hidden when real full-body battle sprite loads!)
       const fallbackCrestGroup = new Container();
       attachHeroPortraitCrest(fallbackCrestGroup, def);
 
+      container.addChild(castShadowSprite);
       container.addChild(heroShadow);
+      container.addChild(auraPivot);
       container.addChild(auraGfx);
       container.addChild(liveMesh.mesh);
       container.addChild(fallbackCrestGroup);
       container.addChild(weaponGfx);
+      container.addChild(shieldSprite);
       container.addChild(hpBarGfx);
       this.actorLayer.addChild(container);
 
@@ -529,7 +576,13 @@ export class CombatEngine {
         ultCasts: 0,
         container,
         liveMesh,
+        castShadowSprite,
         shadowGfx: heroShadow,
+        auraPivot,
+        auraSprite,
+        shieldSprite,
+        visualFilter,
+        ambientVfxTimer: idx * 0.14,
         fallbackCrestGroup,
         hasFullSprite: false,
         baseScaleY: 0.9,
@@ -539,7 +592,7 @@ export class CombatEngine {
       };
       this.ctx.heroes.push(heroUnit);
 
-      // Load real full-body transparent anime battle sprite onto LiveMeshActor!
+      // Load real full-body transparent anime battle sprite onto LiveMeshActor & Cast Shadow!
       const spriteUrl = `/assets/sprites/battle_${def.id}.webp`;
       tryLoadPixiTexture(spriteUrl).then((loaded) => {
         if (!loaded || this.destroyed || liveMesh.mesh.destroyed) return;
@@ -547,6 +600,9 @@ export class CombatEngine {
         const targetH = def.role === 'TANK' ? 152 : 142;
         const sc = targetH / Math.max(1, loaded.height);
         liveMesh.mesh.scale.set(sc);
+        castShadowSprite.texture = loaded;
+        castShadowSprite.scale.set(sc, sc * this.biomeLighting.shadowScaleY);
+        castShadowSprite.visible = true;
         heroUnit.hasFullSprite = true;
         heroUnit.baseScaleY = sc;
         fallbackCrestGroup.visible = false;
@@ -587,26 +643,73 @@ export class CombatEngine {
       if (def.isBoss) hasBoss = true;
 
       for (let i = 0; i < group.count; i++) {
+        const atlas = VfxTextureAtlas.get();
         const container = new Container();
         const tex = getProceduralEnemyTexture(this.app.renderer, def);
         const liveMesh = new LiveMeshActor(tex, 0.94);
         const defaultScale = def.isBoss ? 1.05 : def.scale * 0.86;
         liveMesh.mesh.scale.set(defaultScale);
+        const visualFilter = createActorVisualFilter(this.biomeLighting);
+        if (visualFilter) {
+          liveMesh.mesh.filters = [visualFilter];
+        }
 
-        // Grounded dynamic contact shadow beneath every enemy & boss
+        // True 2.5D Projected Cast Silhouette Shadow across arena floor
+        const castShadowSprite = new Sprite(tex);
+        castShadowSprite.anchor.set(0.5, 0.95);
+        castShadowSprite.position.set(0, 4);
+        castShadowSprite.tint = this.biomeLighting.shadowTint;
+        castShadowSprite.alpha = this.biomeLighting.shadowAlpha * (def.isBoss ? 1.15 : 1.0);
+        castShadowSprite.skew.x = this.biomeLighting.shadowSkewX;
+        castShadowSprite.visible = false;
+
+        // Grounded soft contact shadow beneath enemy & boss
         const shadowGfx = new Graphics();
         if (def.isBoss) {
-          shadowGfx.ellipse(0, 4, 92, 26).fill({ color: 0x07040f, alpha: 0.5 });
-          shadowGfx.ellipse(0, 4, 100, 30).stroke({ color: 0xd946ef, width: 3, alpha: 0.65 });
+          shadowGfx.ellipse(0, 4, 88, 24).fill({ color: 0x07040f, alpha: 0.48 });
         } else if (def.isMiniBoss) {
-          shadowGfx.ellipse(0, 3, 52, 16).fill({ color: 0x07040f, alpha: 0.48 });
+          shadowGfx.ellipse(0, 3, 50, 15).fill({ color: 0x07040f, alpha: 0.44 });
         } else {
-          shadowGfx.ellipse(0, 2, 32, 10).fill({ color: 0x07040f, alpha: 0.44 });
+          shadowGfx.ellipse(0, 2, 30, 9).fill({ color: 0x07040f, alpha: 0.38 });
+        }
+
+        // Feathered Magic Circle Ground Aura inside perspective-flattened floor pivot!
+        const auraPivot = new Container();
+        auraPivot.position.set(0, 4);
+        auraPivot.scale.set(1, 0.35);
+        auraPivot.visible = Boolean(def.isBoss || def.isMiniBoss);
+        const auraSprite = new Sprite(atlas.magicCircle);
+        auraSprite.anchor.set(0.5);
+        auraSprite.tint = def.isBoss ? 0xd946ef : 0xa855f7;
+        auraSprite.blendMode = 'add';
+        auraSprite.alpha = def.isBoss ? 0.44 : def.isMiniBoss ? 0.28 : 0;
+        auraSprite.scale.set(def.isBoss ? 0.96 : 0.56);
+        auraPivot.addChild(auraSprite);
+
+        // Rotating Back Arcane Halo for floating casters & Bosses!
+        const hasBackRune =
+          def.isBoss ||
+          def.id === 'rift_acolyte' ||
+          def.id === 'astral_weaver' ||
+          def.id === 'void_wisp';
+        let backRuneSprite: Sprite | null = null;
+        if (hasBackRune) {
+          backRuneSprite = new Sprite(atlas.magicCircle);
+          backRuneSprite.anchor.set(0.5);
+          backRuneSprite.position.set(0, def.isBoss ? -128 : -76);
+          backRuneSprite.tint =
+            def.id === 'astral_weaver' ? 0x38e8ff : def.isBoss ? 0xc084fc : 0xd946ef;
+          backRuneSprite.blendMode = 'add';
+          backRuneSprite.alpha = def.isBoss ? 0.28 : 0.38;
+          backRuneSprite.scale.set(def.isBoss ? 0.92 : 0.42);
         }
 
         const hpBarGfx = new Graphics();
         const statusGfx = new Graphics();
+        container.addChild(castShadowSprite);
         container.addChild(shadowGfx);
+        container.addChild(auraPivot);
+        if (backRuneSprite) container.addChild(backRuneSprite);
         container.addChild(liveMesh.mesh);
         container.addChild(hpBarGfx);
         container.addChild(statusGfx);
@@ -622,7 +725,27 @@ export class CombatEngine {
         spawnIdx++;
 
         container.position.set(spawnX, spawnY);
-        this.pool.spawnRingWave(spawnX, spawnY, def.isBoss ? 170 : 75, 0xd946ef, 0.45);
+        // Dramatic Rift Portal / Skyfall Target Ring on Wave Entrance!
+        this.pool.spawnSpriteFx({
+          tex: 'magicCircle',
+          x: spawnX,
+          y: spawnY + 4,
+          spin: def.isBoss ? 2.4 : 3.2,
+          scaleX: def.isBoss ? 0.42 : 0.22,
+          scaleY: def.isBoss ? 0.16 : 0.09,
+          endScaleX: def.isBoss ? 1.38 : 0.62,
+          endScaleY: def.isBoss ? 0.52 : 0.24,
+          tint: def.isBoss ? 0xf43f5e : 0xc084fc,
+          alpha: def.isBoss ? 0.88 : 0.72,
+          life: def.isBoss ? 0.68 : 0.48,
+          darkHalo: true,
+          groundLayer: true,
+        });
+        this.pool.spawnRingWave(spawnX, spawnY, def.isBoss ? 185 : 78, def.isBoss ? 0xf43f5e : 0xd946ef, 0.46);
+
+        const spawnIntroKind: 'BOSS_DROP' | 'RIFT_EMERGE' =
+          def.isBoss || def.isMiniBoss ? 'BOSS_DROP' : 'RIFT_EMERGE';
+        const spawnIntroDuration = def.isBoss ? 0.54 : def.isMiniBoss ? 0.42 : 0.36;
 
         const stageScale = stage.enemyScale ?? 1.0;
         const modId = stage.spireModifier?.id;
@@ -703,20 +826,30 @@ export class CombatEngine {
           maxHitShield: 0,
           hitFlashTimer: 0,
           dissolveTimer: 0,
-          dissolveDuration: 0.44,
+          dissolveDuration: 0.52,
           animTime: Math.random() * 4,
           attackSwingTimer: 0,
           attackSwingDuration: 0.28,
           baseScaleY: defaultScale,
+          spawnIntroKind,
+          spawnIntroTimer: spawnIntroDuration,
+          spawnIntroDuration,
+          spawnLanded: false,
+          ambientVfxTimer: Math.random() * 0.35,
           container,
           liveMesh,
+          castShadowSprite,
           shadowGfx,
+          auraPivot,
+          auraSprite,
+          backRuneSprite,
+          visualFilter,
           hpBarGfx,
           statusGfx,
         };
         this.ctx.enemies.push(enemyUnit);
 
-        // Auto-load real transparent WebP sprite onto LiveMeshActor for ALL enemies (Minions + All 10 Chapter Bosses!)
+        // Auto-load real transparent WebP sprite onto LiveMeshActor & Cast Shadow for ALL enemies & Bosses!
         const enemySpriteUrl = def.isBoss && stage.bossAssetOverride ? stage.bossAssetOverride : def.assetKey;
         if (enemySpriteUrl.startsWith('/assets/')) {
           tryLoadPixiTexture(enemySpriteUrl).then((loaded) => {
@@ -731,6 +864,9 @@ export class CombatEngine {
                   : 126;
             const sc = targetSize / Math.max(1, loaded.height);
             liveMesh.mesh.scale.set(sc);
+            castShadowSprite.texture = loaded;
+            castShadowSprite.scale.set(-sc, sc * this.biomeLighting.shadowScaleY);
+            castShadowSprite.visible = true;
             enemyUnit.baseScaleY = sc;
           });
         }
@@ -1760,13 +1896,61 @@ export class CombatEngine {
       mesh.rotation =
         (swingRemain > 0 ? h.facing * attackArc * 0.11 : 0) +
         h.facing * h.springLean * 0.045;
-      mesh.tint = h.hitFlashTimer > 0 ? 0xffa8a8 : h.overdriveTimer > 0 ? 0xfef08a : 0xffffff;
 
-      // Dynamic Grounded Contact Shadow (shrinks & softens naturally when jumping/dashing!)
+      // 2.5D Single-Pass Rim Lighting, Anime Ink Contour & Status Shader!
+      const ultCost = h.def.ultimate.gaugeCost ?? 40;
+      const isUltReady = h.alive && this.ctx.ultGauge >= ultCost;
+      const isLinkPartner =
+        h.alive && this.ctx.linkWindowTimer > 0 && this.ctx.linkPartnerHeroId !== h.heroId;
+      let heroStatusHex = FACTIONS[h.def.faction].accentHex;
+      let heroStatusIntensity = 0;
+      if (h.alive) {
+        if (h.invincibleTimer > 0) {
+          heroStatusHex = 0x38e8ff;
+          heroStatusIntensity = 0.88;
+        } else if (h.overdriveTimer > 0 || isLinkPartner) {
+          heroStatusHex = 0xfde047;
+          heroStatusIntensity = 0.78;
+        } else if (isUltReady) {
+          heroStatusHex = FACTIONS[h.def.faction].accentHex;
+          heroStatusIntensity = 0.32;
+        } else if (h.atkBuffTimer > 0 || h.critBuffTimer > 0) {
+          heroStatusHex = 0xfbbf24;
+          heroStatusIntensity = 0.28;
+        }
+      }
+      if (h.visualFilter) {
+        mesh.tint = 0xffffff;
+        h.visualFilter.setFrameState({
+          time: this.elapsedSec,
+          hitFlash: hitBend,
+          statusHex: heroStatusHex,
+          statusIntensity: heroStatusIntensity,
+          dissolve: 0,
+        });
+      } else {
+        mesh.tint = h.hitFlashTimer > 0 ? 0xffa8a8 : h.overdriveTimer > 0 ? 0xfef08a : 0xffffff;
+      }
+
+      // Dynamic Grounded Contact Shadow + True 2.5D Projected Silhouette Cast Shadow!
       const elevation = Math.max(0, -totalLiftY);
       const shadowScale = Math.max(0.58, 1 - elevation * 0.0085) * h.squashX;
       h.shadowGfx.scale.set(shadowScale, Math.max(0.65, 1 - elevation * 0.006));
       h.shadowGfx.alpha = h.alive ? Math.max(0.24, 1 - elevation * 0.011) : 0.25;
+
+      if (h.castShadowSprite.visible) {
+        const castScale = Math.max(0.55, 1 - elevation * 0.006);
+        const shadowShiftX = -Math.sign(this.biomeLighting.lightDir[0] || -1) * elevation * 0.48;
+        h.castShadowSprite.position.set(lungeX + shadowShiftX, 3 + elevation * 0.14);
+        h.castShadowSprite.scale.set(
+          baseSc * safeFaceX * h.squashX * castScale,
+          baseSc * this.biomeLighting.shadowScaleY * h.squashY * castScale,
+        );
+        h.castShadowSprite.skew.x = this.biomeLighting.shadowSkewX;
+        h.castShadowSprite.alpha = h.alive
+          ? Math.max(0.08, this.biomeLighting.shadowAlpha * (1 - elevation * 0.012))
+          : 0.08;
+      }
 
       if (h.fallbackCrestGroup && h.fallbackCrestGroup.visible) {
         h.fallbackCrestGroup.position.set(lungeX, totalLiftY);
@@ -1781,21 +1965,64 @@ export class CombatEngine {
             : h.facing * Math.sin(h.animTime * 4) * 0.08;
       }
 
-      // Rotating Faction Magic Circle Rune beneath boots + Shield + Seraphina Star Orbs
+      // Rotating Feathered Magic Circle Aura (perspective-flattened!) + Holographic Hex-Dome Shield + Ambient Power Sparks
+      const fHex = FACTIONS[h.def.faction].accentHex;
+      if (h.alive) {
+        const auraPulse = 1 + Math.sin(this.elapsedSec * 5 + h.slotIndex) * 0.06;
+        const powered = isUltReady || h.overdriveTimer > 0 || isLinkPartner;
+        h.auraPivot.visible = true;
+        h.auraSprite.rotation = this.elapsedSec * (powered ? 1.55 : 0.72) + h.slotIndex;
+        h.auraSprite.tint = isLinkPartner || h.overdriveTimer > 0 ? 0xfde047 : fHex;
+        h.auraSprite.alpha = powered
+          ? 0.54 + Math.sin(this.elapsedSec * 7 + h.slotIndex) * 0.12
+          : 0.28;
+        const aSc = (powered ? 0.42 : 0.34) * auraPulse;
+        h.auraSprite.scale.set(aSc);
+
+        if (h.shield > 0) {
+          const shPulse = 1 + Math.sin(this.elapsedSec * 6.5 + h.slotIndex) * 0.035;
+          h.shieldSprite.visible = true;
+          h.shieldSprite.position.set(lungeX, -62 + totalLiftY * 0.6);
+          h.shieldSprite.rotation = Math.sin(this.elapsedSec * 1.4 + h.slotIndex) * 0.12;
+          h.shieldSprite.scale.set(0.5 * shPulse, 0.6 * shPulse);
+          h.shieldSprite.alpha = 0.32 + Math.sin(this.elapsedSec * 8) * 0.07;
+          h.shieldSprite.tint = h.shieldCounterBurn ? 0xfb923c : 0x38bdf8;
+        } else {
+          h.shieldSprite.visible = false;
+        }
+
+        // Ambient rising faction/starlight sparks when powered up!
+        if (powered || h.invincibleTimer > 0) {
+          h.ambientVfxTimer -= safeDt;
+          if (h.ambientVfxTimer <= 0) {
+            h.ambientVfxTimer = h.overdriveTimer > 0 || isLinkPartner ? 0.16 : 0.32;
+            this.pool.spawnSpriteFx({
+              tex: Math.random() < 0.35 ? 'impactFlare' : 'softGlow',
+              x: h.x + (Math.random() - 0.5) * 44,
+              y: h.y - 8 - Math.random() * 24,
+              vx: (Math.random() - 0.5) * 18,
+              vy: -(48 + Math.random() * 42),
+              scaleX: 0.13,
+              endScaleX: 0.02,
+              tint: h.invincibleTimer > 0 ? 0x38e8ff : isLinkPartner ? 0xfde047 : fHex,
+              alpha: 0.72,
+              life: 0.42,
+              additive: true,
+            });
+          }
+        }
+      } else {
+        h.auraPivot.visible = false;
+        h.shieldSprite.visible = false;
+      }
+
+      // Compact Faction Rune Pip + Seraphina Orbiting Star Orbs
       h.auraGfx.clear();
       if (h.alive) {
-        const fHex = FACTIONS[h.def.faction].accentHex;
-        h.auraGfx.ellipse(0, 2, 34, 12).stroke({ color: fHex, width: 2, alpha: 0.6 });
         const spin = this.elapsedSec * 1.8 + h.slotIndex;
         for (let k = 0; k < 4; k++) {
           const a = spin + (k * Math.PI) / 2;
-          h.auraGfx.circle(Math.cos(a) * 34, 2 + Math.sin(a) * 12, 2.2).fill({ color: fHex, alpha: 0.85 });
-        }
-        if (h.shield > 0) {
-          h.auraGfx
-            .ellipse(0, -56 + totalLiftY * 0.5, 44, 58)
-            .fill({ color: 0x38bdf8, alpha: 0.08 })
-            .stroke({ color: 0x7dd3fc, width: 2.2, alpha: 0.72 });
+          h.auraGfx.circle(Math.cos(a) * 34, 2 + Math.sin(a) * 12, 2.2).fill({ color: fHex, alpha: 0.8 });
         }
         if (h.heroId === 'seraphina' && h.starOrbs > 0) {
           for (let i = 0; i < h.starOrbs; i++) {
@@ -1823,37 +2050,55 @@ export class CombatEngine {
       }
     }
 
-    // 2. ENEMIES & BOSSES — Death Dissolve, Cast Wind-Up Coil, Attack Lunge, Spring Knockback & Status VFX!
+    // 2. ENEMIES & BOSSES — Shader Starlight Ash Dissolve, Boss Skyfall Slam, 2.5D Cast Shadow, Archetype Auras & Rim Lighting!
     for (const e of this.ctx.enemies) {
       if (!e.alive) {
-        // Luminous Starlight Death Dissolve animation!
+        // True Procedural Starlight Ash Death Dissolve Shader + Rising Embers!
         if (e.dissolveTimer > 0) {
           e.dissolveTimer = Math.max(0, e.dissolveTimer - safeDt);
-          const dur = Math.max(0.1, e.dissolveDuration || 0.44);
+          const dur = Math.max(0.1, e.dissolveDuration || 0.52);
           const p = 1 - e.dissolveTimer / dur;
           const baseSc = e.baseScaleY ?? 1;
           const mesh = e.liveMesh.mesh;
-          mesh.tint = p < 0.28 ? 0xffffff : 0xc084fc;
-          mesh.alpha = Math.max(0, 1 - p * p);
-          mesh.position.set(0, -p * 34);
+          if (e.visualFilter) {
+            mesh.tint = 0xffffff;
+            mesh.alpha = Math.max(0, 1 - Math.max(0, p - 0.72) * 3.5);
+            e.visualFilter.setFrameState({
+              time: this.elapsedSec,
+              hitFlash: p < 0.14 ? 1 - p / 0.14 : 0,
+              statusIntensity: 0,
+              dissolve: p,
+              dissolveHex: e.def.isBoss ? 0xfde047 : 0xc084fc,
+            });
+          } else {
+            mesh.tint = p < 0.28 ? 0xffffff : 0xc084fc;
+            mesh.alpha = Math.max(0, 1 - p * p);
+          }
+          mesh.position.set(0, -p * 26);
           mesh.scale.set(
-            baseSc * (e.facing >= 0 ? -1 : 1) * (1 - p * 0.44),
-            baseSc * (1 + p * 0.36),
+            baseSc * (e.facing >= 0 ? -1 : 1) * (1 - p * 0.18),
+            baseSc * (1 + p * 0.14),
           );
           e.shadowGfx.alpha = Math.max(0, 0.44 * (1 - p));
-          e.shadowGfx.scale.set(Math.max(0.2, 1 - p * 0.7));
-          if (Math.random() < 0.48) {
+          e.shadowGfx.scale.set(Math.max(0.2, 1 - p * 0.65));
+          e.castShadowSprite.alpha = Math.max(0, this.biomeLighting.shadowAlpha * (1 - p * 1.25));
+          e.auraSprite.alpha = Math.max(0, 0.35 * (1 - p * 1.4));
+          if (e.backRuneSprite) e.backRuneSprite.alpha = Math.max(0, 0.3 * (1 - p * 1.4));
+
+          if (Math.random() < (e.def.isBoss ? 0.85 : 0.55)) {
+            const spread = e.def.isBoss ? 92 : 44;
             this.pool.spawnSpriteFx({
-              tex: 'softGlow',
-              x: e.x + (Math.random() - 0.5) * 48,
-              y: e.y - 20 - Math.random() * 68,
-              vx: (Math.random() - 0.5) * 32,
-              vy: -(65 + Math.random() * 85),
-              scaleX: 0.14,
+              tex: Math.random() < 0.38 ? 'impactFlare' : 'softGlow',
+              x: e.x + (Math.random() - 0.5) * spread,
+              y: e.y - 14 - Math.random() * (e.def.isBoss ? 140 : 72),
+              vx: (Math.random() - 0.5) * 40,
+              vy: -(75 + Math.random() * 105),
+              scaleX: e.def.isBoss ? 0.22 : 0.15,
               endScaleX: 0.02,
               tint: Math.random() < 0.5 ? 0xfde047 : 0xc084fc,
-              alpha: 0.82,
-              life: 0.34,
+              alpha: 0.88,
+              life: 0.38,
+              additive: true,
             });
           }
           if (e.dissolveTimer <= 0) {
@@ -1872,6 +2117,59 @@ export class CombatEngine {
       const isHeavy =
         e.def.isBoss || e.def.id === 'armored_golem' || e.def.id === 'briar_behemoth';
 
+      // Wave Entrance Choreography: Boss Skyfall Slam vs Minion Rift Portal Emergence!
+      let introLiftY = 0;
+      let introScaleMult = 1;
+      let introAlpha = 1;
+      if (e.spawnIntroTimer > 0) {
+        e.spawnIntroTimer = Math.max(0, e.spawnIntroTimer - safeDt);
+        const dur = Math.max(0.1, e.spawnIntroDuration || 0.4);
+        const introP = 1 - e.spawnIntroTimer / dur;
+        if (e.spawnIntroKind === 'BOSS_DROP') {
+          // Dramatic meteor-slam descent from high sky!
+          const dropCurve = Math.pow(1 - introP, 2.2);
+          introLiftY = -(e.def.isBoss ? 440 : 280) * dropCurve;
+          introAlpha = Math.min(1, introP * 3.5);
+          if (e.spawnIntroTimer <= 0 && !e.spawnLanded) {
+            e.spawnLanded = true;
+            e.squashX = e.def.isBoss ? 1.3 : 1.2;
+            e.squashY = e.def.isBoss ? 0.72 : 0.82;
+            e.springLeanVel -= 10;
+            this.ctx.triggerShake(e.def.isBoss ? 13 : 6);
+            this.pool.spawnSpriteFx({
+              tex: 'groundCrack',
+              x: e.x,
+              y: e.y + 4,
+              scaleX: e.def.isBoss ? 1.15 : 0.68,
+              scaleY: e.def.isBoss ? 0.72 : 0.42,
+              endScaleX: e.def.isBoss ? 1.25 : 0.72,
+              endScaleY: e.def.isBoss ? 0.78 : 0.45,
+              tint: e.def.isBoss ? 0xf43f5e : 0xa855f7,
+              alpha: 0.78,
+              life: 2.4,
+              groundLayer: true,
+            });
+            this.pool.spawnRingWave(e.x, e.y, e.def.isBoss ? 250 : 135, 0xfde047, 0.5);
+            for (let d = 0; d < (e.def.isBoss ? 8 : 5); d++) {
+              const ang = (d * Math.PI * 2) / (e.def.isBoss ? 8 : 5);
+              this.pool.spawnFootstepDust(
+                e.x + Math.cos(ang) * 24,
+                e.y + Math.sin(ang) * 10,
+                -Math.cos(ang) * 200,
+                -Math.sin(ang) * 90,
+                e.def.isBoss ? 2.1 : 1.4,
+                this.biomeLighting.dustTint,
+              );
+            }
+          }
+        } else if (e.spawnIntroKind === 'RIFT_EMERGE') {
+          const easeOut = 1 - Math.pow(1 - introP, 3);
+          introScaleMult = 0.25 + 0.75 * easeOut;
+          introLiftY = (1 - easeOut) * 18;
+          introAlpha = Math.min(1, introP * 1.55);
+        }
+      }
+
       // Smooth horizontal turn (enemies face left natively, so mesh X sign = -visualFacing)
       e.visualFacing += (e.facing - e.visualFacing) * (isHeavy ? turnBlend * 0.65 : turnBlend);
       const safeFaceX =
@@ -1882,7 +2180,6 @@ export class CombatEngine {
 
       const speed = Math.hypot(e.vx, e.vy);
       const moveRatio = Math.min(1, speed / Math.max(60, e.def.moveSpeed));
-      // Enemy native art faces LEFT (-1), so forward velocity in local mesh space is -(vx * facing)
       const localForwardRatio = (e.vx * e.facing) / Math.max(80, e.def.moveSpeed);
 
       // 2nd-order damped spring lean (heavier damping on Bosses!)
@@ -1916,7 +2213,7 @@ export class CombatEngine {
         : moveRatio > 0.08
           ? -Math.abs(Math.sin(e.stridePhase)) * (isHeavy ? 6.5 : 5.5 + moveRatio * 4.5)
           : Math.sin(e.animTime * (isHeavy ? 2.6 : 3.6)) * (e.def.isBoss ? 2.5 : 1.6);
-      const totalLiftY = strideHopY + dashArcY;
+      const totalLiftY = strideHopY + dashArcY + introLiftY;
 
       const hitBend = e.hitFlashTimer > 0 ? Math.min(1, e.hitFlashTimer / 0.14) : 0;
       const brokenStagger = e.isBroken ? Math.sin(e.animTime * 22) * 0.25 : 0;
@@ -1936,31 +2233,158 @@ export class CombatEngine {
         alive: e.alive,
       });
 
-      const baseSc = e.baseScaleY ?? 1;
+      const baseSc = (e.baseScaleY ?? 1) * introScaleMult;
       const mesh = e.liveMesh.mesh;
       const recoilShift = hitBend * -e.facing * (isHeavy ? 4 : 9);
       mesh.position.set(lungeX + recoilShift, totalLiftY);
       mesh.scale.set(baseSc * -safeFaceX * e.squashX, baseSc * e.squashY);
+      mesh.alpha = introAlpha;
       mesh.rotation =
         (swingRemain > 0 ? e.facing * attackArc * 0.1 : 0) +
         (windup > 0 ? -e.facing * windup * 0.08 : 0) +
         e.facing * e.springLean * 0.04;
-      mesh.tint =
-        e.hitFlashTimer > 0
-          ? 0xffaaaa
-          : e.isBroken
-            ? 0xfde047
-            : e.freezeTimer > 0
-              ? 0x7dd3fc
-              : windup > 0.65
-                ? 0xffd1d1
-                : 0xffffff;
 
-      // Dynamic Grounded Contact Shadow
+      // 2.5D Single-Pass Rim Lighting, Anime Ink Contour & Status Shader!
+      let enemyStatusHex = 0xf43f5e;
+      let enemyStatusIntensity = 0;
+      if (e.isBroken) {
+        enemyStatusHex = 0x38e8ff;
+        enemyStatusIntensity = 0.95;
+      } else if (e.freezeTimer > 0) {
+        enemyStatusHex = 0x7dd3fc;
+        enemyStatusIntensity = 0.92;
+      } else if (e.enraged) {
+        enemyStatusHex = 0xf43f5e;
+        enemyStatusIntensity = 0.88;
+      } else if (windup > 0.12) {
+        enemyStatusHex = 0xfb7185;
+        enemyStatusIntensity = 0.3 + windup * 0.65;
+      } else if (e.burnStacks > 0) {
+        enemyStatusHex = 0xf97316;
+        enemyStatusIntensity = 0.5 + Math.min(0.32, e.burnStacks * 0.08);
+      } else if (e.starfallMarkTimer > 0) {
+        enemyStatusHex = 0xfde047;
+        enemyStatusIntensity = 0.52;
+      } else if (e.lunarTraceTimer > 0) {
+        enemyStatusHex = 0x34d399;
+        enemyStatusIntensity = 0.5;
+      } else if (e.def.isBoss && e.phase === 2) {
+        enemyStatusHex = 0xd946ef;
+        enemyStatusIntensity = 0.42;
+      }
+
+      if (e.visualFilter) {
+        mesh.tint = 0xffffff;
+        e.visualFilter.setFrameState({
+          time: this.elapsedSec,
+          hitFlash: hitBend,
+          statusHex: enemyStatusHex,
+          statusIntensity: enemyStatusIntensity,
+          dissolve: 0,
+        });
+      } else {
+        mesh.tint =
+          e.hitFlashTimer > 0
+            ? 0xffaaaa
+            : e.isBroken
+              ? 0xfde047
+              : e.freezeTimer > 0
+                ? 0x7dd3fc
+                : windup > 0.65
+                  ? 0xffd1d1
+                  : 0xffffff;
+      }
+
+      // Dynamic Grounded Contact Shadow + True 2.5D Projected Silhouette Cast Shadow!
       const elevation = Math.max(0, -totalLiftY);
-      const shScaleX = Math.max(0.55, 1 - elevation * 0.008) * e.squashX;
-      e.shadowGfx.scale.set(shScaleX, Math.max(0.62, 1 - elevation * 0.006));
-      e.shadowGfx.alpha = Math.max(0.28, 1 - elevation * 0.012);
+      const shScaleX = Math.max(0.35, 1 - elevation * 0.0022) * e.squashX * introScaleMult;
+      e.shadowGfx.scale.set(shScaleX, Math.max(0.38, 1 - elevation * 0.002) * introScaleMult);
+      e.shadowGfx.alpha = Math.max(0.18, (1 - elevation * 0.002) * introAlpha);
+
+      if (e.castShadowSprite.visible) {
+        const castScale = Math.max(0.32, 1 - elevation * 0.0018);
+        const shadowShiftX = -Math.sign(this.biomeLighting.lightDir[0] || -1) * Math.min(130, elevation * 0.38);
+        e.castShadowSprite.position.set(lungeX + recoilShift + shadowShiftX, 4 + Math.min(34, elevation * 0.1));
+        e.castShadowSprite.scale.set(
+          baseSc * -safeFaceX * e.squashX * castScale,
+          baseSc * this.biomeLighting.shadowScaleY * e.squashY * castScale,
+        );
+        e.castShadowSprite.skew.x = this.biomeLighting.shadowSkewX;
+        e.castShadowSprite.alpha = Math.max(
+          0.07,
+          this.biomeLighting.shadowAlpha * (e.def.isBoss ? 1.15 : 1.0) * (1 - elevation * 0.002) * introAlpha,
+        );
+      }
+
+      // Rotating Boss/Mini-Boss Ground Magic Circle (true perspective-flattened!) & Back Arcane Halo!
+      if (e.auraPivot.visible) {
+        const auraPulse = 1 + Math.sin(this.elapsedSec * (e.enraged ? 11 : 4.5)) * 0.07;
+        e.auraSprite.rotation = this.elapsedSec * (e.enraged ? 2.1 : 0.85);
+        e.auraSprite.tint = e.isBroken ? 0x38e8ff : e.enraged ? 0xf43f5e : e.phase === 2 ? 0xe879f9 : 0xc084fc;
+        e.auraSprite.alpha = (e.enraged ? 0.68 : e.isBroken ? 0.65 : e.def.isBoss ? 0.44 : 0.28) * introAlpha;
+        const scBase = e.def.isBoss ? 0.98 : 0.56;
+        e.auraSprite.scale.set(scBase * auraPulse);
+      }
+
+      if (e.backRuneSprite) {
+        e.backRuneSprite.position.set(
+          lungeX + recoilShift,
+          (e.def.isBoss ? -128 : -76) + totalLiftY * 0.92,
+        );
+        e.backRuneSprite.rotation = -this.elapsedSec * (e.enraged ? 1.8 : 0.9);
+        e.backRuneSprite.tint = e.isBroken
+          ? 0x38e8ff
+          : e.enraged
+            ? 0xf43f5e
+            : e.def.id === 'astral_weaver'
+              ? 0x38e8ff
+              : 0xd946ef;
+        e.backRuneSprite.alpha = (e.enraged ? 0.52 : e.def.isBoss ? 0.24 : 0.38) * introAlpha;
+        const rSc = (e.def.isBoss ? (e.enraged ? 1.08 : 0.88) : 0.44) * introScaleMult;
+        e.backRuneSprite.scale.set(rSc);
+      }
+
+      // Monster Archetype & Status Ambient Particles (Fire Imp / Burn / Frost / Enraged Boss Crackles!)
+      const wantsFire = e.def.id === 'cinder_imp' || e.burnStacks > 0 || e.enraged;
+      const wantsFrost = e.def.id === 'frost_lancer' || e.freezeTimer > 0;
+      if (e.spawnIntroTimer <= 0 && (wantsFire || wantsFrost)) {
+        e.ambientVfxTimer -= safeDt;
+        if (e.ambientVfxTimer <= 0) {
+          e.ambientVfxTimer = e.enraged ? 0.14 : 0.32;
+          if (wantsFire) {
+            const spread = e.def.isBoss ? 86 : 34;
+            this.pool.spawnSpriteFx({
+              tex: e.enraged && Math.random() < 0.28 ? 'lightningBolt' : 'fireWisp',
+              x: e.x + (Math.random() - 0.5) * spread,
+              y: e.y - 24 - Math.random() * (e.def.isBoss ? 120 : 56),
+              vx: (Math.random() - 0.5) * 28,
+              vy: -(48 + Math.random() * 56),
+              rotation: (Math.random() - 0.5) * 0.6,
+              scaleX: e.def.isBoss ? 0.28 : 0.18,
+              endScaleX: 0.04,
+              tint: e.enraged ? 0xf43f5e : 0xf97316,
+              alpha: 0.78,
+              life: 0.4,
+              additive: true,
+            });
+          } else if (wantsFrost) {
+            this.pool.spawnSpriteFx({
+              tex: 'iceCrystal',
+              x: e.x + (Math.random() - 0.5) * 38,
+              y: e.y - 22 - Math.random() * 60,
+              vx: (Math.random() - 0.5) * 18,
+              vy: 14 + Math.random() * 20,
+              spin: (Math.random() - 0.5) * 3,
+              scaleX: 0.16,
+              endScaleX: 0.04,
+              tint: 0xbae6fd,
+              alpha: 0.76,
+              life: 0.45,
+              additive: true,
+            });
+          }
+        }
+      }
 
       // Overhead HP Bar + Mini-Boss Break Gauge Bar (skip big bar for boss since boss has top HUD bar)
       e.hpBarGfx.clear();
@@ -2722,6 +3146,12 @@ export class CombatEngine {
     }
     this.squadCtrl.destroy();
     if (this.ctx) {
+      for (const h of this.ctx.heroes) {
+        if (!h.liveMesh.mesh.destroyed) h.liveMesh.mesh.filters = null;
+      }
+      for (const e of this.ctx.enemies) {
+        if (!e.liveMesh.mesh.destroyed) e.liveMesh.mesh.filters = null;
+      }
       this.ultDirector.forceClear(this.ctx);
       this.ctx.delayedStrikes = [];
       this.ctx.zones = [];

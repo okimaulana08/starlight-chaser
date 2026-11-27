@@ -1,4 +1,5 @@
-import type { Container, Graphics, Texture } from 'pixi.js';
+import type { Container, Graphics, Sprite, Texture } from 'pixi.js';
+import type { ActorVisualFilter } from './ActorVisualFilter';
 import type { ComputedHeroStats } from './CombatMath';
 import type { LiveMeshActor } from './LiveMeshActor';
 import type { HitImpactStyle, SpriteFxOptions } from './ObjectPool';
@@ -100,7 +101,13 @@ export interface HeroUnit {
   // Pixi display
   container: Container;
   liveMesh: LiveMeshActor;
+  castShadowSprite: Sprite;
   shadowGfx: Graphics;
+  auraPivot: Container;
+  auraSprite: Sprite;
+  shieldSprite: Sprite;
+  visualFilter: ActorVisualFilter | null;
+  ambientVfxTimer: number;
   fallbackCrestGroup?: Container;
   hasFullSprite?: boolean;
   baseScaleY?: number;
@@ -192,10 +199,21 @@ export interface EnemyUnit {
   attackSwingTimer: number;
   attackSwingDuration: number;
   baseScaleY?: number;
+  // 2.5D Entrance Choreography & Ambient VFX
+  spawnIntroKind: 'BOSS_DROP' | 'RIFT_EMERGE' | 'NONE';
+  spawnIntroTimer: number;
+  spawnIntroDuration: number;
+  spawnLanded: boolean;
+  ambientVfxTimer: number;
   // Pixi display
   container: Container;
   liveMesh: LiveMeshActor;
+  castShadowSprite: Sprite;
   shadowGfx: Graphics;
+  auraPivot: Container;
+  auraSprite: Sprite;
+  backRuneSprite: Sprite | null;
+  visualFilter: ActorVisualFilter | null;
   hpBarGfx: Graphics;
   statusGfx: Graphics;
 }

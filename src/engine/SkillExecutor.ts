@@ -225,6 +225,32 @@ export class SkillExecutor {
     hero.squashX = 1.14;
     hero.squashY = 0.88;
 
+    // Phantom Silhouette Afterimage burst on every Active Skill & Ultimate launch!
+    if (hero.hasFullSprite) {
+      const sc = hero.baseScaleY ?? 0.9;
+      const ghostTint = isUlt ? 0xfde047 : color;
+      ctx.spawnGhostAfterimage(
+        hero.liveMesh.texture,
+        hero.x - hero.facing * 16,
+        hero.y,
+        sc * hero.facing,
+        sc,
+        ghostTint,
+        isUlt ? 0.65 : 0.48,
+        isUlt ? 0.34 : 0.24,
+      );
+      ctx.spawnGhostAfterimage(
+        hero.liveMesh.texture,
+        hero.x - hero.facing * 32,
+        hero.y - 4,
+        sc * hero.facing * 1.03,
+        sc * 1.03,
+        color,
+        isUlt ? 0.44 : 0.28,
+        isUlt ? 0.28 : 0.19,
+      );
+    }
+
     // Trigger sleek Mini Anime Skill Callout strip on S1 / S2 casts + hero-specific casting aura!
     if (!isUlt) {
       ctx.triggerSkillCallout(hero, skill.name, slot);

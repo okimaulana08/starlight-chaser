@@ -415,6 +415,21 @@ export class SquadController {
     const color = hexToNum(hero.def.themeColor);
     const isMelee = hero.stats.attackRange < 140;
 
+    // Sleek Phantom Afterimage Trail on melee swings & Overdrive strikes!
+    if ((isMelee || hero.overdriveTimer > 0) && hero.hasFullSprite) {
+      const sc = hero.baseScaleY ?? 0.9;
+      ctx.spawnGhostAfterimage(
+        hero.liveMesh.texture,
+        hero.x - hero.facing * 12,
+        hero.y,
+        sc * hero.facing,
+        sc,
+        hero.overdriveTimer > 0 ? 0xfde047 : color,
+        hero.overdriveTimer > 0 ? 0.5 : 0.36,
+        0.2,
+      );
+    }
+
     // Basic hit SP & Ult Gauge gain so Chaser Ultimates build briskly in every battle!
     const onBasicLand = (hitEnemy: EnemyUnit) => {
       if (!hitEnemy.alive) return;
