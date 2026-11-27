@@ -401,7 +401,7 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
               </div>
 
               {/* Per-Hero Animated Horizontal Telemetry Bars */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {(() => {
                   const getVal = (h: (typeof battleReport.heroes)[number]) => {
                     if (reportMetric === 'DPS') return h.damageDealt;
@@ -437,12 +437,12 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                         initial={{ opacity: 0, x: -14 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: 0.28, delay: idx * 0.06 }}
-                        className="rpg-ornate-card p-3 flex items-center gap-3 bg-slate-950/75"
+                        className="rpg-ornate-card px-3 py-2 flex items-center gap-3 bg-slate-950/75"
                         style={{
                           borderLeft: `4px solid ${def.themeColor}`,
                         }}
                       >
-                        <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-white/25 shrink-0">
+                        <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-white/25 shrink-0">
                           <ArtImage
                             kind="HERO"
                             id={row.heroId}

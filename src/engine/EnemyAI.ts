@@ -257,6 +257,7 @@ export class EnemyAI {
         ctx.spawnDamageText(enemy.x, enemy.y - 108, '⚠ ENRAGED OVERDRIVE! ⚠', 0xfb7185, true);
         ctx.notifyBanner('⚠ BOSS ENRAGED! +18% Attack Speed — Dodge Cross-Beams & Ring Novas!');
         audioManager.playSfx('ult_impact', 0.04);
+        audioManager.setBossEnrage(true);
       }
 
       // Handle ongoing cast — smoothly brake velocity while winding up!

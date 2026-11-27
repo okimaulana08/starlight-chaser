@@ -101,6 +101,7 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
     dungeonBestStars,
     getDungeonEntriesLeft,
     sweepDungeonTier,
+    sweepDungeonMulti,
   } = usePlayerStore();
 
   const [selectedDungeonId, setSelectedDungeonId] = useState<DungeonId>(initialDungeonId);
@@ -187,6 +188,22 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
   const handleSweep = () => {
     if (!tierUnlocked) return;
     const res = sweepDungeonTier(selectedDungeonId, selectedTier, {
+      faction: targetFaction,
+      setId: targetSetId,
+    });
+    if (res.ok && res.summary) {
+      audioManager.playSfx('victory');
+      setSweepResult(res.summary);
+    } else {
+      audioManager.playSfx('button');
+      notify(res.message);
+    }
+  };
+
+  const multiSweepRuns = Math.min(5, entryInfo.freeLeft > 0 ? entryInfo.freeLeft : entryInfo.tickets);
+  const handleMultiSweep = () => {
+    if (!tierUnlocked || multiSweepRuns < 2) return;
+    const res = sweepDungeonMulti(selectedDungeonId, selectedTier, multiSweepRuns, {
       faction: targetFaction,
       setId: targetSetId,
     });
@@ -670,7 +687,7 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2 ml-auto">
+                  <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
                     <RpgButton
                       variant="cyan"
                       size="md"
@@ -678,8 +695,19 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
                       onClick={handleSweep}
                       className="font-display font-black uppercase tracking-wider"
                     >
-                      <FastForward className="w-4 h-4" /> Quick Sweep
+                      <FastForward className="w-4 h-4" /> Sweep 1×
                     </RpgButton>
+                    {bestStars >= 3 && multiSweepRuns >= 2 && (
+                      <RpgButton
+                        variant="emerald"
+                        size="md"
+                        disabled={!tierUnlocked || !entryInfo.canEnter}
+                        onClick={handleMultiSweep}
+                        className="font-display font-black uppercase tracking-wider"
+                      >
+                        <FastForward className="w-4 h-4" /> Sweep ×{multiSweepRuns}
+                      </RpgButton>
+                    )}
                     <RpgButton
                       variant="gold"
                       size="md"

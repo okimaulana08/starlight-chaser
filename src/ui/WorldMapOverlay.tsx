@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
+  CheckCircle2,
   ChevronRight,
   Crown,
+  FastForward,
   Lock,
   Maximize2,
   Minus,
@@ -16,10 +19,15 @@ import {
   X,
 } from 'lucide-react';
 import { ENEMY_MAP } from '../data/enemies';
-import { EQUIPMENT_SETS } from '../data/equipment';
+import {
+  EQUIPMENT_SETS,
+  RARITY_COLORS,
+  formatStatValue,
+  getEnhancedMainStatValue,
+} from '../data/equipment';
 import { FACTIONS } from '../data/factions';
 import { HERO_MAP } from '../data/heroes';
-import { MATERIAL_META, factionToEssenceKey } from '../data/materials';
+import { MATERIAL_META, factionToEssenceKey, getExpToNextLevel } from '../data/materials';
 import { RELIC_MAP } from '../data/relics';
 import { REGION_LINKS, REGION_MAP, REGIONS } from '../data/regions';
 import {
@@ -33,11 +41,12 @@ import {
 import { audioManager } from '../engine/AudioManager';
 import { computeHeroStats } from '../engine/CombatMath';
 import { usePlayerStore } from '../store/usePlayerStore';
-import type { RegionDef } from '../types/game';
+import type { CombatLootSummary, Faction, RegionDef } from '../types/game';
 import { ArtImage } from './ArtImage';
-import { GameIcon, MaterialIcon } from './GameIcon';
+import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
 import { PartyManagerModal } from './PartyManagerModal';
 import { RegionChestModal } from './RegionChestModal';
+import { CornerFiligree, RpgButton, RpgLootTile, RpgProgressBar } from './RpgKit';
 
 interface WorldMapOverlayProps {
   squadPower: number;
@@ -100,9 +109,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     unlockedCodexIds,
     relicRanks,
     favoriteHeroId,
+    sweepCampaignStage,
   } = usePlayerStore();
   const [showPartyModal, setShowPartyModal] = useState(false);
   const [showChestModal, setShowChestModal] = useState(false);
+  const [sweepResult, setSweepResult] = useState<CombatLootSummary | null>(null);
+  const [lastSweepCount, setLastSweepCount] = useState<1 | 5>(1);
 
   const squadPower = useMemo(() => {
     const computed = squadIds.reduce((sum, id) => {
@@ -1375,20 +1387,56 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   </div>
                 </div>
 
-                {/* DEPLOY CTA */}
-                <div className="pt-1.5 border-t border-amber-400/20">
+                {/* DEPLOY & INSTANT QUICK SWEEP (1× / 5× FOR CLEARED STAGES!) */}
+                <div className="pt-1.5 border-t border-amber-400/20 space-y-2">
                   {activeStageUnlocked ? (
-                    <button
-                      onClick={() => {
-                        audioManager.playSfx('button');
-                        setSelectedStage(activeStage.id);
-                        onDeploy(activeStage.id);
-                      }}
-                      className="rpg-battle-cta w-full py-2.5 sm:py-3 px-5 text-slate-950 font-display font-black text-sm sm:text-base uppercase tracking-[0.18em] flex items-center justify-center gap-2"
-                    >
-                      <GameIcon name="battle" className="w-5 h-5 sm:w-6 sm:h-6" />
-                      <span>DEPLOY {activeStage.code}</span>
-                    </button>
+                    <>
+                      {clearedStages.includes(activeStage.id) && (
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <RpgButton
+                            variant="cyan"
+                            size="sm"
+                            onClick={() => {
+                              const res = sweepCampaignStage(activeStage.id, 1);
+                              if (res.ok && res.summary) {
+                                audioManager.playSfx('victory');
+                                setLastSweepCount(1);
+                                setSweepResult(res.summary);
+                              }
+                            }}
+                            className="font-display font-black uppercase tracking-wider w-full"
+                          >
+                            <FastForward className="w-3.5 h-3.5" /> Quick Sweep 1×
+                          </RpgButton>
+                          <RpgButton
+                            variant="emerald"
+                            size="sm"
+                            onClick={() => {
+                              const res = sweepCampaignStage(activeStage.id, 5);
+                              if (res.ok && res.summary) {
+                                audioManager.playSfx('victory');
+                                setLastSweepCount(5);
+                                setSweepResult(res.summary);
+                              }
+                            }}
+                            className="font-display font-black uppercase tracking-wider w-full"
+                          >
+                            <FastForward className="w-3.5 h-3.5" /> Quick Sweep 5×
+                          </RpgButton>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => {
+                          audioManager.playSfx('button');
+                          setSelectedStage(activeStage.id);
+                          onDeploy(activeStage.id);
+                        }}
+                        className="rpg-battle-cta w-full py-2.5 sm:py-3 px-5 text-slate-950 font-display font-black text-sm sm:text-base uppercase tracking-[0.18em] flex items-center justify-center gap-2"
+                      >
+                        <GameIcon name="battle" className="w-5 h-5 sm:w-6 sm:h-6" />
+                        <span>DEPLOY {activeStage.code}</span>
+                      </button>
+                    </>
                   ) : (
                     <div className="w-full py-2.5 px-4 rounded-xl bg-slate-950 border border-slate-700 text-center text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-center gap-2">
                       <Lock className="w-4 h-4 text-slate-500" />
@@ -1412,6 +1460,223 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
         clearedCount={getRegionClearedCount(focusedRegion.id)}
         onClose={() => setShowChestModal(false)}
       />
+
+      {/* CAMPAIGN QUICK SWEEP RESULT MODAL */}
+      <AnimatePresence>
+        {sweepResult && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSweepResult(null)}
+            className="fixed inset-0 z-[60] bg-[#030510]/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative rpg-panel w-full max-w-xl overflow-hidden border-emerald-400/60"
+            >
+              <CornerFiligree color="#34d399" size={10} opacity={0.85} />
+              <div className="px-4 py-3 border-b border-emerald-400/25 bg-slate-950/80 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  <div>
+                    <div className="text-[10px] font-display font-black uppercase tracking-[0.2em] text-emerald-300">
+                      INSTANT CAMPAIGN QUICK SWEEP COMPLETE
+                    </div>
+                    <h3 className="font-display text-base sm:text-lg font-black text-white">
+                      {sweepResult.stageName}
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSweepResult(null)}
+                  className="p-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-amber-300"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-4 max-h-[75dvh] overflow-y-auto">
+                {/* Squad EXP Gain */}
+                {sweepResult.heroExpResults && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {Object.values(sweepResult.heroExpResults).map((expRes) => {
+                      const h = HERO_MAP[expRes.heroId];
+                      if (!h) return null;
+                      return (
+                        <div
+                          key={expRes.heroId}
+                          className="rounded-xl bg-slate-950/80 border border-white/10 p-2 flex items-center gap-2"
+                        >
+                          <div className="w-9 h-9 rounded-lg overflow-hidden border border-white/20 shrink-0">
+                            <ArtImage
+                              kind="HERO"
+                              id={h.id}
+                              src={h.assets.card}
+                              alt={h.name}
+                              className="w-full h-full object-cover object-top"
+                            />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-1 text-[11px] mb-1">
+                              <span className="font-bold text-white flex items-center gap-1 truncate">
+                                {h.name}
+                                <span className="px-1 rounded bg-slate-900 border border-cyan-400/40 font-mono text-[9px] text-cyan-200">
+                                  Lv.{expRes.newLevel}
+                                </span>
+                                {expRes.levelsGained > 0 && (
+                                  <span className="px-1.5 py-0.5 rounded-full bg-emerald-400 text-slate-950 font-display font-black text-[8px]">
+                                    Lv. UP +{expRes.levelsGained}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="font-mono text-[10px] text-cyan-300 shrink-0">
+                                +{expRes.expGained.toLocaleString()}
+                              </span>
+                            </div>
+                            <RpgProgressBar
+                              value={expRes.newExp}
+                              max={getExpToNextLevel(expRes.newLevel)}
+                              heightClass="h-1.5"
+                              gradient="linear-gradient(90deg, #06b6d4 0%, #fde047 100%)"
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Spoils Tiles */}
+                <div className="flex flex-wrap gap-2">
+                  {sweepResult.goldEarned > 0 && (
+                    <RpgLootTile color="#f5c84c" subLabel="Gold" bottomLabel={`+${sweepResult.goldEarned.toLocaleString()}`} index={0}>
+                      <GameIcon name="gold" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
+                  {sweepResult.crystalsEarned > 0 && (
+                    <RpgLootTile color="#38e8ff" subLabel="Crystals" bottomLabel={`+${sweepResult.crystalsEarned}`} index={1}>
+                      <GameIcon name="crystal" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
+                  {sweepResult.expPotionsEarned > 0 && (
+                    <RpgLootTile color="#34d399" subLabel="EXP" bottomLabel={`×${sweepResult.expPotionsEarned}`} index={2}>
+                      <MaterialIcon material="expPotions" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
+                  {sweepResult.forgeStonesEarned > 0 && (
+                    <RpgLootTile color="#a78bfa" subLabel="Stones" bottomLabel={`×${sweepResult.forgeStonesEarned}`} index={3}>
+                      <MaterialIcon material="forgeStones" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
+                  {sweepResult.starIronIngotsEarned > 0 && (
+                    <RpgLootTile color="#38bdf8" subLabel="Star-Iron" bottomLabel={`×${sweepResult.starIronIngotsEarned}`} index={4}>
+                      <MaterialIcon material="starIronIngots" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
+                  {sweepResult.astralAnvilCoresEarned > 0 && (
+                    <RpgLootTile color="#f5c84c" subLabel="Anvil" bottomLabel={`×${sweepResult.astralAnvilCoresEarned}`} index={5}>
+                      <MaterialIcon material="astralAnvilCores" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
+                  {sweepResult.starCoresEarned > 0 && (
+                    <RpgLootTile color="#e879f9" subLabel="Star Core" bottomLabel={`×${sweepResult.starCoresEarned}`} index={6}>
+                      <MaterialIcon material="starCores" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
+                  {sweepResult.relicFragmentsEarned > 0 && (
+                    <RpgLootTile color="#22d3ee" subLabel="Relic Frag" bottomLabel={`×${sweepResult.relicFragmentsEarned}`} index={7}>
+                      <GameIcon name="relic" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
+                  {sweepResult.bondGiftsEarned > 0 && (
+                    <RpgLootTile color="#fb7185" subLabel="Bond" bottomLabel={`×${sweepResult.bondGiftsEarned}`} index={8}>
+                      <MaterialIcon material="bondGifts" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
+                  {Object.entries(sweepResult.essencesEarned).map(([fac, qty], i) =>
+                    qty ? (
+                      <RpgLootTile
+                        key={fac}
+                        color={FACTIONS[fac as Faction].color}
+                        subLabel={MATERIAL_META[factionToEssenceKey(fac as Faction)].shortName}
+                        bottomLabel={`×${qty}`}
+                        index={9 + i}
+                      >
+                        <MaterialIcon material={factionToEssenceKey(fac as Faction)} className="w-8 h-8" />
+                      </RpgLootTile>
+                    ) : null,
+                  )}
+                  {sweepResult.droppedRelics.map((dr, i) => {
+                    const rel = RELIC_MAP[dr.relicId];
+                    if (!rel) return null;
+                    return (
+                      <RpgLootTile
+                        key={`${dr.relicId}_${i}`}
+                        color="#f5c84c"
+                        topTag={dr.isNew ? 'NEW' : `R${dr.newRank}`}
+                        bottomLabel={rel.name.split(' ')[0]}
+                        index={12 + i}
+                      >
+                        <GameIcon name="relic" className="w-8 h-8" />
+                      </RpgLootTile>
+                    );
+                  })}
+                </div>
+
+                {/* Dropped Gear Spotlight */}
+                {sweepResult.droppedEquipment.length > 0 && (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {sweepResult.droppedEquipment.map((gear) => (
+                      <div
+                        key={gear.uid}
+                        className="rounded-xl bg-slate-950/85 border border-white/15 px-3 py-1.5 flex items-center gap-2.5"
+                        style={{ borderLeft: `3px solid ${RARITY_COLORS[gear.rarity]}` }}
+                      >
+                        <EquipIcon slot={gear.slot} className="w-7 h-7" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-bold text-white truncate">
+                            <span style={{ color: RARITY_COLORS[gear.rarity] }}>{gear.rarity}</span>{' '}
+                            {gear.name}
+                          </div>
+                          <div className="text-[10px] font-mono text-amber-200 truncate">
+                            {formatStatValue(gear.mainStat.stat, getEnhancedMainStatValue(gear))}
+                            {gear.subStats.map((s) => ` • ${formatStatValue(s.stat, s.value)}`).join('')}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+                  {activeStage && clearedStages.includes(activeStage.id) && (
+                    <RpgButton
+                      variant="emerald"
+                      size="sm"
+                      onClick={() => {
+                        const res = sweepCampaignStage(activeStage.id, lastSweepCount);
+                        if (res.ok && res.summary) {
+                          audioManager.playSfx('victory');
+                          setSweepResult(res.summary);
+                        }
+                      }}
+                    >
+                      <FastForward className="w-3.5 h-3.5" /> Sweep {lastSweepCount}× Again
+                    </RpgButton>
+                  )}
+                  <RpgButton variant="gold" size="sm" onClick={() => setSweepResult(null)}>
+                    Awesome!
+                  </RpgButton>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

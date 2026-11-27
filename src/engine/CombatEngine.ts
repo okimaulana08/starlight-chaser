@@ -1353,6 +1353,7 @@ export class CombatEngine {
     this.pool.spawnBeam(finisher.x, finisher.y - 34, cx, cy - 30, colorB, 24);
     audioManager.playSfx('ssr_reveal', 0.02);
     audioManager.playSfx('ult_impact', 0.04);
+    audioManager.playSynthSfx('link_burst');
 
     // Refund +1.5 Squad SP & blast ALL alive enemies with +35% Resonance Link Nova (+32 Break!)
     this.ctx.addSp(1.5);
@@ -1429,6 +1430,7 @@ export class CombatEngine {
     this.ctx.triggerShake(enemy.def.isBoss ? 15 : 10);
     this.ctx.triggerArenaDim(0x0ea5e9, 0.45, 0.28);
     audioManager.playSfx('cancel_cast');
+    audioManager.playSynthSfx('boss_break');
 
     this.pool.spawnRingWave(enemy.x, enemy.y, enemy.def.isBoss ? 225 : 140, 0x38e8ff, 0.52);
     this.pool.spawnRingWave(enemy.x, enemy.y, enemy.def.isBoss ? 165 : 105, 0xfde047, 0.42);
@@ -1621,6 +1623,7 @@ export class CombatEngine {
       this.ctx.triggerArenaDim(0x0284c7, 0.55, 0.36);
       this.ctx.triggerShake(8);
       audioManager.playSfx('ult_chime', 0.03);
+      audioManager.playSynthSfx('perfect_dodge');
       this.pool.spawnFloatingText(
         this.ctx.squadAnchor.x,
         this.ctx.squadAnchor.y - 76,
@@ -2551,7 +2554,10 @@ export class CombatEngine {
 
     if (victory) {
       player.applyCombatRewards(summary);
+      audioManager.setBossEnrage(false);
       audioManager.playSfx('victory', 0);
+    } else {
+      audioManager.setBossEnrage(false);
     }
 
     this.syncHudSnapshot(true);

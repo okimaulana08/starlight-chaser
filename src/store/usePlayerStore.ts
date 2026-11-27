@@ -18,7 +18,7 @@ import {
   type RegionChestRewardDef,
 } from '../data/materials';
 import { RELIC_MAP } from '../data/relics';
-import { getStagesByRegion } from '../data/stages';
+import { getStagesByRegion, STAGE_MAP } from '../data/stages';
 import { computeHeroStats } from '../engine/CombatMath';
 import {
   enhanceEquipmentItem,
@@ -186,6 +186,16 @@ interface PlayerStore extends PlayerSaveState {
     tier: 1 | 2 | 3 | 4 | 5,
     opts?: { faction?: Faction; setId?: EquipmentSetId },
   ) => { ok: boolean; message: string; summary?: CombatLootSummary };
+  sweepDungeonMulti: (
+    dungeonId: DungeonId,
+    tier: 1 | 2 | 3 | 4 | 5,
+    count: number,
+    opts?: { faction?: Faction; setId?: EquipmentSetId },
+  ) => { ok: boolean; count: number; message: string; summary?: CombatLootSummary };
+  sweepCampaignStage: (
+    stageId: string,
+    count?: 1 | 5,
+  ) => { ok: boolean; count: number; message: string; summary?: CombatLootSummary };
   selectPreset: (presetIndex: 0 | 1 | 2) => void;
   renamePreset: (presetIndex: 0 | 1 | 2, name: string) => void;
   setSquadSlot: (slotIndex: number, heroId: string) => void;
@@ -197,6 +207,23 @@ interface PlayerStore extends PlayerSaveState {
   giveBondGift: (heroId: string) => boolean;
   equipRelic: (heroId: string, relicId: string | null) => void;
   equipGear: (heroId: string, slot: EquipmentSlot, uid: string | null) => void;
+  toggleGearLock: (uid: string) => void;
+  autoEquipBestGear: (heroId: string) => {
+    ok: boolean;
+    changedSlots: number;
+    powerBefore: number;
+    powerAfter: number;
+    message: string;
+  };
+  batchSalvageGear: (maxRarity: 'COMMON' | 'RARE') => {
+    ok: boolean;
+    count: number;
+    gold: number;
+    forgeStones: number;
+    starIronIngots: number;
+    astralAnvilCores: number;
+    message: string;
+  };
   enhanceGear: (uid: string) => { ok: boolean; succeeded: boolean; message: string };
   salvageGear: (uid: string) => void;
   buyShopItem: (offerId: string) => { ok: boolean; message: string; droppedGear?: EquipmentInstance };
@@ -462,6 +489,272 @@ export const usePlayerStore = create<PlayerStore>()(
 
         get().applyCombatRewards(summary);
         return { ok: true, message: `Swept ${stage.name}!`, summary };
+      },
+
+      sweepDungeonMulti: (dungeonId, tier, count, opts) => {
+        const entryInfo = get().getDungeonEntriesLeft(dungeonId);
+        const maxRuns = Math.min(Math.max(1, count), 5, entryInfo.freeLeft + entryInfo.tickets);
+        if (maxRuns <= 0) {
+          return {
+            ok: false,
+            count: 0,
+            message: 'No daily entries or Rift Tickets left!',
+          };
+        }
+
+        let aggregated: CombatLootSummary | null = null;
+        let completed = 0;
+
+        for (let i = 0; i < maxRuns; i++) {
+          const single = get().sweepDungeonTier(dungeonId, tier, opts);
+          if (!single.ok || !single.summary) {
+            if (completed === 0) {
+              return { ok: false, count: 0, message: single.message };
+            }
+            break;
+          }
+          completed += 1;
+          const s = single.summary;
+          if (!aggregated) {
+            aggregated = {
+              ...s,
+              essencesEarned: { ...s.essencesEarned },
+              droppedEquipment: [...s.droppedEquipment],
+              droppedRelics: [...s.droppedRelics],
+              heroExpResults: s.heroExpResults ? { ...s.heroExpResults } : undefined,
+            };
+          } else {
+            aggregated.goldEarned += s.goldEarned;
+            aggregated.crystalsEarned += s.crystalsEarned;
+            aggregated.expPotionsEarned += s.expPotionsEarned;
+            aggregated.forgeStonesEarned += s.forgeStonesEarned;
+            aggregated.starIronIngotsEarned += s.starIronIngotsEarned;
+            aggregated.astralAnvilCoresEarned += s.astralAnvilCoresEarned;
+            aggregated.starCoresEarned += s.starCoresEarned;
+            aggregated.relicFragmentsEarned += s.relicFragmentsEarned;
+            aggregated.bondGiftsEarned += s.bondGiftsEarned;
+            for (const [fac, qty] of Object.entries(s.essencesEarned) as Array<[Faction, number]>) {
+              if (qty > 0) {
+                aggregated.essencesEarned[fac] = (aggregated.essencesEarned[fac] ?? 0) + qty;
+              }
+            }
+            aggregated.droppedEquipment.push(...s.droppedEquipment);
+            aggregated.droppedRelics.push(...s.droppedRelics);
+            if (aggregated.heroExpResults && s.heroExpResults) {
+              for (const [hid, cur] of Object.entries(s.heroExpResults)) {
+                const prev = aggregated.heroExpResults[hid];
+                if (prev) {
+                  aggregated.heroExpResults[hid] = {
+                    ...cur,
+                    prevLevel: prev.prevLevel,
+                    prevExp: prev.prevExp,
+                    expGained: prev.expGained + cur.expGained,
+                    levelsGained: cur.newLevel - prev.prevLevel,
+                  };
+                } else {
+                  aggregated.heroExpResults[hid] = cur;
+                }
+              }
+            }
+          }
+        }
+
+        if (!aggregated) {
+          return { ok: false, count: 0, message: 'Sweep failed.' };
+        }
+        aggregated.stageName = `${aggregated.stageName} (×${completed} Sweep)`;
+        return {
+          ok: true,
+          count: completed,
+          message: `Completed ${completed}× Quick Sweep!`,
+          summary: aggregated,
+        };
+      },
+
+      sweepCampaignStage: (stageId, count = 1) => {
+        const state = get();
+        const stage = STAGE_MAP[stageId];
+        if (!stage) return { ok: false, count: 0, message: 'Stage not found.' };
+        if (!state.clearedStages.includes(stageId)) {
+          return {
+            ok: false,
+            count: 0,
+            message: `Clear ${stage.code} in battle first to unlock Quick Sweep!`,
+          };
+        }
+
+        const runs = count === 5 ? 5 : 1;
+        const randBetween = ([a, b]: [number, number]) =>
+          Math.round(a + Math.random() * (b - a));
+        const rollWeightedRarity = (weights: Record<EquipmentRarity, number>): EquipmentRarity => {
+          const entries = Object.entries(weights) as Array<[EquipmentRarity, number]>;
+          const total = entries.reduce((sum, [, w]) => sum + w, 0);
+          let r = Math.random() * total;
+          for (const [rarity, w] of entries) {
+            r -= w;
+            if (r <= 0) return rarity;
+          }
+          return 'RARE';
+        };
+
+        let goldEarned = 0;
+        let crystalsEarned = 0;
+        let expPotionsEarned = 0;
+        let forgeStonesEarned = 0;
+        let starIronIngotsEarned = 0;
+        let astralAnvilCoresEarned = 0;
+        let starCoresEarned = 0;
+        let relicFragmentsEarned = 0;
+        let bondGiftsEarned = 0;
+        const essencesEarned: Partial<Record<Faction, number>> = {};
+        const droppedEquipment: EquipmentInstance[] = [];
+        const droppedRelics: DroppedRelicSummary[] = [];
+
+        // Track virtual relic ranks across multi-runs so repeat drops refine cleanly
+        const virtualOwnedRelics = new Set(state.ownedRelics);
+        const virtualRelicRanks: Record<string, number> = { ...state.relicRanks };
+
+        for (let r = 0; r < runs; r++) {
+          goldEarned += randBetween(stage.rewards.gold);
+          crystalsEarned += 40; // Standard repeat clear crystals per clear
+          expPotionsEarned += randBetween(stage.rewards.expPotions);
+          forgeStonesEarned += randBetween(stage.rewards.forgeStones);
+          if (stage.rewards.starIronIngots) starIronIngotsEarned += randBetween(stage.rewards.starIronIngots);
+          if (stage.rewards.astralAnvilCores) astralAnvilCoresEarned += randBetween(stage.rewards.astralAnvilCores);
+          if (stage.rewards.starCores) starCoresEarned += randBetween(stage.rewards.starCores);
+          if (stage.rewards.relicFragments) relicFragmentsEarned += randBetween(stage.rewards.relicFragments);
+
+          bondGiftsEarned += stage.rewards.bondGiftsRange
+            ? randBetween(stage.rewards.bondGiftsRange)
+            : stage.isBossStage
+              ? 2
+              : stage.isMiniBoss || Math.random() < 0.35
+                ? 1
+                : 0;
+
+          const primaryQty = randBetween(stage.rewards.primaryEssenceQty);
+          if (primaryQty > 0) {
+            essencesEarned[stage.rewards.primaryEssence] =
+              (essencesEarned[stage.rewards.primaryEssence] ?? 0) + primaryQty;
+          }
+          if (
+            (stage.rewards.bonusRandomEssenceChance ?? 0) > 0 &&
+            Math.random() < (stage.rewards.bonusRandomEssenceChance ?? 0)
+          ) {
+            const allFactions: Faction[] = ['SOLARIS', 'ASTRAL', 'VERDANT', 'ASHEN'];
+            const others = allFactions.filter((f) => f !== stage.rewards.primaryEssence);
+            const bonusFac = others[Math.floor(Math.random() * others.length)];
+            essencesEarned[bonusFac] = (essencesEarned[bonusFac] ?? 0) + (stage.isBossStage ? 2 : 1);
+          }
+
+          for (let i = 0; i < stage.rewards.equipmentDrops; i++) {
+            const rarity = rollWeightedRarity(stage.rewards.rarityWeights);
+            const setId =
+              stage.rewards.targetSetIds.length > 0
+                ? stage.rewards.targetSetIds[Math.floor(Math.random() * stage.rewards.targetSetIds.length)]
+                : undefined;
+            droppedEquipment.push(generateEquipment({ rarity, setId }));
+          }
+
+          if (
+            stage.rewards.relicDropPool &&
+            stage.rewards.relicDropPool.length > 0 &&
+            Math.random() < (stage.rewards.relicDropChance ?? 0)
+          ) {
+            const picked =
+              stage.rewards.relicDropPool[Math.floor(Math.random() * stage.rewards.relicDropPool.length)];
+            if (picked) {
+              const alreadyOwned = virtualOwnedRelics.has(picked);
+              const curRank = virtualRelicRanks[picked] ?? 0;
+              const nextRank = alreadyOwned ? Math.min(MAX_RELIC_RANK, curRank + 1) : 1;
+              const isMaxed = alreadyOwned && curRank >= MAX_RELIC_RANK;
+              virtualOwnedRelics.add(picked);
+              virtualRelicRanks[picked] = nextRank;
+              droppedRelics.push({
+                relicId: picked,
+                isNew: !alreadyOwned,
+                newRank: nextRank,
+                bonusFragments: isMaxed ? 15 : undefined,
+              });
+            }
+          }
+        }
+
+        // Squad Hero EXP across all runs
+        const perRunHeroExp = Math.round(
+          getStageCombatHeroExp(stage.chapter, stage.stageNumber, stage.isMiniBoss, stage.isBossStage) *
+            (stage.combatExpMultiplier ?? 1.0),
+        );
+        const heroExpResults: Record<string, HeroBattleExpResult> = {};
+        const damageByHero: Record<string, number> = {};
+        const healingByHero: Record<string, number> = {};
+
+        state.squadIds.forEach((hid, idx) => {
+          const owned = state.roster[hid];
+          if (!owned) return;
+          const levelCap = getHeroLevelCap(owned.awakening);
+          const prevLevel = owned.level;
+          const prevExp = owned.exp ?? 0;
+          const expGained = Math.round(perRunHeroExp * runs * (idx === 1 ? 1.15 : 1.0));
+          let curLevel = prevLevel;
+          let curExp = prevExp + expGained;
+          let expToNext = getExpToNextLevel(curLevel);
+          while (curLevel < levelCap && curExp >= expToNext) {
+            curExp -= expToNext;
+            curLevel += 1;
+            expToNext = getExpToNextLevel(curLevel);
+          }
+          const atLevelCap = curLevel >= levelCap;
+          if (atLevelCap) curExp = Math.min(curExp, expToNext);
+
+          heroExpResults[hid] = {
+            heroId: hid,
+            expGained,
+            prevLevel,
+            newLevel: curLevel,
+            levelsGained: curLevel - prevLevel,
+            prevExp,
+            newExp: curExp,
+            expToNext,
+            atLevelCap,
+            levelCap,
+          };
+          damageByHero[hid] = 0;
+          healingByHero[hid] = 0;
+        });
+
+        const summary: CombatLootSummary = {
+          victory: true,
+          stageId: stage.id,
+          stageName: runs > 1 ? `${stage.code} ${stage.name} (×${runs} Sweep)` : `${stage.code} ${stage.name}`,
+          durationSec: 0,
+          damageByHero,
+          healingByHero,
+          heroExpResults,
+          goldEarned,
+          crystalsEarned,
+          expPotionsEarned,
+          forgeStonesEarned,
+          starIronIngotsEarned,
+          astralAnvilCoresEarned,
+          starCoresEarned,
+          relicFragmentsEarned,
+          essencesEarned,
+          bondGiftsEarned,
+          isFirstClear: false,
+          isDungeon: false,
+          starsEarned: 3,
+          droppedEquipment,
+          droppedRelics,
+        };
+
+        get().applyCombatRewards(summary);
+        return {
+          ok: true,
+          count: runs,
+          message: `Completed ${runs}× Quick Sweep on ${stage.code}!`,
+          summary,
+        };
       },
 
       selectPreset: (presetIndex) => {
@@ -785,6 +1078,199 @@ export const usePlayerStore = create<PlayerStore>()(
         set({ roster: nextRoster, equipmentInventory: nextInventory });
       },
 
+      toggleGearLock: (uid) => {
+        const state = get();
+        set({
+          equipmentInventory: state.equipmentInventory.map((item) =>
+            item.uid === uid ? { ...item, locked: !item.locked } : item,
+          ),
+        });
+      },
+
+      autoEquipBestGear: (heroId) => {
+        const state = get();
+        const def = HERO_MAP[heroId];
+        const owned = state.roster[heroId];
+        if (!def || !owned) {
+          return {
+            ok: false,
+            changedSlots: 0,
+            powerBefore: 0,
+            powerAfter: 0,
+            message: 'Hero not found.',
+          };
+        }
+
+        const powerBefore = computeHeroStats(
+          def,
+          owned,
+          state.equipmentInventory,
+          state.squadIds,
+          state.unlockedCodexIds.length,
+          state.relicRanks,
+        ).powerRating;
+
+        const preferredSetsByRole: Record<string, EquipmentSetId[]> = {
+          TANK: ['AEGIS_BASTION', 'CHRONO'],
+          HEALER: ['VERDANT_GRACE', 'CHRONO'],
+          MAGE: ['ASTRAL_SURGE', 'ASHEN_FURY'],
+          RANGER: ['ASHEN_FURY', 'VANGUARD'],
+          ASSAULT: ['VANGUARD', 'ASHEN_FURY'],
+        };
+        const preferredSets = preferredSetsByRole[def.role] ?? ['VANGUARD', 'ASHEN_FURY'];
+        const rarityScore: Record<EquipmentRarity, number> = {
+          LEGENDARY: 4,
+          EPIC: 3,
+          RARE: 2,
+          COMMON: 1,
+        };
+
+        const scoreItem = (item: EquipmentInstance): number => {
+          let score = rarityScore[item.rarity] * 1000 + item.enhanceLevel * 90;
+          if (item.setId === preferredSets[0]) score += 380;
+          else if (item.setId === preferredSets[1]) score += 210;
+
+          const statWeights = (stat: string): number => {
+            if (def.role === 'TANK') {
+              if (stat === 'DEF_PCT' || stat === 'HP_PCT') return 140;
+              if (stat === 'CDR') return 90;
+              return 40;
+            }
+            if (def.role === 'HEALER') {
+              if (stat === 'HP_PCT' || stat === 'ATK_PCT' || stat === 'CDR') return 130;
+              return 50;
+            }
+            if (stat === 'ATK_PCT' || stat === 'CRIT_RATE' || stat === 'CRIT_DMG' || stat === 'SKILL_DMG') {
+              return 145;
+            }
+            if (stat === 'ATK_FLAT') return 95;
+            return 40;
+          };
+
+          score += statWeights(item.mainStat.stat);
+          for (const sub of item.subStats) {
+            score += statWeights(sub.stat) * 0.45;
+          }
+          return score;
+        };
+
+        const slots: EquipmentSlot[] = ['WEAPON', 'ARMOR', 'ACCESSORY', 'EMBLEM'];
+        let nextInv = [...state.equipmentInventory];
+        const nextEquipped = { ...owned.equippedGear };
+        let changedSlots = 0;
+
+        for (const slot of slots) {
+          const candidates = nextInv
+            .filter(
+              (item) =>
+                item.slot === slot &&
+                (item.equippedHeroId === null || item.equippedHeroId === heroId),
+            )
+            .sort((a, b) => scoreItem(b) - scoreItem(a));
+
+          const best = candidates[0];
+          if (!best || best.uid === nextEquipped[slot]) continue;
+
+          const prevUid = nextEquipped[slot];
+          nextInv = nextInv.map((item) => {
+            if (prevUid && item.uid === prevUid) return { ...item, equippedHeroId: null };
+            if (item.uid === best.uid) return { ...item, equippedHeroId: heroId };
+            return item;
+          });
+          nextEquipped[slot] = best.uid;
+          changedSlots += 1;
+        }
+
+        const nextRoster = {
+          ...state.roster,
+          [heroId]: { ...owned, equippedGear: nextEquipped },
+        };
+
+        if (changedSlots === 0) {
+          return {
+            ok: true,
+            changedSlots: 0,
+            powerBefore,
+            powerAfter: powerBefore,
+            message: `${def.name} already wears the best available gear!`,
+          };
+        }
+
+        set({ roster: nextRoster, equipmentInventory: nextInv });
+        const powerAfter = computeHeroStats(
+          def,
+          nextRoster[heroId],
+          nextInv,
+          state.squadIds,
+          state.unlockedCodexIds.length,
+          state.relicRanks,
+        ).powerRating;
+        const delta = powerAfter - powerBefore;
+        return {
+          ok: true,
+          changedSlots,
+          powerBefore,
+          powerAfter,
+          message: `Auto-equipped ${changedSlots} slot${changedSlots > 1 ? 's' : ''} on ${def.name} (${delta >= 0 ? '+' : ''}${delta.toLocaleString()} PWR)!`,
+        };
+      },
+
+      batchSalvageGear: (maxRarity) => {
+        const state = get();
+        const allowed =
+          maxRarity === 'COMMON'
+            ? new Set<EquipmentRarity>(['COMMON'])
+            : new Set<EquipmentRarity>(['COMMON', 'RARE']);
+
+        const targets = state.equipmentInventory.filter(
+          (item) => !item.equippedHeroId && !item.locked && allowed.has(item.rarity),
+        );
+        if (targets.length === 0) {
+          return {
+            ok: false,
+            count: 0,
+            gold: 0,
+            forgeStones: 0,
+            starIronIngots: 0,
+            astralAnvilCores: 0,
+            message: `No unlocked, unequipped ${maxRarity === 'COMMON' ? 'Common' : 'Common/Rare'} gear to salvage.`,
+          };
+        }
+
+        let gold = 0;
+        let forgeStones = 0;
+        let starIronIngots = 0;
+        let astralAnvilCores = 0;
+        const removedIds = new Set<string>();
+
+        for (const item of targets) {
+          const y = getSalvageYield(item);
+          gold += y.gold;
+          forgeStones += y.forgeStones;
+          starIronIngots += y.starIronIngots;
+          astralAnvilCores += y.astralAnvilCores;
+          removedIds.add(item.uid);
+        }
+
+        set({
+          gold: state.gold + gold,
+          forgeStones: state.forgeStones + forgeStones,
+          starIronIngots: state.starIronIngots + starIronIngots,
+          astralAnvilCores: state.astralAnvilCores + astralAnvilCores,
+          equipmentInventory: state.equipmentInventory.filter((item) => !removedIds.has(item.uid)),
+        });
+
+        return {
+          ok: true,
+          count: targets.length,
+          gold,
+          forgeStones,
+          starIronIngots,
+          astralAnvilCores,
+          message: `Salvaged ${targets.length} item${targets.length > 1 ? 's' : ''}: +${gold.toLocaleString()}g • +${forgeStones} Forge Stones${starIronIngots ? ` • +${starIronIngots} Ingots` : ''}!`,
+        };
+      },
+
       enhanceGear: (uid) => {
         const state = get();
         const target = state.equipmentInventory.find((i) => i.uid === uid);
@@ -848,7 +1334,7 @@ export const usePlayerStore = create<PlayerStore>()(
       salvageGear: (uid) => {
         const state = get();
         const item = state.equipmentInventory.find((i) => i.uid === uid);
-        if (!item || item.equippedHeroId) return;
+        if (!item || item.equippedHeroId || item.locked) return;
         const y = getSalvageYield(item);
         set({
           gold: state.gold + y.gold,

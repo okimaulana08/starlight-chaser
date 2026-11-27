@@ -234,7 +234,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     window.setTimeout(() => {
       setTapHearts((prev) => prev.filter((p) => p.id < burstKey || p.id >= burstKey + 10));
     }, 950);
-    audioManager.playSfx(lineIndex % 3 === 2 ? 'ult_chime' : 'button', 0.08);
+    audioManager.playSynthSfx('lobby_tap');
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {

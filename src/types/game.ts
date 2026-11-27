@@ -191,6 +191,7 @@ export interface EquipmentInstance {
   mainStat: { stat: string; value: number };
   subStats: EquipmentSubStat[];
   equippedHeroId: string | null;
+  locked?: boolean;
 }
 
 export interface EquipmentSetDef {

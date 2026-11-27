@@ -3,12 +3,15 @@ import { motion } from 'framer-motion';
 import {
   Crown,
   Heart,
+  Lock,
   ShoppingBag,
   Sparkles,
   Star,
   Trash2,
   TrendingUp,
+  Unlock,
   Users,
+  Wand2,
 } from 'lucide-react';
 import {
   EQUIPMENT_SETS,
@@ -73,6 +76,9 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
     giveBondGift,
     equipRelic,
     equipGear,
+    toggleGearLock,
+    autoEquipBestGear,
+    batchSalvageGear,
     enhanceGear,
     salvageGear,
   } = usePlayerStore();
@@ -80,6 +86,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
   const [selectedHeroId, setSelectedHeroId] = useState<string>(squadIds[0]);
   const [rightTab, setRightTab] = useState<'GEAR' | 'RELIC' | 'SKILLS'>('GEAR');
   const [activeSlot, setActiveSlot] = useState<EquipmentSlot>('WEAPON');
+  const [showBatchSalvage, setShowBatchSalvage] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
   const [upgradePulse, setUpgradePulse] = useState<{ id: number; label: string; color: string } | null>(null);
   const [showPartyModal, setShowPartyModal] = useState(false);
@@ -124,6 +131,30 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
       const rank = { LEGENDARY: 4, EPIC: 3, RARE: 2, COMMON: 1 };
       return rank[b.rarity] - rank[a.rarity] || b.enhanceLevel - a.enhanceLevel;
     });
+
+  const salvageableCommonCount = useMemo(
+    () =>
+      equipmentInventory.filter((e) => !e.equippedHeroId && !e.locked && e.rarity === 'COMMON')
+        .length,
+    [equipmentInventory],
+  );
+  const salvageableLowCount = useMemo(
+    () =>
+      equipmentInventory.filter(
+        (e) => !e.equippedHeroId && !e.locked && (e.rarity === 'COMMON' || e.rarity === 'RARE'),
+      ).length,
+    [equipmentInventory],
+  );
+  const recommendedSetLabel =
+    heroDef.role === 'TANK'
+      ? 'Aegis Bastion / Chrono'
+      : heroDef.role === 'HEALER'
+        ? 'Verdant Grace / Chrono'
+        : heroDef.role === 'MAGE'
+          ? 'Astral Surge / Ashen Fury'
+          : heroDef.role === 'RANGER'
+            ? 'Ashen Fury / Vanguard'
+            : 'Vanguard / Ashen Fury';
 
   const levelCap = getHeroLevelCap(ownedHero.awakening);
   const lv1Cost = getLevelUpCost(ownedHero.level, 1, ownedHero.awakening);
@@ -590,24 +621,100 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
           </div>
 
           {rightTab === 'GEAR' && (
-            <div className="flex-1 flex flex-col gap-3 min-h-0">
-              <div className="rounded-xl bg-slate-950/75 border border-amber-400/20 px-3 py-2 text-[11px]">
-                <span className="text-slate-400 uppercase font-display font-bold text-[9px] tracking-widest mr-2">
-                  Active Sets:
-                </span>
-                {computed.activeSets.length === 0 ? (
-                  <span className="text-slate-400">Equip 2 or 4 matching pieces</span>
-                ) : (
-                  computed.activeSets.map(({ setId, count }) => (
-                    <span
-                      key={setId}
-                      className="mr-2 font-bold"
-                      style={{ color: EQUIPMENT_SETS[setId].color }}
+            <div className="flex-1 flex flex-col gap-2.5 min-h-0">
+              {/* Smart Gear QoL Toolbar: Auto-Equip Best + Batch Salvage */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <RpgButton
+                  variant="cyan"
+                  size="xs"
+                  onClick={() => {
+                    const res = autoEquipBestGear(heroDef.id);
+                    audioManager.playSfx(res.changedSlots > 0 ? 'forge' : 'button');
+                    showNotice(res.message, res.changedSlots > 0 ? 'ok' : 'warn');
+                    if (res.changedSlots > 0) {
+                      triggerUpgradeFx('AUTO-EQUIPPED BEST!', '#38e8ff');
+                    }
+                  }}
+                  className="font-display font-black uppercase tracking-wider"
+                >
+                  <Wand2 className="w-3.5 h-3.5" /> Auto-Equip Best
+                </RpgButton>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    audioManager.playSfx('button');
+                    setShowBatchSalvage((v) => !v);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-display font-black uppercase tracking-wider flex items-center gap-1.5 transition ${
+                    showBatchSalvage
+                      ? 'bg-rose-500/20 border-rose-400 text-rose-200'
+                      : 'bg-slate-950/85 border-slate-700 hover:border-rose-400/60 text-slate-300 hover:text-rose-200'
+                  }`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Batch Salvage ({salvageableLowCount})</span>
+                </button>
+              </div>
+
+              {showBatchSalvage && (
+                <div className="rounded-xl bg-rose-950/35 border border-rose-500/45 p-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <span className="text-rose-200/90 font-semibold">
+                    Locked &amp; equipped items are always protected:
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <RpgButton
+                      variant="slate"
+                      size="xs"
+                      disabled={salvageableCommonCount === 0}
+                      onClick={() => {
+                        const res = batchSalvageGear('COMMON');
+                        audioManager.playSfx(res.ok ? 'forge' : 'button');
+                        showNotice(res.message, res.ok ? 'ok' : 'warn');
+                        if (res.ok) setShowBatchSalvage(false);
+                      }}
                     >
-                      {EQUIPMENT_SETS[setId].name} ({count}pc)
-                    </span>
-                  ))
-                )}
+                      Common ({salvageableCommonCount})
+                    </RpgButton>
+                    <RpgButton
+                      variant="rose"
+                      size="xs"
+                      disabled={salvageableLowCount === 0}
+                      onClick={() => {
+                        const res = batchSalvageGear('RARE');
+                        audioManager.playSfx(res.ok ? 'forge' : 'button');
+                        showNotice(res.message, res.ok ? 'ok' : 'warn');
+                        if (res.ok) setShowBatchSalvage(false);
+                      }}
+                    >
+                      Common + Rare ({salvageableLowCount})
+                    </RpgButton>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-xl bg-slate-950/75 border border-amber-400/20 px-3 py-2 text-[11px] flex flex-wrap items-center justify-between gap-1.5">
+                <div>
+                  <span className="text-slate-400 uppercase font-display font-bold text-[9px] tracking-widest mr-2">
+                    Active Sets:
+                  </span>
+                  {computed.activeSets.length === 0 ? (
+                    <span className="text-slate-400">Equip 2 or 4 matching pieces</span>
+                  ) : (
+                    computed.activeSets.map(({ setId, count }) => (
+                      <span
+                        key={setId}
+                        className="mr-2 font-bold"
+                        style={{ color: EQUIPMENT_SETS[setId].color }}
+                      >
+                        {EQUIPMENT_SETS[setId].name} ({count}pc)
+                      </span>
+                    ))
+                  )}
+                </div>
+                <span className="text-[10px] text-cyan-300/90 font-semibold">
+                  Rec: {recommendedSetLabel}
+                </span>
               </div>
 
               {equippedItemForSlot && (
@@ -667,12 +774,34 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
                           ? 'MAX +15'
                           : `Forge +${equippedItemForSlot.enhanceLevel + 1}`}
                       </RpgButton>
-                      <button
-                        onClick={() => equipGear(heroDef.id, activeSlot, null)}
-                        className="text-[10px] uppercase tracking-wider font-bold text-slate-400 hover:text-rose-300 transition"
-                      >
-                        Unequip
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleGearLock(equippedItemForSlot.uid);
+                            audioManager.playSfx('button');
+                          }}
+                          title={equippedItemForSlot.locked ? 'Unlock Gear' : 'Lock Gear (prevents accidental salvage)'}
+                          className={`px-2 py-0.5 rounded-md border text-[10px] font-bold flex items-center gap-1 transition ${
+                            equippedItemForSlot.locked
+                              ? 'bg-amber-400/20 border-amber-300/70 text-amber-200'
+                              : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-amber-200'
+                          }`}
+                        >
+                          {equippedItemForSlot.locked ? (
+                            <Lock className="w-3 h-3" />
+                          ) : (
+                            <Unlock className="w-3 h-3" />
+                          )}
+                          <span>{equippedItemForSlot.locked ? 'Locked' : 'Lock'}</span>
+                        </button>
+                        <button
+                          onClick={() => equipGear(heroDef.id, activeSlot, null)}
+                          className="text-[10px] uppercase tracking-wider font-bold text-slate-400 hover:text-rose-300 transition"
+                        >
+                          Unequip
+                        </button>
+                      </div>
                     </div>
                   </div>
 
@@ -761,6 +890,21 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            toggleGearLock(eq.uid);
+                            audioManager.playSfx('button');
+                          }}
+                          title={eq.locked ? 'Unlock Gear' : 'Lock Gear (protect from salvage)'}
+                          className={`p-1.5 rounded-lg border transition ${
+                            eq.locked
+                              ? 'bg-amber-400/20 border-amber-300/75 text-amber-300'
+                              : 'bg-slate-900/90 border-slate-700 text-slate-500 hover:text-amber-200'
+                          }`}
+                        >
+                          {eq.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                        </button>
                         {!isEquippedHere ? (
                           <RpgButton
                             variant="cyan"
@@ -777,7 +921,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
                             EQUIPPED
                           </span>
                         )}
-                        {!eq.equippedHeroId && (
+                        {!eq.equippedHeroId && !eq.locked && (
                           <RpgButton
                             variant="slate"
                             size="xs"
