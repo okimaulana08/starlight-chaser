@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ShoppingBag, Sparkles, Star } from 'lucide-react';
+import { ShoppingBag } from 'lucide-react';
 import { HERO_BANNER, HERO_BANNER_NEW, RELIC_BANNER } from '../data/banners';
 import { HERO_MAP } from '../data/heroes';
 import { RELIC_MAP } from '../data/relics';
@@ -18,8 +18,10 @@ import {
   RpgProgressBar,
   RpgTabs,
 } from './RpgKit';
-import { RarityCrest, RoleBadge } from './RoleBadge';
+import { RarityCrest } from './RoleBadge';
 import { StarlightBackdrop } from './StarlightBackdrop';
+import { SummonCinematic } from './SummonCinematic';
+import { SummonResultsStage, SummonSpotlight } from './SummonShowcase';
 
 interface GachaScreenProps {
   onBack: () => void;
@@ -38,16 +40,43 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
   } = usePlayerStore();
 
   const [bannerTab, setBannerTab] = useState<'NEW_HERO' | 'HERO' | 'RELIC'>('NEW_HERO');
-  const [phase, setPhase] = useState<'IDLE' | 'PRISM' | 'SPOTLIGHT' | 'REVEAL'>('IDLE');
+  const [phase, setPhase] = useState<'IDLE' | 'CINEMATIC' | 'SPOTLIGHT' | 'REVEAL'>('IDLE');
   const [pendingResults, setPendingResults] = useState<GachaPullResult[]>([]);
   const [spotlightIndex, setSpotlightIndex] = useState(0);
-  const [prismCracked, setPrismCracked] = useState(false);
+  const [inspectedResult, setInspectedResult] = useState<GachaPullResult | null>(null);
+  const [summonSeq, setSummonSeq] = useState(0);
   const [showSparkShop, setShowSparkShop] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [failedBgs, setFailedBgs] = useState<Record<string, boolean>>({});
 
-  const ssrHeroPulls = pendingResults.filter((r) => r.tier === 'SSR' && r.kind === 'HERO');
-  const currentSpotlight = ssrHeroPulls[spotlightIndex] ?? null;
+  // Build spotlight showcase queue:
+  // - 1× pull: always spotlight the pulled Hero or Relic directly
+  // - 10× pull: spotlight every SSR (Hero & Relic); if none, spotlight the best/first new SR pull
+  const spotlightQueue = useMemo<GachaPullResult[]>(() => {
+    if (pendingResults.length === 0) return [];
+    if (pendingResults.length === 1) return [pendingResults[0]];
+    const ssrs = pendingResults.filter((r) => r.tier === 'SSR');
+    if (ssrs.length > 0) return ssrs;
+    const newSr = pendingResults.find((r) => r.tier === 'SR' && r.isNew);
+    if (newSr) return [newSr];
+    const anySr = pendingResults.find((r) => r.tier === 'SR');
+    return anySr ? [anySr] : [];
+  }, [pendingResults]);
+
+  const currentSpotlight = spotlightQueue[spotlightIndex] ?? null;
+  const isStandaloneSingle = pendingResults.length === 1;
+
+  // Preload pulled SSR Heroes' 1080p Sakuga Cut-In MP4s silently while the 4.25s meteor cinematic plays!
+  const preloadSsrVideos = useMemo(() => {
+    const urls = new Set<string>();
+    for (const r of pendingResults) {
+      if (r.kind === 'HERO' && r.tier === 'SSR') {
+        const vid = HERO_MAP[r.id]?.assets.cutInVideo;
+        if (vid) urls.add(vid);
+      }
+    }
+    return Array.from(urls);
+  }, [pendingResults]);
 
   const banner =
     bannerTab === 'NEW_HERO'
@@ -65,27 +94,56 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
       ? 'SR'
       : 'R';
 
-  const handleSummon = (count: 1 | 10) => {
-    const out = pullBanner(banner, count);
-    if (!out.ok) {
-      setErrorMsg(out.error ?? 'Not enough Starlight Crystals.');
-      setTimeout(() => setErrorMsg(null), 2600);
+  const handleSummon = useCallback(
+    (count: 1 | 10) => {
+      const out = pullBanner(banner, count);
+      if (!out.ok) {
+        setErrorMsg(out.error ?? 'Not enough Starlight Crystals.');
+        setTimeout(() => setErrorMsg(null), 2600);
+        return;
+      }
+      setPendingResults(out.results);
+      setSpotlightIndex(0);
+      setInspectedResult(null);
+      setSummonSeq((s) => s + 1);
+      setPhase('CINEMATIC');
+    },
+    [banner, pullBanner],
+  );
+
+  const handleCinematicComplete = useCallback(() => {
+    if (spotlightQueue.length > 0) {
+      setSpotlightIndex(0);
+      setPhase('SPOTLIGHT');
+    } else {
+      setPhase('REVEAL');
+    }
+  }, [spotlightQueue.length]);
+
+  const handleCinematicSkip = useCallback(() => {
+    const hasSsr = pendingResults.some((r) => r.tier === 'SSR');
+    if (hasSsr && spotlightQueue.length > 0) {
+      setSpotlightIndex(0);
+      setPhase('SPOTLIGHT');
+    } else if (isStandaloneSingle && spotlightQueue.length > 0) {
+      setSpotlightIndex(0);
+      setPhase('SPOTLIGHT');
+    } else {
+      setPhase('REVEAL');
+    }
+  }, [isStandaloneSingle, pendingResults, spotlightQueue.length]);
+
+  const handleSpotlightNext = useCallback(() => {
+    if (isStandaloneSingle) {
+      setPhase('IDLE');
       return;
     }
-    setPendingResults(out.results);
-    setSpotlightIndex(0);
-    setPrismCracked(false);
-    setPhase('PRISM');
-    audioManager.playSfx('ult_chime');
-  };
-
-  const handleCrackPrism = () => {
-    if (prismCracked) return;
-    setPrismCracked(true);
-    audioManager.playSfx(highestTier === 'SSR' ? 'ssr_reveal' : 'prism_crack');
-    const hasSsrHero = pendingResults.some((r) => r.tier === 'SSR' && r.kind === 'HERO');
-    setTimeout(() => setPhase(hasSsrHero ? 'SPOTLIGHT' : 'REVEAL'), 720);
-  };
+    if (spotlightIndex + 1 < spotlightQueue.length) {
+      setSpotlightIndex((i) => i + 1);
+    } else {
+      setPhase('REVEAL');
+    }
+  }, [isStandaloneSingle, spotlightIndex, spotlightQueue.length]);
 
   const featuredItems = banner.featuredIds.map((id) =>
     banner.type === 'HERO'
@@ -341,273 +399,79 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
         </div>
       </main>
 
-      {/* COSMIC FALLING STAR / METEOR SUMMON RITUAL */}
-      {phase === 'PRISM' && (
-        <div className="fixed inset-0 z-50 bg-[#030510]/96 backdrop-blur-md flex flex-col items-center justify-center p-6 overflow-hidden">
-          {/* Cosmic Sky Radial Glow colored by highest pulled rarity */}
-          <div
-            className="pointer-events-none absolute inset-0 transition-all duration-500"
-            style={{
-              background:
-                highestTier === 'SSR'
-                  ? 'radial-gradient(circle at 50% 45%, rgba(253,224,71,0.34) 0%, rgba(244,114,182,0.18) 38%, rgba(4,6,18,0.98) 78%)'
-                  : highestTier === 'SR'
-                    ? 'radial-gradient(circle at 50% 45%, rgba(192,132,252,0.34) 0%, rgba(99,102,241,0.16) 40%, rgba(4,6,18,0.98) 78%)'
-                    : 'radial-gradient(circle at 50% 45%, rgba(56,232,255,0.28) 0%, rgba(29,78,216,0.14) 40%, rgba(4,6,18,0.98) 78%)',
-            }}
+      {/* SILENT PRELOADER FOR PULLED SSR HERO 1080P SAKUGA VIDEO CUT-INS */}
+      {preloadSsrVideos.length > 0 && phase !== 'IDLE' && (
+        <div className="hidden" aria-hidden="true">
+          {preloadSsrVideos.map((src) => (
+            <video key={src} src={src} preload="auto" muted playsInline />
+          ))}
+        </div>
+      )}
+
+      {/* ACT 1–3: FULL-ANIMATION 60 FPS CELESTIAL STARFALL SUMMON CINEMATIC */}
+      <AnimatePresence>
+        {phase === 'CINEMATIC' && (
+          <SummonCinematic
+            key={`cinematic_${summonSeq}`}
+            results={pendingResults}
+            highestTier={highestTier}
+            bannerAccent={banner.accentColor}
+            onComplete={handleCinematicComplete}
+            onSkip={handleCinematicSkip}
           />
+        )}
+      </AnimatePresence>
 
-          {/* Plunging Diagonal Shooting Star / Meteor Comet Trail! */}
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-            <div className="animate-gacha-meteor flex items-center">
-              <div
-                className="w-64 sm:w-96 h-2.5 sm:h-3.5 rounded-full blur-[1px]"
-                style={{
-                  background:
-                    highestTier === 'SSR'
-                      ? 'linear-gradient(90deg, #ffffff 0%, #fde047 25%, #f472b6 60%, transparent 100%)'
-                      : highestTier === 'SR'
-                        ? 'linear-gradient(90deg, #ffffff 0%, #d8b4fe 30%, #9333ea 65%, transparent 100%)'
-                        : 'linear-gradient(90deg, #ffffff 0%, #7dd3fc 30%, #0284c7 65%, transparent 100%)',
-                }}
-              />
-            </div>
-          </div>
+      {/* ACT 4: FULL-SCREEN HERO / SSR VIDEO CUT-IN / RELIC SPOTLIGHT SHOWCASE */}
+      <AnimatePresence>
+        {phase === 'SPOTLIGHT' && currentSpotlight && (
+          <SummonSpotlight
+            key={`spotlight_${summonSeq}_${spotlightIndex}_${currentSpotlight.id}`}
+            result={currentSpotlight}
+            queueIndex={spotlightIndex}
+            queueTotal={spotlightQueue.length}
+            isStandaloneSingle={isStandaloneSingle}
+            banner={banner}
+            crystals={starlightCrystals}
+            onNext={handleSpotlightNext}
+            onSkipAll={() => setPhase(isStandaloneSingle ? 'IDLE' : 'REVEAL')}
+            onSummonAgain={handleSummon}
+          />
+        )}
+      </AnimatePresence>
 
-          <div className="relative z-10 font-display text-xs sm:text-base uppercase tracking-[0.34em] text-amber-200 font-black mb-6 text-center drop-shadow">
-            {prismCracked
-              ? highestTier === 'SSR'
-                ? '★ CELESTIAL SSR STARFALL!! ★'
-                : 'STARLIGHT RESONANCE UNLEASHED!'
-              : 'TAP THE FALLEN STAR TO SUMMON'}
-          </div>
+      {/* ACT 5: 3D CARD-FLIP CASCADE RESULTS STAGE */}
+      <AnimatePresence>
+        {phase === 'REVEAL' && !inspectedResult && (
+          <SummonResultsStage
+            key={`results_${summonSeq}`}
+            results={pendingResults}
+            highestTier={highestTier}
+            banner={banner}
+            crystals={starlightCrystals}
+            onConfirm={() => setPhase('IDLE')}
+            onSummonAgain={handleSummon}
+            onInspectResult={(res) => setInspectedResult(res)}
+          />
+        )}
+      </AnimatePresence>
 
-          {/* Interactive Radiant Astrolabe Core */}
-          <button
-            onClick={handleCrackPrism}
-            className={`relative z-10 w-52 h-52 sm:w-64 sm:h-64 flex items-center justify-center transition-all duration-500 cursor-pointer ${
-              prismCracked ? 'scale-150 opacity-0' : 'hover:scale-105'
-            }`}
-          >
-            {/* Outer Spinning Astrolabe Ring */}
-            <div
-              className="absolute inset-0 rounded-full border-2 border-dashed animate-spin"
-              style={{
-                animationDuration: '9s',
-                borderColor:
-                  highestTier === 'SSR'
-                    ? '#fde047'
-                    : highestTier === 'SR'
-                      ? '#c084fc'
-                      : '#38e8ff',
-              }}
-            />
-            {/* Counter-Spinning Inner Constellation Ring */}
-            <div
-              className="absolute inset-5 rounded-full border-2 animate-spin"
-              style={{
-                animationDuration: '6s',
-                animationDirection: 'reverse',
-                borderColor:
-                  highestTier === 'SSR'
-                    ? 'rgba(244,114,182,0.85)'
-                    : highestTier === 'SR'
-                      ? 'rgba(168,85,247,0.8)'
-                      : 'rgba(56,189,248,0.8)',
-              }}
-            />
-            {/* Blazing Starlight Core Orb */}
-            <div
-              className="w-28 h-28 sm:w-32 sm:h-32 rounded-full flex items-center justify-center border-4 border-white/90 animate-pulse"
-              style={{
-                background:
-                  highestTier === 'SSR'
-                    ? 'radial-gradient(circle, #ffffff 0%, #fde047 38%, #f472b6 76%, #7c3aed 100%)'
-                    : highestTier === 'SR'
-                      ? 'radial-gradient(circle, #ffffff 0%, #e879f9 42%, #7e22ce 100%)'
-                      : 'radial-gradient(circle, #ffffff 0%, #7dd3fc 42%, #1d4ed8 100%)',
-                boxShadow:
-                  highestTier === 'SSR'
-                    ? '0 0 90px rgba(253,224,71,0.98), 0 0 140px rgba(244,114,182,0.7)'
-                    : highestTier === 'SR'
-                      ? '0 0 80px rgba(192,132,252,0.95)'
-                      : '0 0 70px rgba(56,232,255,0.9)',
-              }}
-            >
-              <Star className="w-12 h-12 sm:w-14 sm:h-14 text-white fill-white drop-shadow-[0_0_16px_rgba(255,255,255,1)]" />
-            </div>
-          </button>
-
-          {/* Full-Screen Flash Burst upon Shatter */}
-          {prismCracked && (
-            <div className="pointer-events-none fixed inset-0 z-20 bg-white animate-pulse opacity-85" />
-          )}
-
-          <button
-            onClick={() => setPhase('REVEAL')}
-            className="relative z-10 mt-8 px-4 py-1.5 rounded-full bg-slate-950/75 border border-slate-700 text-xs uppercase tracking-widest text-slate-300 hover:text-amber-300"
-          >
-            Skip Animation →
-          </button>
-        </div>
-      )}
-
-      {/* FULL-SCREEN SSR HERO STANDING SPOTLIGHT REVEAL! */}
-      {phase === 'SPOTLIGHT' && currentSpotlight && (() => {
-        const ssrHero = HERO_MAP[currentSpotlight.id];
-        if (!ssrHero) return null;
-        return (
-          <div
-            onClick={() => {
-              if (spotlightIndex + 1 < ssrHeroPulls.length) {
-                setSpotlightIndex((i) => i + 1);
-                audioManager.playSfx('ssr_reveal');
-              } else {
-                setPhase('REVEAL');
-              }
-            }}
-            className="fixed inset-0 z-50 bg-[#050714] flex flex-col sm:flex-row items-center justify-center p-4 sm:p-10 cursor-pointer overflow-hidden select-none"
-          >
-            {/* Rotating Golden Sunburst Light Rays */}
-            <div
-              className="pointer-events-none absolute w-[1100px] h-[1100px] opacity-25 animate-spin"
-              style={{
-                animationDuration: '30s',
-                background:
-                  'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.65) 0deg 8deg, transparent 8deg 24deg)',
-              }}
-            />
-            <div
-              className="pointer-events-none absolute inset-0"
-              style={{
-                background: `radial-gradient(circle at 42% 50%, ${ssrHero.themeColor}44 0%, rgba(5,7,18,0.92) 72%)`,
-              }}
-            />
-
-            {/* Full-Body Standing Cutout Spotlight */}
-            <div className="relative z-10 h-[52dvh] sm:h-[82dvh] max-h-[720px] flex items-end justify-center animate-screen-in">
-              <ArtImage
-                kind="HERO"
-                id={ssrHero.id}
-                src={ssrHero.assets.standing}
-                alt={ssrHero.name}
-                className="h-full w-auto object-contain object-bottom"
-                style={{
-                  filter: `drop-shadow(0 20px 42px rgba(0,0,0,0.95)) drop-shadow(0 0 36px ${ssrHero.themeColor}88)`,
-                }}
-              />
-            </div>
-
-            {/* Hero Lore / Crest Spotlight Plaque */}
-            <div className="relative z-10 sm:ml-6 max-w-md text-center sm:text-left mt-2 sm:mt-0 space-y-2">
-              <div className="flex items-center justify-center sm:justify-start gap-2">
-                <RarityCrest tier="SSR" size="md" />
-                <RoleBadge role={ssrHero.role} variant="pill" size="md" />
-                {currentSpotlight.isNew && (
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-widest">
-                    NEW HERO!
-                  </span>
-                )}
-              </div>
-              <h2 className="font-display text-4xl sm:text-6xl font-black text-white text-glow-gold leading-none">
-                {ssrHero.name}
-              </h2>
-              <div className="text-sm sm:text-base font-serif-italic italic text-cyan-200 tracking-wider">
-                {ssrHero.title}
-              </div>
-              <p className="text-xs sm:text-sm text-slate-200 italic bg-slate-950/75 border-l-4 border-amber-400 px-3.5 py-2.5">
-                "{ssrHero.quote}"
-              </p>
-              <div className="pt-2 flex items-center justify-center sm:justify-start gap-2 text-amber-300 text-xs font-black uppercase tracking-[0.24em] animate-pulse">
-                <Sparkles className="w-4 h-4" />
-                <span>Tap Anywhere to Continue →</span>
-              </div>
-            </div>
-
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setPhase('REVEAL');
-              }}
-              className="absolute top-4 right-4 z-20 px-3.5 py-1.5 rounded-full bg-slate-950/80 border border-slate-700 text-xs uppercase tracking-widest text-slate-300 hover:text-amber-300"
-            >
-              Skip →
-            </button>
-          </div>
-        );
-      })()}
-
-      {/* SUMMON REVEAL STAGE */}
-      {phase === 'REVEAL' && (
-        <div className="fixed inset-0 z-50 bg-[#040610]/95 backdrop-blur-md flex flex-col items-center justify-center p-4 overflow-y-auto">
-          <h2 className="font-display text-3xl font-black text-white tracking-[0.2em] text-glow-gold mb-1">
-            SUMMON RESULTS
-          </h2>
-          {highestTier === 'SSR' && (
-            <div className="text-xs font-black uppercase tracking-[0.28em] text-amber-300 mb-4 animate-pulse">
-              ★ CELESTIAL SSR RESONANCE ACHIEVED ★
-            </div>
-          )}
-
-          <div
-            className={`grid gap-3 my-4 w-full max-w-5xl [perspective:1000px] ${
-              pendingResults.length === 1 ? 'grid-cols-1 max-w-xs' : 'grid-cols-2 sm:grid-cols-5'
-            }`}
-          >
-            {pendingResults.map((res, idx) => {
-              const role =
-                res.kind === 'HERO'
-                  ? HERO_MAP[res.id]?.role
-                  : RELIC_MAP[res.id]?.preferredRole;
-              const sub =
-                res.kind === 'HERO'
-                  ? HERO_MAP[res.id]?.title
-                  : `${RELIC_MAP[res.id]?.preferredRole ?? ''} Relic`;
-              return (
-                <motion.div
-                  key={`${res.id}_${idx}`}
-                  initial={{ opacity: 0, rotateY: 85, scale: 0.78, y: 18 }}
-                  animate={{ opacity: 1, rotateY: 0, scale: 1, y: 0 }}
-                  transition={{
-                    type: 'spring',
-                    stiffness: res.tier === 'SSR' ? 260 : 340,
-                    damping: 22,
-                    delay: idx * 0.07,
-                  }}
-                >
-                  <CollectibleCard
-                    kind={res.kind}
-                    id={res.id}
-                    src={res.assetCard}
-                    name={res.name}
-                    subtitle={pendingResults.length === 1 ? sub : undefined}
-                    tier={res.tier}
-                    role={role}
-                    isNew={res.isNew}
-                    compact={pendingResults.length > 1}
-                    interactive={false}
-                    footerExtra={
-                      !res.isNew ? (
-                        <div className="text-[10px] text-fuchsia-200 font-mono font-bold">
-                          {res.shardsGained > 0 ? `+${res.shardsGained} Shards • ` : ''}+
-                          {res.starDustGained} Dust
-                        </div>
-                      ) : undefined
-                    }
-                  />
-                </motion.div>
-              );
-            })}
-          </div>
-
-          <button
-            onClick={() => setPhase('IDLE')}
-            className="rpg-battle-cta mt-2 px-10 py-3 text-slate-950 font-display font-black text-sm uppercase tracking-[0.2em]"
-          >
-            Confirm
-          </button>
-        </div>
-      )}
+      {/* OPTIONAL CARD SHOWCASE REPLAY FROM RESULTS GRID */}
+      <AnimatePresence>
+        {phase === 'REVEAL' && inspectedResult && (
+          <SummonSpotlight
+            key={`replay_${inspectedResult.id}`}
+            result={inspectedResult}
+            queueIndex={0}
+            queueTotal={1}
+            isReplay
+            banner={banner}
+            crystals={starlightCrystals}
+            onNext={() => setInspectedResult(null)}
+            onSkipAll={() => setInspectedResult(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* SPARK EXCHANGE MODAL */}
       <AnimatePresence>
