@@ -136,6 +136,8 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
 
   useEffect(() => {
     if (!hostRef.current) return;
+    // Clear any stale Victory/Defeat banner synchronously before async PixiJS WebGL boot
+    useCombatStore.getState().setCombatResult(null);
     const engine = new CombatEngine(hostRef.current, stageId);
     engineRef.current = engine;
     engine.init();
@@ -143,6 +145,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
     return () => {
       engine.destroy();
       engineRef.current = null;
+      useCombatStore.getState().setCombatResult(null);
     };
   }, [stageId, runSeed]);
 
@@ -923,7 +926,10 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                 <Settings className="w-3.5 h-3.5" /> Audio & Combat Settings
               </button>
               <button
-                onClick={() => setRunSeed((s) => s + 1)}
+                onClick={() => {
+                  useCombatStore.getState().resetForStage(stageId, `${resolvedStageDef.code} ${resolvedStageDef.name}`, resolvedStageDef.waves.length);
+                  setRunSeed((s) => s + 1);
+                }}
                 className="rpg-blade w-full py-2.5 text-white font-bold text-xs uppercase tracking-wider"
               >
                 Restart Stage
@@ -964,7 +970,10 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
           }
           canReplay={dungeonCanReplay}
           exitLabel={isSpireStage ? 'Astral Spire' : isDungeonStage ? 'Dungeons' : 'Lobby'}
-          onReplay={() => setRunSeed((s) => s + 1)}
+          onReplay={() => {
+            useCombatStore.getState().resetForStage(stageId, `${resolvedStageDef.code} ${resolvedStageDef.name}`, resolvedStageDef.waves.length);
+            setRunSeed((s) => s + 1);
+          }}
           onExit={onExit}
         />
       )}

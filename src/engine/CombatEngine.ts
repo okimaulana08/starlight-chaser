@@ -3185,6 +3185,7 @@ export class CombatEngine {
     useCombatStore.getState().setActiveBanter(null);
     useCombatStore.getState().setBossWarning(null);
     useCombatStore.getState().setWaveBanner(null);
+    useCombatStore.getState().setCombatResult(null);
     window.removeEventListener('keydown', this.boundKeyDown);
     if (this.canvasEl) {
       this.canvasEl.removeEventListener('contextmenu', this.boundContextMenu);

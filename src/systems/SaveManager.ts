@@ -348,10 +348,15 @@ export function applyImportedSave(data: PlayerSaveState): { ok: boolean; message
 
 export function resetAccountCompletely(): { ok: boolean; message: string } {
   try {
-    // 1. Wipe all persisted account save, manual backup, and settings keys
+    // 1. Wipe all persisted account save, manual backup, settings & session-entered keys
     localStorage.removeItem(SAVE_STORAGE_KEY);
     localStorage.removeItem(BACKUP_STORAGE_KEY);
     localStorage.removeItem(SETTINGS_STORAGE_KEY);
+    try {
+      sessionStorage.removeItem('starlight_session_entered');
+    } catch {
+      // Ignore storage restrictions
+    }
 
     // 2. Reset in-memory Zustand stores to clean starter state & defaults (Auto-Move/Auto-Skill ON)
     usePlayerStore.getState().resetSave();

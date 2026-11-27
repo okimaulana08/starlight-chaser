@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ShopCategory } from './data/materials';
 import { audioManager } from './engine/AudioManager';
+import { useCombatStore } from './store/useCombatStore';
 import { usePlayerStore } from './store/usePlayerStore';
 import type { DungeonId, Faction, ScreenId } from './types/game';
 import { CodexScreen } from './ui/CodexScreen';
@@ -14,8 +15,16 @@ import { SpireScreen } from './ui/SpireScreen';
 import { SquadScreen } from './ui/SquadScreen';
 import { TitleScreen } from './ui/TitleScreen';
 
+const SESSION_ENTERED_KEY = 'starlight_session_entered';
+
 export const App: React.FC = () => {
-  const [entered, setEntered] = useState(false);
+  const [entered, setEntered] = useState<boolean>(() => {
+    try {
+      return typeof window !== 'undefined' && window.sessionStorage.getItem(SESSION_ENTERED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [screen, setScreen] = useState<ScreenId>('LOBBY');
   const [activeStageId, setActiveStageId] = useState<string>('stage_1_1');
   const [combatReturnScreen, setCombatReturnScreen] = useState<'LOBBY' | 'DUNGEON' | 'SPIRE'>('LOBBY');
@@ -24,6 +33,15 @@ export const App: React.FC = () => {
     dungeonId: DungeonId;
     faction?: Faction;
   }>({ dungeonId: 'GOLD_VAULT' });
+
+  const handleEnterLobby = () => {
+    try {
+      window.sessionStorage.setItem(SESSION_ENTERED_KEY, '1');
+    } catch {
+      // Ignore storage restrictions
+    }
+    setEntered(true);
+  };
 
   useEffect(() => {
     if (entered && screen !== 'COMBAT') {
@@ -35,12 +53,19 @@ export const App: React.FC = () => {
     stageId: string,
     returnTo: 'LOBBY' | 'DUNGEON' | 'SPIRE' = 'LOBBY',
   ) => {
+    // Synchronously wipe stale Victory/Defeat state BEFORE mounting CombatHUD (prevents Stage Cleared flash!)
+    useCombatStore.getState().resetForStage(stageId, '', 1);
     if (!stageId.startsWith('dungeon__') && !stageId.startsWith('spire__')) {
       usePlayerStore.getState().setSelectedStage(stageId);
     }
     setCombatReturnScreen(returnTo);
     setActiveStageId(stageId);
     setScreen('COMBAT');
+  };
+
+  const handleExitCombat = () => {
+    useCombatStore.getState().setCombatResult(null);
+    setScreen(combatReturnScreen);
   };
 
   const handleOpenShop = (initialTab: ShopCategory = 'GROWTH') => {
@@ -65,7 +90,7 @@ export const App: React.FC = () => {
             transition={{ duration: 0.28 }}
             className="w-full h-full"
           >
-            <TitleScreen onEnterLobby={() => setEntered(true)} />
+            <TitleScreen onEnterLobby={handleEnterLobby} />
           </motion.div>
         ) : (
           <motion.div
@@ -87,7 +112,7 @@ export const App: React.FC = () => {
               <CombatHUD
                 stageId={activeStageId}
                 onSelectStage={(stageId) => handleStartCombat(stageId, combatReturnScreen)}
-                onExit={() => setScreen(combatReturnScreen)}
+                onExit={handleExitCombat}
               />
             )}
             {screen === 'DUNGEON' && (
