@@ -38,6 +38,7 @@ import {
   calculateCombatDamage,
   computeHeroStats,
   getActiveFactionBonuses,
+  isFourFactionHarmony,
 } from './CombatMath';
 import type { CombatContext, EnemyUnit, GroundZone, HeroUnit } from './CombatTypes';
 import { EnemyAI } from './EnemyAI';
@@ -281,7 +282,12 @@ export class CombatEngine {
         this.ctx.sp = Math.min(this.ctx.maxSp, Math.max(0, this.ctx.sp + amount));
       },
       addUltGauge: (amount, bonusMult = 1) => {
-        this.ctx.ultGauge = Math.min(this.ctx.maxUltGauge, this.ctx.ultGauge + amount * bonusMult);
+        const st = resolveAnyStageDef(this.stageId);
+        const spireUltMult = st.spireModifier?.id === 'SOLAR_OVERCHARGE' ? 1.2 : 1.0;
+        this.ctx.ultGauge = Math.min(
+          this.ctx.maxUltGauge,
+          this.ctx.ultGauge + amount * bonusMult * spireUltMult,
+        );
       },
       triggerShake: (amount) => {
         if (!useSettingsStore.getState().enableScreenShake) return;
@@ -548,8 +554,15 @@ export class CombatEngine {
       });
     });
 
-    // Start every expedition with 16/40 (40%) Chaser Resonance + Relic startingGauge so Ultimates shine every battle!
-    this.ctx.ultGauge = Math.min(this.ctx.maxUltGauge, 16 + totalStartingGauge);
+    // Start every expedition with 16/80 Chaser Resonance + Relic startingGauge + Spire Starlight Surge (+24)!
+    const stageDef = resolveAnyStageDef(this.stageId);
+    const spireStartGauge = stageDef.spireModifier?.id === 'STARLIGHT_SURGE' ? 24 : 0;
+    this.ctx.ultGauge = Math.min(this.ctx.maxUltGauge, 16 + totalStartingGauge + spireStartGauge);
+
+    // 4-Faction Harmony Synergy Bonus: +1.0 Starting Squad SP!
+    if (isFourFactionHarmony(squadIds)) {
+      this.ctx.addSp(1.0);
+    }
   }
 
   private spawnWave(index: number): void {
@@ -612,8 +625,12 @@ export class CombatEngine {
         this.pool.spawnRingWave(spawnX, spawnY, def.isBoss ? 170 : 75, 0xd946ef, 0.45);
 
         const stageScale = stage.enemyScale ?? 1.0;
-        const scaledHp = Math.max(240, Math.round(def.hp * stageScale));
-        const scaledAtk = Math.max(32, Math.round(def.atk * 1.92 * Math.pow(stageScale, 1.14)));
+        const modId = stage.spireModifier?.id;
+        const hpMod = modId === 'STARLIGHT_SURGE' ? 1.12 : 1.0;
+        const atkMod = modId === 'SOLAR_OVERCHARGE' ? 1.15 : 1.0;
+        const brkMod = modId === 'IRON_VANGUARD' ? 1.25 : 1.0;
+        const scaledHp = Math.max(240, Math.round(def.hp * stageScale * hpMod));
+        const scaledAtk = Math.max(32, Math.round(def.atk * 1.92 * Math.pow(stageScale, 1.14) * atkMod));
         const scaledDef = Math.max(35, Math.round(def.def * Math.pow(stageScale, 0.68)));
 
         const enemyUnit: EnemyUnit = {
@@ -673,14 +690,14 @@ export class CombatEngine {
           brokenTimer: 0,
           brokenMaxTimer: 4.0,
           breakGauge: def.isBoss
-            ? 155 + (stage.chapter ?? 1) * 12
+            ? Math.round((155 + (stage.chapter ?? 1) * 12) * brkMod)
             : def.isMiniBoss
-              ? 95
+              ? Math.round(95 * brkMod)
               : 0,
           maxBreakGauge: def.isBoss
-            ? 155 + (stage.chapter ?? 1) * 12
+            ? Math.round((155 + (stage.chapter ?? 1) * 12) * brkMod)
             : def.isMiniBoss
-              ? 95
+              ? Math.round(95 * brkMod)
               : 0,
           hitShield: 0,
           maxHitShield: 0,
@@ -768,9 +785,13 @@ export class CombatEngine {
       ? attacker.stats.def * opts.multiplier + attacker.stats.atk * (opts.extraAtkMultiplier ?? 0)
       : attacker.stats.atk * atkBuffMult * opts.multiplier;
 
-    // Crit rate & Crit DMG with buffs + zones (Orion Beacon / Draven Caldera / Blade of First Eclipse)
+    // Crit rate & Crit DMG with buffs + zones (Orion Beacon / Draven Caldera / Blade of First Eclipse / Iron Vanguard Spire)
+    const activeStage = resolveAnyStageDef(this.stageId);
     let critRate = attacker.stats.critRate + (opts.bonusCritRate ?? 0);
-    let critDmg = attacker.stats.critDmg + attacker.eclipseCritStacks * 0.08;
+    let critDmg =
+      attacker.stats.critDmg +
+      attacker.eclipseCritStacks * 0.08 +
+      (activeStage.spireModifier?.id === 'IRON_VANGUARD' ? 0.25 : 0);
     if (attacker.critBuffTimer > 0) critRate += attacker.critBuffValue;
 
     for (const z of this.ctx.zones) {
@@ -823,9 +844,10 @@ export class CombatEngine {
       }
     }
 
-    // Stagger / Break Gauge depletion for Bosses & Mini-Bosses
+    // Stagger / Break Gauge depletion for Bosses & Mini-Bosses (scaled by Ashen Faction Break DMG bonus!)
     if (enemy.maxBreakGauge > 0 && !enemy.isBroken && enemy.hp > 0) {
-      const brkDmg = opts.breakDamage ?? (opts.isUlt ? 32 : opts.isSkill ? 14 : 2.6);
+      const baseBrk = opts.breakDamage ?? (opts.isUlt ? 32 : opts.isSkill ? 14 : 2.6);
+      const brkDmg = baseBrk * (1 + (attacker.stats.breakDmgBonus ?? 0));
       const appliedBrk = Math.min(enemy.breakGauge, brkDmg);
       attacker.staggerDealt += appliedBrk;
       enemy.breakGauge = Math.max(0, enemy.breakGauge - brkDmg);
@@ -1269,10 +1291,12 @@ export class CombatEngine {
       );
     }
 
-    // 2. Passive SP regen (0.45 SP/sec + Verdant 3-hero bonus)
+    // 2. Passive SP regen (0.45 SP/sec + Verdant 3-hero bonus + Spire Shadow Frenzy +25% SP!)
     const factionBonuses = getActiveFactionBonuses(this.ctx.heroes.map((h) => h.heroId));
     const verdant3 = factionBonuses.some((f) => f.faction === 'VERDANT' && f.tier === 3);
-    this.ctx.addSp(0.45 * (verdant3 ? 1.1 : 1.0) * dt);
+    const spireSpMult =
+      resolveAnyStageDef(this.stageId).spireModifier?.id === 'SHADOW_FRENZY' ? 1.25 : 1.0;
+    this.ctx.addSp(0.45 * (verdant3 ? 1.1 : 1.0) * spireSpMult * dt);
 
     // 3. Delayed multi-hit strikes
     for (let i = this.ctx.delayedStrikes.length - 1; i >= 0; i--) {
@@ -2341,7 +2365,11 @@ export class CombatEngine {
     player.recordDefeatedEnemies(Array.from(this.ctx.defeatedEnemyIds));
 
     const stage = resolveAnyStageDef(this.stageId);
-    const isFirstClear = victory && !stage.isDungeon && !player.clearedStages.includes(stage.id);
+    const isFirstClear =
+      victory &&
+      (stage.isSpire
+        ? (stage.spireFloor ?? 0) > (player.spireHighestFloor ?? 0)
+        : !stage.isDungeon && !player.clearedStages.includes(stage.id));
     const aliveHeroCount = this.ctx.heroes.filter((h) => h.alive).length;
     const starsEarned = !victory ? 0 : aliveHeroCount >= 4 ? 3 : aliveHeroCount >= 3 ? 2 : 1;
     const randBetween = ([a, b]: [number, number]) =>
@@ -2547,6 +2575,8 @@ export class CombatEngine {
       isDungeon: stage.isDungeon,
       dungeonId: stage.dungeonId,
       dungeonTier: stage.dungeonTier,
+      isSpire: stage.isSpire,
+      spireFloor: stage.spireFloor,
       starsEarned,
       droppedEquipment,
       droppedRelics,

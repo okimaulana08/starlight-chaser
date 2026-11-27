@@ -10,6 +10,7 @@ import { DungeonScreen } from './ui/DungeonScreen';
 import { GachaScreen } from './ui/GachaScreen';
 import { LobbyScreen } from './ui/LobbyScreen';
 import { ShopScreen } from './ui/ShopScreen';
+import { SpireScreen } from './ui/SpireScreen';
 import { SquadScreen } from './ui/SquadScreen';
 import { TitleScreen } from './ui/TitleScreen';
 
@@ -17,7 +18,7 @@ export const App: React.FC = () => {
   const [entered, setEntered] = useState(false);
   const [screen, setScreen] = useState<ScreenId>('LOBBY');
   const [activeStageId, setActiveStageId] = useState<string>('stage_1_1');
-  const [combatReturnScreen, setCombatReturnScreen] = useState<'LOBBY' | 'DUNGEON'>('LOBBY');
+  const [combatReturnScreen, setCombatReturnScreen] = useState<'LOBBY' | 'DUNGEON' | 'SPIRE'>('LOBBY');
   const [shopTab, setShopTab] = useState<ShopCategory>('GROWTH');
   const [dungeonFocus, setDungeonFocus] = useState<{
     dungeonId: DungeonId;
@@ -30,8 +31,11 @@ export const App: React.FC = () => {
     }
   }, [entered, screen]);
 
-  const handleStartCombat = (stageId: string, returnTo: 'LOBBY' | 'DUNGEON' = 'LOBBY') => {
-    if (!stageId.startsWith('dungeon__')) {
+  const handleStartCombat = (
+    stageId: string,
+    returnTo: 'LOBBY' | 'DUNGEON' | 'SPIRE' = 'LOBBY',
+  ) => {
+    if (!stageId.startsWith('dungeon__') && !stageId.startsWith('spire__')) {
       usePlayerStore.getState().setSelectedStage(stageId);
     }
     setCombatReturnScreen(returnTo);
@@ -93,6 +97,12 @@ export const App: React.FC = () => {
                 onBack={() => setScreen('LOBBY')}
                 onDeployDungeon={(stageId) => handleStartCombat(stageId, 'DUNGEON')}
                 onOpenShop={handleOpenShop}
+              />
+            )}
+            {screen === 'SPIRE' && (
+              <SpireScreen
+                onBack={() => setScreen('LOBBY')}
+                onDeploySpire={(stageId) => handleStartCombat(stageId, 'SPIRE')}
               />
             )}
             {screen === 'SQUAD' && (

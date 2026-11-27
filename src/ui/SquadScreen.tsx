@@ -29,7 +29,7 @@ import {
 } from '../data/materials';
 import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
-import { computeHeroStats, getActiveFactionBonuses } from '../engine/CombatMath';
+import { computeHeroStats, getSquadSynergyPills } from '../engine/CombatMath';
 import { MAX_RELIC_RANK, usePlayerStore } from '../store/usePlayerStore';
 import { getEnhanceCost, getSalvageYield } from '../systems/ForgeSystem';
 import type { DungeonId, EquipmentSlot, Faction } from '../types/game';
@@ -121,7 +121,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
     [heroDef, ownedHero, equipmentInventory, squadIds, unlockedCodexIds.length, relicRanks],
   );
 
-  const factionBonuses = useMemo(() => getActiveFactionBonuses(squadIds), [squadIds]);
+  const synergyPills = useMemo(() => getSquadSynergyPills(squadIds), [squadIds]);
   const equippedUidForSlot = ownedHero.equippedGear[activeSlot];
   const equippedItemForSlot =
     equipmentInventory.find((e) => e.uid === equippedUidForSlot) ?? null;
@@ -251,17 +251,18 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
             })}
           </div>
 
-          {factionBonuses.map((fb) => (
+          {synergyPills.map((syn) => (
             <span
-              key={fb.faction}
-              className="hidden 2xl:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border bg-slate-950/85 shrink-0"
+              key={syn.id}
+              title={`${syn.label}: ${syn.desc}`}
+              className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border bg-slate-950/85 shrink-0"
               style={{
-                borderColor: FACTIONS[fb.faction].color,
-                color: FACTIONS[fb.faction].color,
+                borderColor: syn.color,
+                color: syn.color,
               }}
             >
               <Crown className="w-3 h-3" />
-              {FACTIONS[fb.faction].name.split(' ')[0]} ({fb.count})
+              <span>{syn.shortLabel}</span>
             </span>
           ))}
         </div>

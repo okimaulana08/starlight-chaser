@@ -1,3 +1,4 @@
+import { FACTIONS, HARMONY_RESONANCE } from '../data/factions';
 import { HERO_MAP } from '../data/heroes';
 import { RELIC_MAP } from '../data/relics';
 import { getEnhancedMainStatValue } from '../data/equipment';
@@ -13,6 +14,15 @@ export interface ActiveFactionBonus {
   faction: Faction;
   count: number;
   tier: 0 | 2 | 3;
+}
+
+export interface SquadSynergyPill {
+  id: string;
+  label: string;
+  shortLabel: string;
+  color: string;
+  desc: string;
+  isHarmony?: boolean;
 }
 
 export interface ComputedHeroStats {
@@ -35,9 +45,19 @@ export interface ComputedHeroStats {
   startingGauge: number;
   aoeRadiusBonus: number;
   dmgBonusVsDebuffed: number;
+  breakDmgBonus: number;
   startShieldRatio: number;
   activeSets: Array<{ setId: EquipmentSetId; count: number }>;
   powerRating: number;
+}
+
+export function isFourFactionHarmony(squadIds: string[]): boolean {
+  const unique = new Set<Faction>();
+  for (const id of squadIds) {
+    const hero = HERO_MAP[id];
+    if (hero) unique.add(hero.faction);
+  }
+  return unique.size >= 4;
 }
 
 export function getActiveFactionBonuses(squadIds: string[]): ActiveFactionBonus[] {
@@ -58,6 +78,32 @@ export function getActiveFactionBonuses(squadIds: string[]): ActiveFactionBonus[
       count: counts[f],
       tier: counts[f] >= 3 ? 3 : 2,
     }));
+}
+
+export function getSquadSynergyPills(squadIds: string[]): SquadSynergyPill[] {
+  const pills: SquadSynergyPill[] = [];
+  if (isFourFactionHarmony(squadIds)) {
+    pills.push({
+      id: 'HARMONY',
+      label: HARMONY_RESONANCE.name,
+      shortLabel: 'HARMONY ×4',
+      color: HARMONY_RESONANCE.color,
+      desc: HARMONY_RESONANCE.desc,
+      isHarmony: true,
+    });
+    return pills;
+  }
+  for (const fb of getActiveFactionBonuses(squadIds)) {
+    const def = FACTIONS[fb.faction];
+    pills.push({
+      id: `${fb.faction}_${fb.tier}`,
+      label: `${def.name.split(' ')[0]} Resonance (${fb.count})`,
+      shortLabel: `${def.name.split(' ')[0].toUpperCase()} ×${fb.count}`,
+      color: def.color,
+      desc: fb.tier === 3 ? def.bonus3Desc : def.bonus2Desc,
+    });
+  }
+  return pills;
 }
 
 export function computeHeroStats(
@@ -98,6 +144,7 @@ export function computeHeroStats(
   let startingGauge = 0;
   let aoeRadiusBonus = 0;
   let dmgBonusVsDebuffed = 0;
+  let breakDmgBonus = 0;
   let startShieldRatio = 0;
 
   // 1. Equipped 4-slot gear + Set count
@@ -217,24 +264,31 @@ export function computeHeroStats(
     }
   }
 
-  // 4. Squad Faction Synergy Bonus (2-Hero / 3-Hero)
-  const factionBonuses = getActiveFactionBonuses(squadIds);
-  for (const fb of factionBonuses) {
-    if (fb.faction === 'SOLARIS') {
-      atkPct += fb.tier === 3 ? 0.2 : 0.1;
-      if (fb.tier === 3) startShieldRatio = Math.max(startShieldRatio, 0.15);
-    } else if (fb.faction === 'ASTRAL') {
-      skillDmgBonus += fb.tier === 3 ? 0.25 : 0.12;
-      if (fb.tier === 3) ultGaugeBonus += 0.15;
-    } else if (fb.faction === 'VERDANT') {
-      hpPct += 0.12;
-      if (fb.tier === 3) {
-        healBonus += 0.2;
-        spRegenBonus += 0.1;
+  // 4. Squad Faction Synergy Bonus (2-Hero / 3-Hero / 4-Faction Harmony!)
+  if (isFourFactionHarmony(squadIds)) {
+    atkPct += 0.1;
+    hpPct += 0.1;
+    defPct += 0.1;
+  } else {
+    const factionBonuses = getActiveFactionBonuses(squadIds);
+    for (const fb of factionBonuses) {
+      if (fb.faction === 'SOLARIS') {
+        atkPct += fb.tier === 3 ? 0.2 : 0.1;
+        if (fb.tier === 3) startShieldRatio = Math.max(startShieldRatio, 0.15);
+      } else if (fb.faction === 'ASTRAL') {
+        skillDmgBonus += fb.tier === 3 ? 0.25 : 0.12;
+        if (fb.tier === 3) ultGaugeBonus += 0.15;
+      } else if (fb.faction === 'VERDANT') {
+        hpPct += 0.12;
+        if (fb.tier === 3) {
+          healBonus += 0.2;
+          spRegenBonus += 0.1;
+        }
+      } else if (fb.faction === 'ASHEN') {
+        critRate += fb.tier === 3 ? 0.15 : 0.08;
+        breakDmgBonus += fb.tier === 3 ? 0.25 : 0.15;
+        if (fb.tier === 3) defIgnore += 0.15;
       }
-    } else if (fb.faction === 'ASHEN') {
-      critRate += fb.tier === 3 ? 0.15 : 0.08;
-      if (fb.tier === 3) defIgnore += 0.15;
     }
   }
 
@@ -275,6 +329,7 @@ export function computeHeroStats(
     startingGauge,
     aoeRadiusBonus,
     dmgBonusVsDebuffed,
+    breakDmgBonus,
     startShieldRatio,
     activeSets,
     powerRating,

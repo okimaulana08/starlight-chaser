@@ -38,9 +38,16 @@ export const FACTIONS: Record<Faction, FactionDef> = {
     biomeTheme: 'Volcanic ash, forged copper machinery, molten magma',
     color: '#f97316',
     accentHex: 0xf97316,
-    bonus2Desc: '+8% Squad Crit Rate',
-    bonus3Desc: '+15% Squad Crit Rate & Ignore 15% Enemy DEF',
+    bonus2Desc: '+8% Squad Crit Rate & +15% Boss Break DMG',
+    bonus3Desc: '+15% Squad Crit Rate, Ignore 15% Enemy DEF & +25% Boss Break DMG',
   },
+};
+
+export const HARMONY_RESONANCE = {
+  id: 'HARMONY' as const,
+  name: '4-Faction Harmony',
+  color: '#e879f9',
+  desc: '+10% Squad ATK/HP/DEF & +1.0 Starting SP',
 };
 
 export const FACTION_LIST: FactionDef[] = Object.values(FACTIONS);

@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
+  DAILY_ACTIVITY_MILESTONES,
+  DAILY_COMMISSIONS,
+  PERMANENT_COMMISSIONS,
+  computeDailyActivityPoints,
+  type CommissionReward,
+} from '../data/commissions';
+import {
   DAILY_DUNGEON_FREE_ENTRIES,
   buildDungeonStageDef,
   getDungeonTierStarKey,
@@ -168,6 +175,14 @@ export function buildDefaultSaveState(): PlayerSaveState {
     dungeonEntriesUsed: {},
     dungeonResetDay: getTodayKey(),
     dungeonBestStars: {},
+    spireHighestFloor: 0,
+    spireLastSweepDay: '',
+    commissionResetDay: getTodayKey(),
+    dailyCommissionProgress: {},
+    claimedDailyCommissions: [],
+    claimedActivityMilestones: [],
+    claimedPermanentCommissions: [],
+    lifetimeLinkBursts: 0,
     lastManualSaveAt: 0,
   };
 }
@@ -246,6 +261,23 @@ interface PlayerStore extends PlayerSaveState {
   recordDefeatedEnemies: (enemyIds: string[]) => void;
   applyCombatRewards: (summary: CombatLootSummary) => void;
   claimDailySupply: () => { ok: boolean; message: string };
+  sweepSpireDaily: () => {
+    ok: boolean;
+    message: string;
+    rewards?: {
+      gold: number;
+      crystals: number;
+      expPotions: number;
+      forgeStones: number;
+      starCores: number;
+      relicFragments: number;
+    };
+  };
+  claimDailyCommission: (id: string) => { ok: boolean; message: string };
+  claimActivityMilestone: (points: number) => { ok: boolean; message: string };
+  claimPermanentCommission: (id: string) => { ok: boolean; message: string };
+  claimAllCommissions: () => { ok: boolean; count: number; message: string };
+  getClaimableCommissionsCount: () => number;
   resetSave: () => void;
 }
 
@@ -302,6 +334,52 @@ function addRelicToState(
     isNew: false,
     newRank: MAX_RELIC_RANK,
     bonusFragments: bonusFrags,
+  };
+}
+
+function applyCommissionReward(
+  state: PlayerSaveState,
+  reward: CommissionReward,
+): Partial<PlayerSaveState> {
+  const patch: Partial<PlayerSaveState> = {};
+  if (reward.gold) patch.gold = state.gold + reward.gold;
+  if (reward.crystals) patch.starlightCrystals = state.starlightCrystals + reward.crystals;
+  if (reward.expPotions) patch.expPotions = state.expPotions + reward.expPotions;
+  if (reward.forgeStones) patch.forgeStones = state.forgeStones + reward.forgeStones;
+  if (reward.starIronIngots) patch.starIronIngots = state.starIronIngots + reward.starIronIngots;
+  if (reward.starCores) patch.starCores = state.starCores + reward.starCores;
+  if (reward.relicFragments) patch.relicFragments = state.relicFragments + reward.relicFragments;
+  if (reward.bondGifts) patch.bondGifts = state.bondGifts + reward.bondGifts;
+  if (reward.dungeonTickets) patch.dungeonTickets = (state.dungeonTickets ?? 0) + reward.dungeonTickets;
+  if (reward.gearCrateRarity) {
+    const gear = generateEquipment({ rarity: reward.gearCrateRarity });
+    patch.equipmentInventory = [gear, ...state.equipmentInventory];
+  }
+  return patch;
+}
+
+function bumpDailyProgress(
+  state: PlayerSaveState,
+  increments: Record<string, number>,
+): Pick<
+  PlayerSaveState,
+  'commissionResetDay' | 'dailyCommissionProgress' | 'claimedDailyCommissions' | 'claimedActivityMilestones'
+> {
+  const today = getTodayKey();
+  const sameDay = state.commissionResetDay === today;
+  const progress: Record<string, number> = sameDay ? { ...(state.dailyCommissionProgress ?? {}) } : {};
+  const claimedDaily = sameDay ? [...(state.claimedDailyCommissions ?? [])] : [];
+  const claimedMilestones = sameDay ? [...(state.claimedActivityMilestones ?? [])] : [];
+  for (const [k, delta] of Object.entries(increments)) {
+    if (delta > 0) {
+      progress[k] = (progress[k] ?? 0) + delta;
+    }
+  }
+  return {
+    commissionResetDay: today,
+    dailyCommissionProgress: progress,
+    claimedDailyCommissions: claimedDaily,
+    claimedActivityMilestones: claimedMilestones,
   };
 }
 
@@ -1196,7 +1274,11 @@ export const usePlayerStore = create<PlayerStore>()(
           };
         }
 
-        set({ roster: nextRoster, equipmentInventory: nextInv });
+        set({
+          roster: nextRoster,
+          equipmentInventory: nextInv,
+          ...bumpDailyProgress(state, { daily_forge_gear: 1 }),
+        });
         const powerAfter = computeHeroStats(
           def,
           nextRoster[heroId],
@@ -1308,6 +1390,7 @@ export const usePlayerStore = create<PlayerStore>()(
           starIronIngots: state.starIronIngots - cost.starIronIngots,
           astralAnvilCores: state.astralAnvilCores - cost.astralAnvilCores,
           equipmentInventory: nextInv,
+          ...bumpDailyProgress(state, { daily_forge_gear: 1 }),
         });
 
         if (!succeeded) {
@@ -1559,6 +1642,7 @@ export const usePlayerStore = create<PlayerStore>()(
           ownedRelics: nextRelics,
           relicRanks: nextRelicRanks,
           unlockedCodexIds: nextCodex,
+          ...bumpDailyProgress(state, { daily_summon_or_supply: 1 }),
         });
 
         return { ok: true, results: out.results };
@@ -1684,11 +1768,16 @@ export const usePlayerStore = create<PlayerStore>()(
       applyCombatRewards: (summary) => {
         if (!summary.victory) return;
         const state = get();
-        const cleared = summary.isDungeon
-          ? state.clearedStages
-          : state.clearedStages.includes(summary.stageId)
+        const cleared =
+          summary.isDungeon || summary.isSpire
             ? state.clearedStages
-            : [...state.clearedStages, summary.stageId];
+            : state.clearedStages.includes(summary.stageId)
+              ? state.clearedStages
+              : [...state.clearedStages, summary.stageId];
+        const nextSpireHighest =
+          summary.isSpire && summary.spireFloor
+            ? Math.max(state.spireHighestFloor ?? 0, summary.spireFloor)
+            : (state.spireHighestFloor ?? 0);
 
         const today = getTodayKey();
         let nextDungeonEntriesUsed =
@@ -1748,6 +1837,15 @@ export const usePlayerStore = create<PlayerStore>()(
           }
         }
 
+        const linkBurstsEarned = summary.battleReport?.linkBursts ?? 0;
+        const bossBreaksEarned = summary.battleReport?.bossBreaks ?? 0;
+        const dailyBump = bumpDailyProgress(state, {
+          daily_clear_battles: 1,
+          daily_boss_break: bossBreaksEarned,
+          daily_link_burst: linkBurstsEarned,
+          daily_spire_ascent: summary.isSpire ? 1 : 0,
+        });
+
         set({
           gold: state.gold + summary.goldEarned,
           starlightCrystals: state.starlightCrystals + summary.crystalsEarned,
@@ -1769,6 +1867,9 @@ export const usePlayerStore = create<PlayerStore>()(
           dungeonEntriesUsed: nextDungeonEntriesUsed,
           dungeonResetDay: nextDungeonResetDay,
           dungeonBestStars: nextDungeonBestStars,
+          spireHighestFloor: nextSpireHighest,
+          lifetimeLinkBursts: (state.lifetimeLinkBursts ?? 0) + linkBurstsEarned,
+          ...dailyBump,
         });
       },
 
@@ -1799,11 +1900,167 @@ export const usePlayerStore = create<PlayerStore>()(
             ASHEN: state.factionEssences.ASHEN + 1,
           },
           lastDailySupplyAt: now,
+          ...bumpDailyProgress(state, { daily_summon_or_supply: 1 }),
         });
         return {
           ok: true,
           message: 'Claimed Supply! +1,800g • +160 Crystals • +4 EXP • +5 Stones • +1 Core • +1 Rift Ticket',
         };
+      },
+
+      sweepSpireDaily: () => {
+        const state = get();
+        const highest = state.spireHighestFloor ?? 0;
+        if (highest < 1) {
+          return { ok: false, message: 'Clear Astral Spire Floor 1 first to unlock Daily Spire Tribute!' };
+        }
+        const today = getTodayKey();
+        if (state.spireLastSweepDay === today) {
+          return { ok: false, message: 'Daily Spire Tribute already claimed today! Return tomorrow.' };
+        }
+        const rewards = {
+          gold: Math.round(1400 + highest * 420),
+          crystals: Math.min(360, 60 + Math.floor(highest / 2) * 12),
+          expPotions: 2 + Math.floor(highest / 6),
+          forgeStones: 3 + Math.floor(highest / 4),
+          starCores: Math.max(1, Math.floor(highest / 10) + 1),
+          relicFragments: 2 + Math.floor(highest / 5),
+        };
+        set({
+          gold: state.gold + rewards.gold,
+          starlightCrystals: state.starlightCrystals + rewards.crystals,
+          expPotions: state.expPotions + rewards.expPotions,
+          forgeStones: state.forgeStones + rewards.forgeStones,
+          starCores: state.starCores + rewards.starCores,
+          relicFragments: state.relicFragments + rewards.relicFragments,
+          spireLastSweepDay: today,
+          ...bumpDailyProgress(state, { daily_spire_ascent: 1, daily_clear_battles: 1 }),
+        });
+        return {
+          ok: true,
+          message: `Daily Spire Tribute (Floor ${highest}): +${rewards.crystals} Crystals • +${rewards.gold.toLocaleString()}g • +${rewards.relicFragments} Relic Frags!`,
+          rewards,
+        };
+      },
+
+      claimDailyCommission: (id) => {
+        const state = get();
+        const def = DAILY_COMMISSIONS.find((c) => c.id === id);
+        if (!def) return { ok: false, message: 'Commission not found.' };
+        const today = getTodayKey();
+        const sameDay = state.commissionResetDay === today;
+        const progress = sameDay ? (state.dailyCommissionProgress?.[id] ?? 0) : 0;
+        const claimed = sameDay ? (state.claimedDailyCommissions ?? []) : [];
+        if (claimed.includes(id)) return { ok: false, message: 'Already claimed today!' };
+        if (progress < def.target) return { ok: false, message: `Progress ${progress}/${def.target} not complete yet.` };
+
+        const rewardPatch = applyCommissionReward(state, def.reward);
+        set({
+          ...rewardPatch,
+          commissionResetDay: today,
+          dailyCommissionProgress: sameDay ? { ...(state.dailyCommissionProgress ?? {}) } : {},
+          claimedDailyCommissions: [...claimed, id],
+          claimedActivityMilestones: sameDay ? [...(state.claimedActivityMilestones ?? [])] : [],
+        });
+        return { ok: true, message: `Claimed ${def.title} (+${def.activityPoints} Activity Pts)!` };
+      },
+
+      claimActivityMilestone: (points) => {
+        const state = get();
+        const def = DAILY_ACTIVITY_MILESTONES.find((m) => m.points === points);
+        if (!def) return { ok: false, message: 'Activity chest not found.' };
+        const today = getTodayKey();
+        const sameDay = state.commissionResetDay === today;
+        const claimedDaily = sameDay ? (state.claimedDailyCommissions ?? []) : [];
+        const claimedMilestones = sameDay ? (state.claimedActivityMilestones ?? []) : [];
+        const currentPts = computeDailyActivityPoints(claimedDaily);
+        if (claimedMilestones.includes(points)) return { ok: false, message: 'Activity chest already claimed!' };
+        if (currentPts < points) return { ok: false, message: `Need ${points} Activity Points (Current: ${currentPts}).` };
+
+        const rewardPatch = applyCommissionReward(state, def.reward);
+        set({
+          ...rewardPatch,
+          commissionResetDay: today,
+          claimedActivityMilestones: [...claimedMilestones, points],
+        });
+        return { ok: true, message: `Opened ${def.label} (${points} pts)!` };
+      },
+
+      claimPermanentCommission: (id) => {
+        const state = get();
+        const def = PERMANENT_COMMISSIONS.find((c) => c.id === id);
+        if (!def) return { ok: false, message: 'Milestone not found.' };
+        const claimed = state.claimedPermanentCommissions ?? [];
+        if (claimed.includes(id)) return { ok: false, message: 'Already claimed!' };
+        const prog = def.getProgress(state);
+        if (prog < def.target) return { ok: false, message: `Progress ${prog}/${def.target} not complete.` };
+
+        const rewardPatch = applyCommissionReward(state, def.reward);
+        set({
+          ...rewardPatch,
+          claimedPermanentCommissions: [...claimed, id],
+        });
+        return { ok: true, message: `Claimed Milestone: ${def.title}!` };
+      },
+
+      claimAllCommissions: () => {
+        let count = 0;
+        const today = getTodayKey();
+        for (const c of DAILY_COMMISSIONS) {
+          const st = get();
+          const sameDay = st.commissionResetDay === today;
+          const prog = sameDay ? (st.dailyCommissionProgress?.[c.id] ?? 0) : 0;
+          const claimed = sameDay ? (st.claimedDailyCommissions ?? []) : [];
+          if (prog >= c.target && !claimed.includes(c.id)) {
+            if (get().claimDailyCommission(c.id).ok) count += 1;
+          }
+        }
+        for (const m of DAILY_ACTIVITY_MILESTONES) {
+          const st = get();
+          const sameDay = st.commissionResetDay === today;
+          const claimedDaily = sameDay ? (st.claimedDailyCommissions ?? []) : [];
+          const claimedMs = sameDay ? (st.claimedActivityMilestones ?? []) : [];
+          if (computeDailyActivityPoints(claimedDaily) >= m.points && !claimedMs.includes(m.points)) {
+            if (get().claimActivityMilestone(m.points).ok) count += 1;
+          }
+        }
+        for (const p of PERMANENT_COMMISSIONS) {
+          const st = get();
+          if (
+            p.getProgress(st) >= p.target &&
+            !(st.claimedPermanentCommissions ?? []).includes(p.id)
+          ) {
+            if (get().claimPermanentCommission(p.id).ok) count += 1;
+          }
+        }
+        if (count === 0) return { ok: false, count: 0, message: 'No completed commissions ready to claim.' };
+        return { ok: true, count, message: `Claimed ${count} commission reward${count > 1 ? 's' : ''}!` };
+      },
+
+      getClaimableCommissionsCount: () => {
+        const st = get();
+        const today = getTodayKey();
+        const sameDay = st.commissionResetDay === today;
+        const claimedDaily = sameDay ? (st.claimedDailyCommissions ?? []) : [];
+        const claimedMs = sameDay ? (st.claimedActivityMilestones ?? []) : [];
+        let total = 0;
+        for (const c of DAILY_COMMISSIONS) {
+          const prog = sameDay ? (st.dailyCommissionProgress?.[c.id] ?? 0) : 0;
+          if (prog >= c.target && !claimedDaily.includes(c.id)) total += 1;
+        }
+        const pts = computeDailyActivityPoints(claimedDaily);
+        for (const m of DAILY_ACTIVITY_MILESTONES) {
+          if (pts >= m.points && !claimedMs.includes(m.points)) total += 1;
+        }
+        for (const p of PERMANENT_COMMISSIONS) {
+          if (
+            p.getProgress(st) >= p.target &&
+            !(st.claimedPermanentCommissions ?? []).includes(p.id)
+          ) {
+            total += 1;
+          }
+        }
+        return total;
       },
 
       resetSave: () => set(buildDefaultSaveState()),

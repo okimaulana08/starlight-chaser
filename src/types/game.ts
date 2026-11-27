@@ -2,7 +2,7 @@ export type Tier = 'R' | 'SR' | 'SSR';
 export type Role = 'TANK' | 'ASSAULT' | 'RANGER' | 'MAGE' | 'HEALER';
 export type Faction = 'SOLARIS' | 'ASTRAL' | 'VERDANT' | 'ASHEN';
 export type AimType = 'CIRCLE' | 'CONE' | 'LINE' | 'DASH' | 'SELF';
-export type ScreenId = 'LOBBY' | 'COMBAT' | 'SQUAD' | 'GACHA' | 'CODEX' | 'SHOP' | 'DUNGEON';
+export type ScreenId = 'LOBBY' | 'COMBAT' | 'SQUAD' | 'GACHA' | 'CODEX' | 'SHOP' | 'DUNGEON' | 'SPIRE';
 
 export type DungeonId =
   | 'GOLD_VAULT'
@@ -283,6 +283,14 @@ export interface StageDef {
   isDungeon?: boolean;
   dungeonId?: DungeonId;
   dungeonTier?: number;
+  isSpire?: boolean;
+  spireFloor?: number;
+  spireModifier?: {
+    id: string;
+    name: string;
+    desc: string;
+    color: string;
+  };
   combatExpMultiplier?: number;
   rewards: {
     gold: [number, number];
@@ -415,6 +423,14 @@ export interface PlayerSaveState {
   dungeonEntriesUsed: Record<string, number>;
   dungeonResetDay: string;
   dungeonBestStars: Record<string, number>;
+  spireHighestFloor: number;
+  spireLastSweepDay: string;
+  commissionResetDay: string;
+  dailyCommissionProgress: Record<string, number>;
+  claimedDailyCommissions: string[];
+  claimedActivityMilestones: number[];
+  claimedPermanentCommissions: string[];
+  lifetimeLinkBursts: number;
   lastManualSaveAt: number;
 }
 
@@ -564,6 +580,8 @@ export interface CombatLootSummary {
   isDungeon?: boolean;
   dungeonId?: DungeonId;
   dungeonTier?: number;
+  isSpire?: boolean;
+  spireFloor?: number;
   starsEarned?: number;
   droppedEquipment: EquipmentInstance[];
   droppedRelics: DroppedRelicSummary[];

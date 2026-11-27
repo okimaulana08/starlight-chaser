@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Crosshair,
+  Crown,
   Flame,
   Heart,
   LogOut,
@@ -16,12 +17,14 @@ import {
   Wind,
   Zap,
 } from 'lucide-react';
-import { parseDungeonStageId } from '../data/dungeons';
+import { parseDungeonStageId, resolveAnyStageDef } from '../data/dungeons';
 import { HERO_MAP } from '../data/heroes';
+import { SPIRE_MAX_FLOOR, encodeSpireStageId, parseSpireStageId } from '../data/spire';
 import { getNextStageId, isStageUnlocked, STAGE_MAP } from '../data/stages';
 import { getFallbackCardSvg } from '../engine/AssetManager';
 import { audioManager } from '../engine/AudioManager';
 import { CombatEngine } from '../engine/CombatEngine';
+import { getSquadSynergyPills } from '../engine/CombatMath';
 import { useCombatStore } from '../store/useCombatStore';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -76,16 +79,23 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
   const [showCombatSettings, setShowCombatSettings] = useState(false);
   const { muted, toggleMuted } = useSettingsStore();
   const clearedStages = usePlayerStore((s) => s.clearedStages);
+  const squadIds = usePlayerStore((s) => s.squadIds);
   const getDungeonEntriesLeft = usePlayerStore((s) => s.getDungeonEntriesLeft);
   const parsedDungeon = parseDungeonStageId(stageId);
+  const parsedSpireFloor = parseSpireStageId(stageId);
   const isDungeonStage = Boolean(parsedDungeon);
+  const isSpireStage = parsedSpireFloor !== null;
+  const resolvedStageDef = resolveAnyStageDef(stageId);
+  const activeSynergies = getSquadSynergyPills(squadIds);
   const dungeonCanReplay = parsedDungeon
     ? getDungeonEntriesLeft(parsedDungeon.dungeonId).canEnter
     : true;
-  const nextStageId = isDungeonStage ? null : getNextStageId(stageId);
+  const nextStageId = isDungeonStage || isSpireStage ? null : getNextStageId(stageId);
   const candidateNext = nextStageId ? STAGE_MAP[nextStageId] : null;
   const nextStage =
     candidateNext && isStageUnlocked(candidateNext, clearedStages) ? candidateNext : null;
+  const nextSpireFloor =
+    isSpireStage && parsedSpireFloor < SPIRE_MAX_FLOOR ? parsedSpireFloor + 1 : null;
 
   const {
     paused,
@@ -182,6 +192,36 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
               <span className="font-mono text-[10px] text-emerald-400 hidden md:inline ls-hide shrink-0">
                 {fps} FPS
               </span>
+              {/* Active Faction Resonance & Spire Modifier Badges */}
+              {activeSynergies.map((syn) => (
+                <span
+                  key={syn.id}
+                  title={`${syn.label}: ${syn.desc}`}
+                  className="hidden lg:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-display font-black uppercase border shrink-0"
+                  style={{
+                    color: syn.color,
+                    borderColor: `${syn.color}88`,
+                    backgroundColor: `${syn.color}18`,
+                  }}
+                >
+                  <Crown className="w-2.5 h-2.5" />
+                  {syn.shortLabel}
+                </span>
+              ))}
+              {resolvedStageDef.spireModifier && (
+                <span
+                  title={`${resolvedStageDef.spireModifier.name}: ${resolvedStageDef.spireModifier.desc}`}
+                  className="hidden xl:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-display font-black uppercase border shrink-0"
+                  style={{
+                    color: resolvedStageDef.spireModifier.color,
+                    borderColor: `${resolvedStageDef.spireModifier.color}88`,
+                    backgroundColor: `${resolvedStageDef.spireModifier.color}18`,
+                  }}
+                >
+                  <Zap className="w-2.5 h-2.5" />
+                  {resolvedStageDef.spireModifier.name}
+                </span>
+              )}
             </div>
 
             {/* Rounded Tactile Auto, Speed 1x/2x & Pause Controls */}
@@ -892,7 +932,11 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                 onClick={onExit}
                 className="w-full py-2.5 rounded-xl bg-rose-950/75 border border-rose-500/50 text-rose-200 font-bold text-xs uppercase tracking-wider hover:bg-rose-900/75"
               >
-                {isDungeonStage ? 'Return to Rift Dungeons' : 'Retreat to Command Deck'}
+                {isSpireStage
+                  ? 'Return to Astral Spire'
+                  : isDungeonStage
+                    ? 'Return to Rift Dungeons'
+                    : 'Retreat to Command Deck'}
               </button>
             </div>
           </div>
@@ -910,10 +954,16 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
         <VictoryOverlay
           result={combatResult}
           heroesSnapshot={heroes}
-          nextStageCode={nextStage?.code}
-          onNextStage={nextStage ? () => onSelectStage(nextStage.id) : undefined}
+          nextStageCode={nextSpireFloor ? `Floor ${nextSpireFloor}` : nextStage?.code}
+          onNextStage={
+            nextSpireFloor
+              ? () => onSelectStage(encodeSpireStageId(nextSpireFloor))
+              : nextStage
+                ? () => onSelectStage(nextStage.id)
+                : undefined
+          }
           canReplay={dungeonCanReplay}
-          exitLabel={isDungeonStage ? 'Dungeons' : 'Lobby'}
+          exitLabel={isSpireStage ? 'Astral Spire' : isDungeonStage ? 'Dungeons' : 'Lobby'}
           onReplay={() => setRunSeed((s) => s + 1)}
           onExit={onExit}
         />

@@ -9,6 +9,7 @@ import type {
   StageWave,
 } from '../types/game';
 import { STAGE_MAP } from './stages';
+import { buildSpireStageDef, parseSpireStageId } from './spire';
 
 export const DAILY_DUNGEON_FREE_ENTRIES = 3;
 
@@ -526,10 +527,14 @@ export function buildDungeonStageDef(
 }
 
 /**
- * Resolves ANY battle stageId — either a Campaign Stage (`stage_1_1`..`stage_10_12`)
- * or a dynamic Farming Dungeon Stage (`dungeon__GOLD_VAULT__1__...`).
+ * Resolves ANY battle stageId — Campaign Stage (`stage_1_1`..`stage_10_12`),
+ * Rift Farming Dungeon (`dungeon__GOLD_VAULT__1__...`), or Astral Spire Floor (`spire__1`..`spire__50`).
  */
 export function resolveAnyStageDef(stageId: string): StageDef {
+  const spireFloor = parseSpireStageId(stageId);
+  if (spireFloor !== null) {
+    return buildSpireStageDef(spireFloor);
+  }
   const parsed = parseDungeonStageId(stageId);
   if (parsed) {
     return buildDungeonStageDef(parsed.dungeonId, parsed.tier, {

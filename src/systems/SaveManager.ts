@@ -108,6 +108,17 @@ export function extractPlayerSaveState(raw: PlayerSaveState): PlayerSaveState {
     dungeonEntriesUsed: raw.dungeonEntriesUsed && typeof raw.dungeonEntriesUsed === 'object' ? raw.dungeonEntriesUsed : {},
     dungeonResetDay: typeof raw.dungeonResetDay === 'string' ? raw.dungeonResetDay : base.dungeonResetDay,
     dungeonBestStars: raw.dungeonBestStars && typeof raw.dungeonBestStars === 'object' ? raw.dungeonBestStars : {},
+    spireHighestFloor: Number.isFinite(raw.spireHighestFloor) ? Math.max(0, Math.min(50, Math.round(raw.spireHighestFloor))) : 0,
+    spireLastSweepDay: typeof raw.spireLastSweepDay === 'string' ? raw.spireLastSweepDay : '',
+    commissionResetDay: typeof raw.commissionResetDay === 'string' ? raw.commissionResetDay : base.commissionResetDay,
+    dailyCommissionProgress:
+      raw.dailyCommissionProgress && typeof raw.dailyCommissionProgress === 'object'
+        ? raw.dailyCommissionProgress
+        : {},
+    claimedDailyCommissions: Array.isArray(raw.claimedDailyCommissions) ? raw.claimedDailyCommissions : [],
+    claimedActivityMilestones: Array.isArray(raw.claimedActivityMilestones) ? raw.claimedActivityMilestones : [],
+    claimedPermanentCommissions: Array.isArray(raw.claimedPermanentCommissions) ? raw.claimedPermanentCommissions : [],
+    lifetimeLinkBursts: Number.isFinite(raw.lifetimeLinkBursts) ? Math.max(0, Math.round(raw.lifetimeLinkBursts)) : 0,
     lastManualSaveAt: Number.isFinite(raw.lastManualSaveAt) ? raw.lastManualSaveAt : Date.now(),
   };
 }
