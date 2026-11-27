@@ -40,6 +40,7 @@ import {
 import type { CombatContext, EnemyUnit, GroundZone, HeroUnit } from './CombatTypes';
 import { EnemyAI } from './EnemyAI';
 import { getHeroHitStyle } from './HeroVfxChoreographer';
+import { LiveMeshActor } from './LiveMeshActor';
 import { ObjectPool } from './ObjectPool';
 import { SkillExecutor } from './SkillExecutor';
 import { SquadController } from './SquadController';
@@ -309,6 +310,12 @@ export class CombatEngine {
       spawnHitImpact: (x, y, style, color, isCrit) => {
         this.pool.spawnHitImpact(x, y, style, color, isCrit);
       },
+      spawnFootstepDust: (x, y, vx, vy, scale, tint) => {
+        this.pool.spawnFootstepDust(x, y, vx, vy, scale, tint);
+      },
+      spawnGhostAfterimage: (texture, x, y, scaleX, scaleY, tint, alpha, life) => {
+        this.pool.spawnGhostAfterimage(texture, x, y, scaleX, scaleY, tint, alpha, life);
+      },
       triggerArenaDim: (color, duration, peakAlpha = 0.44) => {
         this.dimColor = color;
         this.dimMaxDuration = Math.max(0.25, duration);
@@ -385,16 +392,15 @@ export class CombatEngine {
       const container = new Container();
       const auraGfx = new Graphics();
       const tex = getProceduralHeroTexture(this.app.renderer, def);
-      const sprite = new Sprite(tex);
-      sprite.anchor.set(0.5, 0.92);
-      sprite.scale.set(0.9);
+      const liveMesh = new LiveMeshActor(tex, 0.92);
+      liveMesh.mesh.scale.set(0.9);
       const weaponGfx = buildHeroWeaponGraphic(def.role, def.themeColor);
       weaponGfx.position.set(34, -36);
       const hpBarGfx = new Graphics();
 
-      // Grounded shadow beneath boots
+      // Grounded dynamic contact shadow beneath boots
       const heroShadow = new Graphics();
-      heroShadow.ellipse(0, 2, 34, 11).fill({ color: 0x050814, alpha: 0.42 });
+      heroShadow.ellipse(0, 2, 34, 11).fill({ color: 0x050814, alpha: 0.46 });
 
       // Fallback portrait crest container (auto-hidden when real full-body battle sprite loads!)
       const fallbackCrestGroup = new Container();
@@ -402,7 +408,7 @@ export class CombatEngine {
 
       container.addChild(heroShadow);
       container.addChild(auraGfx);
-      container.addChild(sprite);
+      container.addChild(liveMesh.mesh);
       container.addChild(fallbackCrestGroup);
       container.addChild(weaponGfx);
       container.addChild(hpBarGfx);
@@ -465,10 +471,22 @@ export class CombatEngine {
         hitFlashTimer: 0,
         animTime: idx * 0.6,
         attackSwingTimer: 0,
+        attackSwingDuration: 0.24,
+        knockVx: 0,
+        knockVy: 0,
+        visualFacing: 1,
+        stridePhase: idx * 1.4,
+        stepDustGate: 0,
+        springLean: 0,
+        springLeanVel: 0,
+        squashX: 1,
+        squashY: 1,
+        dashState: null,
         totalDamage: 0,
         totalHealing: 0,
         container,
-        sprite,
+        liveMesh,
+        shadowGfx: heroShadow,
         fallbackCrestGroup,
         hasFullSprite: false,
         baseScaleY: 0.9,
@@ -478,15 +496,14 @@ export class CombatEngine {
       };
       this.ctx.heroes.push(heroUnit);
 
-      // Load real full-body transparent anime battle sprite if present!
+      // Load real full-body transparent anime battle sprite onto LiveMeshActor!
       const spriteUrl = `/assets/sprites/battle_${def.id}.webp`;
       tryLoadPixiTexture(spriteUrl).then((loaded) => {
-        if (!loaded || this.destroyed || sprite.destroyed) return;
-        sprite.texture = loaded;
+        if (!loaded || this.destroyed || liveMesh.mesh.destroyed) return;
+        liveMesh.setTexture(loaded, 0.95);
         const targetH = def.role === 'TANK' ? 152 : 142;
         const sc = targetH / Math.max(1, loaded.height);
-        sprite.scale.set(sc);
-        sprite.anchor.set(0.5, 0.95);
+        liveMesh.mesh.scale.set(sc);
         heroUnit.hasFullSprite = true;
         heroUnit.baseScaleY = sc;
         fallbackCrestGroup.visible = false;
@@ -522,26 +539,25 @@ export class CombatEngine {
       for (let i = 0; i < group.count; i++) {
         const container = new Container();
         const tex = getProceduralEnemyTexture(this.app.renderer, def);
-        const sprite = new Sprite(tex);
-        sprite.anchor.set(0.5, 0.94);
+        const liveMesh = new LiveMeshActor(tex, 0.94);
         const defaultScale = def.isBoss ? 1.05 : def.scale * 0.86;
-        sprite.scale.set(defaultScale);
+        liveMesh.mesh.scale.set(defaultScale);
 
-        // Grounded contact shadow beneath every enemy & boss
+        // Grounded dynamic contact shadow beneath every enemy & boss
         const shadowGfx = new Graphics();
         if (def.isBoss) {
-          shadowGfx.ellipse(0, 4, 92, 26).fill({ color: 0x07040f, alpha: 0.48 });
+          shadowGfx.ellipse(0, 4, 92, 26).fill({ color: 0x07040f, alpha: 0.5 });
           shadowGfx.ellipse(0, 4, 100, 30).stroke({ color: 0xd946ef, width: 3, alpha: 0.65 });
         } else if (def.isMiniBoss) {
-          shadowGfx.ellipse(0, 3, 52, 16).fill({ color: 0x07040f, alpha: 0.45 });
+          shadowGfx.ellipse(0, 3, 52, 16).fill({ color: 0x07040f, alpha: 0.48 });
         } else {
-          shadowGfx.ellipse(0, 2, 32, 10).fill({ color: 0x07040f, alpha: 0.42 });
+          shadowGfx.ellipse(0, 2, 32, 10).fill({ color: 0x07040f, alpha: 0.44 });
         }
 
         const hpBarGfx = new Graphics();
         const statusGfx = new Graphics();
         container.addChild(shadowGfx);
-        container.addChild(sprite);
+        container.addChild(liveMesh.mesh);
         container.addChild(hpBarGfx);
         container.addChild(statusGfx);
         this.actorLayer.addChild(container);
@@ -552,6 +568,7 @@ export class CombatEngine {
         const spawnY = def.isBoss
           ? 740
           : BOUNDS.minY + 130 + ((spawnIdx * 173) % (BOUNDS.maxY - BOUNDS.minY - 260));
+        const flankAngle = ((spawnIdx % 6) - 2.5) * 0.72 + (Math.random() - 0.5) * 0.25;
         spawnIdx++;
 
         container.position.set(spawnX, spawnY);
@@ -567,7 +584,20 @@ export class CombatEngine {
           def,
           x: spawnX,
           y: spawnY,
+          vx: 0,
+          vy: 0,
+          knockVx: 0,
+          knockVy: 0,
           facing: -1,
+          visualFacing: -1,
+          stridePhase: Math.random() * Math.PI * 2,
+          stepDustGate: 0,
+          springLean: 0,
+          springLeanVel: 0,
+          squashX: 1,
+          squashY: 1,
+          flankAngle,
+          dashState: null,
           hp: scaledHp,
           maxHp: scaledHp,
           atk: scaledAtk,
@@ -607,20 +637,23 @@ export class CombatEngine {
           maxHitShield: 0,
           hitFlashTimer: 0,
           animTime: Math.random() * 4,
+          attackSwingTimer: 0,
+          attackSwingDuration: 0.28,
           baseScaleY: defaultScale,
           container,
-          sprite,
+          liveMesh,
+          shadowGfx,
           hpBarGfx,
           statusGfx,
         };
         this.ctx.enemies.push(enemyUnit);
 
-        // Auto-load real transparent WebP sprite for ALL enemies (Minions + All 10 Chapter Bosses!)
+        // Auto-load real transparent WebP sprite onto LiveMeshActor for ALL enemies (Minions + All 10 Chapter Bosses!)
         const enemySpriteUrl = def.isBoss && stage.bossAssetOverride ? stage.bossAssetOverride : def.assetKey;
         if (enemySpriteUrl.startsWith('/assets/')) {
           tryLoadPixiTexture(enemySpriteUrl).then((loaded) => {
-            if (!loaded || this.destroyed || sprite.destroyed) return;
-            sprite.texture = loaded;
+            if (!loaded || this.destroyed || liveMesh.mesh.destroyed) return;
+            liveMesh.setTexture(loaded, 0.95);
             const targetSize = def.isBoss
               ? 285
               : def.isMiniBoss
@@ -629,8 +662,7 @@ export class CombatEngine {
                   ? 136
                   : 126;
             const sc = targetSize / Math.max(1, loaded.height);
-            sprite.scale.set(sc);
-            sprite.anchor.set(0.5, 0.95);
+            liveMesh.mesh.scale.set(sc);
             enemyUnit.baseScaleY = sc;
           });
         }
@@ -735,8 +767,24 @@ export class CombatEngine {
     }
 
     enemy.hp = Math.max(0, enemy.hp - finalDmg);
-    enemy.hitFlashTimer = 0.12;
+    enemy.hitFlashTimer = 0.14;
     attacker.totalDamage += finalDmg;
+
+    // Directional Spring Knockback + Impact Squash-and-Stretch (weight-calibrated for Bosses vs Minions!)
+    const kbDx = enemy.x - attacker.x;
+    const kbDy = enemy.y - attacker.y;
+    const kbDist = Math.max(1, Math.hypot(kbDx, kbDy));
+    const heavyResist = enemy.def.isBoss
+      ? 0.16
+      : enemy.def.isMiniBoss || enemy.def.id === 'armored_golem'
+        ? 0.42
+        : 1.0;
+    const kbForce = (opts.isUlt ? 245 : opts.isSkill ? 170 : roll.isCrit ? 125 : 68) * heavyResist;
+    enemy.knockVx += (kbDx / kbDist) * kbForce;
+    enemy.knockVy += (kbDy / kbDist) * kbForce * 0.72;
+    enemy.springLeanVel -= (roll.isCrit || opts.isSkill || opts.isUlt ? 9.5 : 5.2) * (enemy.def.isBoss ? 0.55 : 1.0);
+    enemy.squashX = Math.max(enemy.squashX, roll.isCrit || opts.isUlt ? 1.19 : 1.11);
+    enemy.squashY = Math.min(enemy.squashY, roll.isCrit || opts.isUlt ? 0.83 : 0.9);
 
     // Hit Combo Counter + Tactile Micro-Hitstop on Critical Skills/Ultimates!
     this.comboCount += 1;
@@ -902,6 +950,17 @@ export class CombatEngine {
     if (dmg > 0) {
       hero.hp = Math.max(hero.undyingTimer > 0 ? 1 : 0, hero.hp - dmg);
       hero.hitFlashTimer = 0.15;
+      hero.squashX = Math.max(hero.squashX, 1.11);
+      hero.squashY = Math.min(hero.squashY, 0.9);
+      hero.springLeanVel -= 5.4;
+      if (attacker) {
+        const kdx = hero.x - attacker.x;
+        const kdy = hero.y - attacker.y;
+        const kd = Math.max(1, Math.hypot(kdx, kdy));
+        const tankPoise = hero.def.role === 'TANK' ? 0.32 : 0.75;
+        hero.knockVx += (kdx / kd) * 82 * tankPoise;
+        hero.knockVy += (kdy / kd) * 58 * tankPoise;
+      }
       this.pool.spawnFloatingText(hero.x, hero.y - 32, `-${dmg}`, 0xf87171);
     }
 
@@ -1133,7 +1192,7 @@ export class CombatEngine {
     }
     this.updateAmbientAtmosphere(realDt);
     this.renderMoveMarker();
-    this.updateActorVisuals();
+    this.updateActorVisuals(dt);
     this.updateCamera(realDt);
 
     // 6. Wave & Win/Loss Checks
@@ -1177,42 +1236,95 @@ export class CombatEngine {
     this.moveMarkerGfx.circle(x, y, 4).fill({ color: 0xffffff, alpha: 0.95 });
   }
 
-  private updateActorVisuals(): void {
-    // Heroes — snappy 2.5D breathing, running hop squash-and-stretch, and attack lunge/tilt!
+  private updateActorVisuals(dt: number): void {
+    const safeDt = Math.max(0.001, Math.min(0.05, dt));
+    const turnBlend = 1 - Math.exp(-17 * safeDt);
+    const squashBlend = 1 - Math.exp(-14 * safeDt);
+
+    // 1. HEROES — Smooth Turn Squash, 2nd-Order Inertia Spring, Dynamic Shadow & Live2D-Lite MeshPlane!
     for (const h of this.ctx.heroes) {
       h.container.position.set(h.x, h.y);
       h.container.zIndex = h.y;
-      const isMoving = Math.hypot(h.vx, h.vy) > 25;
-      const swingProgress = h.attackSwingTimer > 0 ? Math.min(1, h.attackSwingTimer / 0.24) : 0;
-      const lungeX = swingProgress > 0 ? h.facing * Math.sin(swingProgress * Math.PI) * 18 : 0;
-      const hopY = h.alive
-        ? isMoving
-          ? -Math.abs(Math.sin(h.animTime * 11)) * 7
-          : Math.sin(h.animTime * 4.5) * 2
-        : 0;
-      const baseSc = h.baseScaleY ?? 0.9;
-      const breathe = h.alive ? 1 + Math.sin(h.animTime * 4.2) * 0.025 : 1;
 
-      h.sprite.position.set(lungeX, hopY);
-      h.sprite.scale.set(baseSc * h.facing, baseSc * breathe);
-      h.sprite.rotation =
-        swingProgress > 0
-          ? h.facing * Math.sin(swingProgress * Math.PI) * 0.2
-          : isMoving
-            ? h.facing * 0.05
-            : 0;
-      h.sprite.tint = h.hitFlashTimer > 0 ? 0xff9999 : h.overdriveTimer > 0 ? 0xfef08a : 0xffffff;
+      // Smooth 0.10s horizontal turn interpolation (no jarring 1-frame snap flip!)
+      h.visualFacing += (h.facing - h.visualFacing) * turnBlend;
+      const safeFaceX =
+        Math.abs(h.visualFacing) < 0.08 ? 0.08 * (h.facing >= 0 ? 1 : -1) : h.visualFacing;
+
+      // Recover squash-and-stretch smoothly back toward 1.0
+      h.squashX += (1 - h.squashX) * squashBlend;
+      h.squashY += (1 - h.squashY) * squashBlend;
+
+      const speed = Math.hypot(h.vx, h.vy);
+      const moveRatio = Math.min(1, speed / Math.max(100, h.stats.moveSpeed));
+      const localForwardRatio = (h.vx * h.facing) / Math.max(120, h.stats.moveSpeed);
+
+      // 2nd-order damped spring for organic acceleration lean & braking follow-through!
+      const leanTarget = Math.max(-0.85, Math.min(0.95, localForwardRatio * 0.72));
+      const springAcc = (leanTarget - h.springLean) * 85 - h.springLeanVel * 13;
+      h.springLeanVel += springAcc * safeDt;
+      h.springLean = Math.max(-1.1, Math.min(1.15, h.springLean + h.springLeanVel * safeDt));
+
+      // Attack lunge envelope (anticipation snap -> whip forward -> settle)
+      const swingDur = Math.max(0.12, h.attackSwingDuration || 0.24);
+      const swingRemain = h.attackSwingTimer > 0 ? Math.min(1, h.attackSwingTimer / swingDur) : 0;
+      const swingElapsed = 1 - swingRemain;
+      const attackArc = swingRemain > 0 ? Math.sin(swingElapsed * Math.PI) : 0;
+      const lungeX = swingRemain > 0 ? h.facing * attackArc * 20 : 0;
+
+      // Grounded stride hop + smooth dash jump arc
+      let dashArcY = 0;
+      if (h.dashState) {
+        const dp = Math.min(1, h.dashState.elapsed / Math.max(0.05, h.dashState.duration));
+        dashArcY = -Math.sin(dp * Math.PI) * h.dashState.arcHeight;
+      }
+      const strideHopY = h.alive
+        ? moveRatio > 0.08
+          ? -Math.abs(Math.sin(h.stridePhase)) * (5.5 + moveRatio * 5.5)
+          : Math.sin(h.animTime * 3.4) * 1.4
+        : 0;
+      const totalLiftY = strideHopY + dashArcY;
+
+      const baseSc = h.baseScaleY ?? 0.9;
+      const hitBend = h.hitFlashTimer > 0 ? Math.min(1, h.hitFlashTimer / 0.15) : 0;
+
+      // Apply Live2D-Lite real-time 5×7 vertex deformation!
+      h.liveMesh.deform({
+        time: h.animTime,
+        nativeForwardSign: 1,
+        moveRatio,
+        stridePhase: h.stridePhase,
+        lean: h.springLean,
+        windup: 0,
+        attackWhip: attackArc,
+        hitBend,
+        alive: h.alive,
+      });
+
+      const mesh = h.liveMesh.mesh;
+      mesh.position.set(lungeX, totalLiftY);
+      mesh.scale.set(baseSc * safeFaceX * h.squashX, baseSc * h.squashY);
+      mesh.rotation =
+        (swingRemain > 0 ? h.facing * attackArc * 0.11 : 0) +
+        h.facing * h.springLean * 0.045;
+      mesh.tint = h.hitFlashTimer > 0 ? 0xffa8a8 : h.overdriveTimer > 0 ? 0xfef08a : 0xffffff;
+
+      // Dynamic Grounded Contact Shadow (shrinks & softens naturally when jumping/dashing!)
+      const elevation = Math.max(0, -totalLiftY);
+      const shadowScale = Math.max(0.58, 1 - elevation * 0.0085) * h.squashX;
+      h.shadowGfx.scale.set(shadowScale, Math.max(0.65, 1 - elevation * 0.006));
+      h.shadowGfx.alpha = h.alive ? Math.max(0.24, 1 - elevation * 0.011) : 0.25;
 
       if (h.fallbackCrestGroup && h.fallbackCrestGroup.visible) {
-        h.fallbackCrestGroup.position.set(lungeX, hopY);
+        h.fallbackCrestGroup.position.set(lungeX, totalLiftY);
       }
 
       if (h.weaponGfx.visible) {
-        h.weaponGfx.position.set(h.facing * 32 + lungeX, -38 + hopY);
+        h.weaponGfx.position.set(h.facing * 32 + lungeX, -38 + totalLiftY);
         h.weaponGfx.scale.x = h.facing;
         h.weaponGfx.rotation =
-          swingProgress > 0
-            ? h.facing * (-0.55 + (1 - swingProgress) * 1.45)
+          swingRemain > 0
+            ? h.facing * (-0.55 + swingElapsed * 1.45)
             : h.facing * Math.sin(h.animTime * 4) * 0.08;
       }
 
@@ -1228,7 +1340,7 @@ export class CombatEngine {
         }
         if (h.shield > 0) {
           h.auraGfx
-            .ellipse(0, -56, 44, 58)
+            .ellipse(0, -56 + totalLiftY * 0.5, 44, 58)
             .fill({ color: 0x38bdf8, alpha: 0.08 })
             .stroke({ color: 0x7dd3fc, width: 2.2, alpha: 0.72 });
         }
@@ -1247,7 +1359,7 @@ export class CombatEngine {
       h.hpBarGfx.clear();
       if (h.alive) {
         const w = 54;
-        const barY = h.hasFullSprite ? -152 : -110;
+        const barY = (h.hasFullSprite ? -152 : -110) + totalLiftY * 0.6;
         const hpRatio = Math.max(0, h.hp / h.maxHp);
         const shRatio = Math.min(1, h.shield / h.maxHp);
         h.hpBarGfx.rect(-w / 2 - 1, barY, w + 2, 6).fill({ color: 0x050814, alpha: 0.85 });
@@ -1258,35 +1370,114 @@ export class CombatEngine {
       }
     }
 
-    // Enemies — smooth levitation/stride + hit recoil
+    // 2. ENEMIES & BOSSES — Cast Wind-Up Coil, Attack Lunge, Spring Knockback, Dynamic Shadow & Live2D-Lite Mesh!
     for (const e of this.ctx.enemies) {
       if (!e.alive) continue;
       e.container.position.set(e.x, e.y);
       e.container.zIndex = e.y;
-      const isFloating = e.def.id === 'rift_acolyte';
-      const bob = isFloating
-        ? -8 + Math.sin(e.animTime * 4.5) * 6
-        : Math.sin(e.animTime * 5) * (e.def.isBoss ? 4 : 3);
-      const baseSc = e.baseScaleY ?? 1;
-      const breathe = 1 + Math.sin(e.animTime * 3.8) * 0.022;
-      const recoilX = e.hitFlashTimer > 0 ? -e.facing * 5 : 0;
 
-      e.sprite.position.set(recoilX, bob);
-      e.sprite.scale.set(baseSc * (e.facing >= 0 ? -1 : 1), baseSc * breathe);
-      e.sprite.tint =
+      const isFloating =
+        e.def.id === 'rift_acolyte' ||
+        e.def.id === 'void_wisp' ||
+        e.def.id === 'astral_weaver';
+      const isHeavy =
+        e.def.isBoss || e.def.id === 'armored_golem' || e.def.id === 'briar_behemoth';
+
+      // Smooth horizontal turn (enemies face left natively, so mesh X sign = -visualFacing)
+      e.visualFacing += (e.facing - e.visualFacing) * (isHeavy ? turnBlend * 0.65 : turnBlend);
+      const safeFaceX =
+        Math.abs(e.visualFacing) < 0.08 ? 0.08 * (e.facing >= 0 ? 1 : -1) : e.visualFacing;
+
+      e.squashX += (1 - e.squashX) * squashBlend;
+      e.squashY += (1 - e.squashY) * squashBlend;
+
+      const speed = Math.hypot(e.vx, e.vy);
+      const moveRatio = Math.min(1, speed / Math.max(60, e.def.moveSpeed));
+      // Enemy native art faces LEFT (-1), so forward velocity in local mesh space is -(vx * facing)
+      const localForwardRatio = (e.vx * e.facing) / Math.max(80, e.def.moveSpeed);
+
+      // 2nd-order damped spring lean (heavier damping on Bosses!)
+      const leanTarget = Math.max(-0.8, Math.min(0.9, localForwardRatio * 0.68));
+      const stiff = isHeavy ? 52 : 78;
+      const damp = isHeavy ? 10 : 12.5;
+      const springAcc = (leanTarget - e.springLean) * stiff - e.springLeanVel * damp;
+      e.springLeanVel += springAcc * safeDt;
+      e.springLean = Math.max(-1.05, Math.min(1.1, e.springLean + e.springLeanVel * safeDt));
+
+      // Cast telegraph wind-up coil (0 -> 1 as cast approaches detonation!)
+      const windup = e.isCasting
+        ? Math.min(1, e.castElapsed / Math.max(0.15, e.castDuration))
+        : 0;
+
+      // Attack lunge envelope
+      const swingDur = Math.max(0.14, e.attackSwingDuration || 0.28);
+      const swingRemain = e.attackSwingTimer > 0 ? Math.min(1, e.attackSwingTimer / swingDur) : 0;
+      const attackArc = swingRemain > 0 ? Math.sin((1 - swingRemain) * Math.PI) : 0;
+      const lungeX = swingRemain > 0 ? e.facing * attackArc * (e.def.isBoss ? 28 : 18) : 0;
+
+      // Smooth dash dive arc (Tempest Drake)
+      let dashArcY = 0;
+      if (e.dashState) {
+        const dp = Math.min(1, e.dashState.elapsed / Math.max(0.06, e.dashState.duration));
+        dashArcY = -Math.sin(dp * Math.PI) * e.dashState.arcHeight;
+      }
+
+      const strideHopY = isFloating
+        ? -10 + Math.sin(e.animTime * 4.2) * 6.5
+        : moveRatio > 0.08
+          ? -Math.abs(Math.sin(e.stridePhase)) * (isHeavy ? 6.5 : 5.5 + moveRatio * 4.5)
+          : Math.sin(e.animTime * (isHeavy ? 2.6 : 3.6)) * (e.def.isBoss ? 2.5 : 1.6);
+      const totalLiftY = strideHopY + dashArcY;
+
+      const hitBend = e.hitFlashTimer > 0 ? Math.min(1, e.hitFlashTimer / 0.14) : 0;
+      const brokenStagger = e.isBroken ? Math.sin(e.animTime * 22) * 0.25 : 0;
+
+      // Enemy textures natively face LEFT (-1), so pass nativeForwardSign: -1!
+      e.liveMesh.deform({
+        time: e.animTime,
+        nativeForwardSign: -1,
+        moveRatio,
+        stridePhase: e.stridePhase,
+        lean: e.springLean + brokenStagger,
+        windup,
+        attackWhip: attackArc,
+        hitBend,
+        isFloating,
+        isHeavy,
+        alive: e.alive,
+      });
+
+      const baseSc = e.baseScaleY ?? 1;
+      const mesh = e.liveMesh.mesh;
+      const recoilShift = hitBend * -e.facing * (isHeavy ? 4 : 9);
+      mesh.position.set(lungeX + recoilShift, totalLiftY);
+      mesh.scale.set(baseSc * -safeFaceX * e.squashX, baseSc * e.squashY);
+      mesh.rotation =
+        (swingRemain > 0 ? e.facing * attackArc * 0.1 : 0) +
+        (windup > 0 ? -e.facing * windup * 0.08 : 0) +
+        e.facing * e.springLean * 0.04;
+      mesh.tint =
         e.hitFlashTimer > 0
           ? 0xffaaaa
           : e.isBroken
             ? 0xfde047
             : e.freezeTimer > 0
               ? 0x7dd3fc
-              : 0xffffff;
+              : windup > 0.65
+                ? 0xffd1d1
+                : 0xffffff;
+
+      // Dynamic Grounded Contact Shadow
+      const elevation = Math.max(0, -totalLiftY);
+      const shScaleX = Math.max(0.55, 1 - elevation * 0.008) * e.squashX;
+      e.shadowGfx.scale.set(shScaleX, Math.max(0.62, 1 - elevation * 0.006));
+      e.shadowGfx.alpha = Math.max(0.28, 1 - elevation * 0.012);
 
       // Overhead bar (skip big bar for boss since boss has top HUD bar)
       e.hpBarGfx.clear();
       if (!e.def.isBoss) {
         const w = e.def.isMiniBoss ? 78 : 50;
-        const topY = e.def.isMiniBoss ? -168 : -118;
+        const topY = (e.def.isMiniBoss ? -168 : -118) + totalLiftY * 0.55;
         e.hpBarGfx.rect(-w / 2 - 1, topY, w + 2, 6).fill({ color: 0x050814, alpha: 0.85 });
         e.hpBarGfx
           .rect(-w / 2, topY + 1, w * Math.max(0, e.hp / e.maxHp), 4)
@@ -1296,17 +1487,17 @@ export class CombatEngine {
       // Status badges (Starfall Mark, Burn, Stun, Hit Shield ring)
       e.statusGfx.clear();
       if (e.starfallMarkTimer > 0) {
-        e.statusGfx.circle(0, -45, 22).stroke({ color: 0xf5c84c, width: 2.5, alpha: 0.9 });
+        e.statusGfx.circle(0, -45 + totalLiftY * 0.5, 22).stroke({ color: 0xf5c84c, width: 2.5, alpha: 0.9 });
       }
       if (e.hitShield > 0) {
         e.statusGfx
-          .ellipse(0, -80, 96, 108)
+          .ellipse(0, -80 + totalLiftY * 0.5, 96, 108)
           .stroke({ color: 0xe879f9, width: 4, alpha: 0.82 });
       }
       if (e.burnStacks > 0) {
         for (let b = 0; b < e.burnStacks; b++) {
           e.statusGfx
-            .circle(-16 + b * 8, e.def.isBoss ? -195 : -98, 3.5)
+            .circle(-16 + b * 8, (e.def.isBoss ? -195 : -98) + totalLiftY * 0.5, 3.5)
             .fill({ color: 0xf97316 });
         }
       }

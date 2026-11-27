@@ -5,10 +5,10 @@ import type { CombatContext, EnemyUnit, HeroUnit } from './CombatTypes';
  * Diamond squad formation offsets relative to squadAnchor (Tank front, Assault/DPS flank, Healer/Ranged rear).
  */
 const DIAMOND_OFFSETS: Array<{ dx: number; dy: number }> = [
-  { dx: 64, dy: 0 }, // Slot 0: Front (Tank/Lead)
-  { dx: 0, dy: -56 }, // Slot 1: Upper Flank
-  { dx: 0, dy: 56 }, // Slot 2: Lower Flank
-  { dx: -68, dy: 0 }, // Slot 3: Rear (Healer/Ranged)
+  { dx: 82, dy: 0 }, // Slot 0: Front (Tank/Lead)
+  { dx: 4, dy: -70 }, // Slot 1: Upper Flank
+  { dx: 4, dy: 70 }, // Slot 2: Lower Flank
+  { dx: -86, dy: 0 }, // Slot 3: Rear (Healer/Ranged)
 ];
 
 function hexToNum(hex: string): number {
@@ -51,9 +51,9 @@ export class SquadController {
   }
 
   private getFormationOffset(hero: HeroUnit): { dx: number; dy: number } {
-    // Dynamically bias tanks to front and healers/ranged behind
-    if (hero.def.role === 'TANK') return { dx: 72, dy: hero.slotIndex % 2 === 0 ? -12 : 12 };
-    if (hero.def.role === 'HEALER') return { dx: -74, dy: 0 };
+    // Dynamically bias tanks to front and healers/ranged behind with crisp non-overlapping silhouette spacing
+    if (hero.def.role === 'TANK') return { dx: 88, dy: hero.slotIndex % 2 === 0 ? -16 : 16 };
+    if (hero.def.role === 'HEALER') return { dx: -92, dy: hero.slotIndex % 2 === 0 ? -14 : 14 };
     return DIAMOND_OFFSETS[hero.slotIndex] ?? { dx: 0, dy: 0 };
   }
 
@@ -200,6 +200,51 @@ export class SquadController {
         }
       }
 
+      // 2a. Smooth Interpolated Dash Motion (Vaelen S1, Elara S1, Zephyrion S1) + Silhouette Ghosts!
+      if (hero.dashState) {
+        const dash = hero.dashState;
+        dash.elapsed += dt;
+        const p = Math.min(1, dash.elapsed / Math.max(0.05, dash.duration));
+        const ep = 1 - Math.pow(1 - p, 3); // easeOutCubic
+        const prevX = hero.x;
+        const prevY = hero.y;
+        hero.x = dash.startX + (dash.endX - dash.startX) * ep;
+        hero.y = dash.startY + (dash.endY - dash.startY) * ep;
+        hero.vx = (hero.x - prevX) / Math.max(0.008, dt);
+        hero.vy = (hero.y - prevY) / Math.max(0.008, dt);
+        if (Math.abs(dash.endX - dash.startX) > 6) {
+          hero.facing = dash.endX >= dash.startX ? 1 : -1;
+        }
+        dash.ghostTimer -= dt;
+        if (dash.ghostTimer <= 0) {
+          dash.ghostTimer = 0.028;
+          const sc = hero.baseScaleY ?? 0.9;
+          const arcLift = Math.sin(p * Math.PI) * dash.arcHeight;
+          ctx.spawnGhostAfterimage(
+            hero.liveMesh.texture,
+            hero.x,
+            hero.y - arcLift,
+            sc * hero.facing,
+            sc,
+            dash.color,
+            0.55,
+            0.24,
+          );
+        }
+        if (p >= 1) {
+          hero.x = dash.endX;
+          hero.y = dash.endY;
+          hero.vx *= 0.25;
+          hero.vy *= 0.25;
+          hero.squashX = 1.18;
+          hero.squashY = 0.84;
+          hero.springLeanVel += 7.5;
+          ctx.spawnFootstepDust(hero.x, hero.y, dash.endX - dash.startX, dash.endY - dash.startY, 1.35);
+          hero.dashState = null;
+        }
+        continue;
+      }
+
       // Determine target enemy for this hero
       let targetEnemy: EnemyUnit | null = null;
       let nearestDist = Infinity;
@@ -220,38 +265,110 @@ export class SquadController {
         const distToEnemy = Math.hypot(targetEnemy.x - hero.x, targetEnemy.y - hero.y);
         const desiredRange = hero.stats.attackRange + targetEnemy.def.radius * 0.7;
         if (distToEnemy > desiredRange) {
-          // Approach enemy smoothly while keeping reasonable tether to squad anchor
-          const angle = Math.atan2(targetEnemy.y - hero.y, targetEnemy.x - hero.x);
-          goalX = targetEnemy.x - Math.cos(angle) * (desiredRange - 12);
-          goalY = targetEnemy.y - Math.sin(angle) * (desiredRange - 12);
+          // Approach enemy smoothly with slight per-slot flank offset so melee allies fan out cleanly
+          const slotFlank = (hero.slotIndex - 1.5) * 0.34;
+          const baseAngle = Math.atan2(targetEnemy.y - hero.y, targetEnemy.x - hero.x);
+          const approachAngle = hero.stats.attackRange < 140 ? baseAngle + slotFlank : baseAngle;
+          goalX = targetEnemy.x - Math.cos(approachAngle) * (desiredRange - 12);
+          goalY = targetEnemy.y - Math.sin(approachAngle) * (desiredRange - 12);
         } else {
           goalX = hero.x;
           goalY = hero.y;
         }
       }
 
-      // Move toward goalX, goalY
+      // Compute desired velocity with smooth arrival deceleration
       const mdx = goalX - hero.x;
       const mdy = goalY - hero.y;
       const mDist = Math.hypot(mdx, mdy);
-      const speed = hero.stats.moveSpeed * (movingSquad ? 1.18 : 1.0);
+      const maxSpeed = hero.stats.moveSpeed * (movingSquad ? 1.18 : 1.0);
+      let desVx = 0;
+      let desVy = 0;
+      if (mDist > 4) {
+        const arrivalScale = mDist < 62 ? mDist / 62 : 1.0;
+        const targetSpeed = maxSpeed * arrivalScale;
+        desVx = (mdx / mDist) * targetSpeed;
+        desVy = (mdy / mDist) * targetSpeed;
+      }
 
-      if (mDist > 6) {
-        const step = Math.min(mDist, speed * dt);
-        hero.vx = (mdx / mDist) * speed;
-        hero.vy = (mdy / mDist) * speed;
-        hero.x += (mdx / mDist) * step;
-        hero.y += (mdy / mDist) * step;
-        hero.facing = mdx >= 0 ? 1 : -1;
+      // Boids Soft Separation: Hero<->Hero spacing (prevents squadmates stacking/clipping!)
+      let sepX = 0;
+      let sepY = 0;
+      const minAllyDist = 86;
+      for (const other of aliveHeroes) {
+        if (other.heroId === hero.heroId) continue;
+        const sx = hero.x - other.x;
+        const sy = hero.y - other.y;
+        const sd = Math.hypot(sx, sy);
+        if (sd > 0.01 && sd < minAllyDist) {
+          const push = ((minAllyDist - sd) / minAllyDist) * 210;
+          sepX += (sx / sd) * push;
+          sepY += (sy / sd) * push;
+        } else if (sd <= 0.01) {
+          const angle = (hero.slotIndex + 1) * 1.618;
+          sepX += Math.cos(angle) * 90;
+          sepY += Math.sin(angle) * 90;
+        }
+      }
 
-        // Kael passive Tailwind resets when moving far
-        if (hero.heroId === 'kael' && step > 3.5) {
+      // Gentle Hero<->Enemy personal space push so melee fighters stand beside enemies cleanly
+      for (const en of aliveEnemies) {
+        const sx = hero.x - en.x;
+        const sy = hero.y - en.y;
+        const sd = Math.hypot(sx, sy);
+        const minSpace = en.def.radius + 32;
+        if (sd > 0.01 && sd < minSpace) {
+          const push = ((minSpace - sd) / minSpace) * 145;
+          sepX += (sx / sd) * push;
+          sepY += (sy / sd) * push;
+        }
+      }
+
+      // Smooth frame-rate-independent acceleration / braking inertia
+      const targetVx = desVx + sepX;
+      const targetVy = desVy + sepY;
+      const isAccel = Math.hypot(targetVx, targetVy) > Math.hypot(hero.vx, hero.vy);
+      const dampRate = isAccel ? 11.5 : 14.5;
+      const blend = 1 - Math.exp(-dampRate * dt);
+      hero.vx += (targetVx - hero.vx) * blend;
+      hero.vy += (targetVy - hero.vy) * blend;
+
+      // Apply velocity + decaying spring knockback
+      hero.x += (hero.vx + hero.knockVx) * dt;
+      hero.y += (hero.vy + hero.knockVy) * dt;
+      const kbDecay = Math.exp(-11 * dt);
+      hero.knockVx *= kbDecay;
+      hero.knockVy *= kbDecay;
+      if (Math.abs(hero.knockVx) < 2) hero.knockVx = 0;
+      if (Math.abs(hero.knockVy) < 2) hero.knockVy = 0;
+
+      const curSpeed = Math.hypot(hero.vx, hero.vy);
+
+      // Facing Hysteresis (14px/s deadzone eliminates 1-frame left-right flip-flop jitter!)
+      if (curSpeed > 26 && Math.abs(hero.vx) > 16) {
+        hero.facing = hero.vx >= 0 ? 1 : -1;
+      }
+
+      // Distance-driven stride gait + grounded footstep dust puffs!
+      if (curSpeed > 28) {
+        hero.stridePhase += (curSpeed / 26) * dt;
+        const gate = Math.floor(hero.stridePhase / Math.PI);
+        if (gate !== hero.stepDustGate) {
+          hero.stepDustGate = gate;
+          hero.squashX = Math.max(hero.squashX, 1.055);
+          hero.squashY = Math.min(hero.squashY, 0.945);
+          ctx.spawnFootstepDust(hero.x, hero.y, hero.vx, hero.vy, 0.88);
+        }
+        // Kael passive Tailwind resets when running far
+        if (hero.heroId === 'kael' && curSpeed * dt > 3.5) {
           hero.tailwindTimer = 0;
           hero.tailwindStacks = Math.max(0, hero.tailwindStacks - 1);
         }
       } else {
-        hero.vx = 0;
-        hero.vy = 0;
+        if (curSpeed < 4) {
+          hero.vx = 0;
+          hero.vy = 0;
+        }
         if (hero.heroId === 'kael') {
           hero.tailwindTimer += dt;
           if (hero.tailwindTimer >= 2.0 && hero.tailwindStacks < 3) {
@@ -269,7 +386,9 @@ export class SquadController {
       if (targetEnemy && !hasManualInput && hero.basicTimer <= 0) {
         const dist = Math.hypot(targetEnemy.x - hero.x, targetEnemy.y - hero.y);
         if (dist <= hero.stats.attackRange + targetEnemy.def.radius + 18) {
-          hero.facing = targetEnemy.x >= hero.x ? 1 : -1;
+          if (Math.abs(targetEnemy.x - hero.x) > 8) {
+            hero.facing = targetEnemy.x >= hero.x ? 1 : -1;
+          }
           this.performBasicAttack(ctx, hero, targetEnemy);
         }
       }
@@ -287,7 +406,11 @@ export class SquadController {
     const effectiveAtkSpd = Math.min(3.5, hero.stats.atkSpeed * atkSpdMult);
     hero.basicTimer = 1 / effectiveAtkSpd;
     hero.basicCount += 1;
-    hero.attackSwingTimer = 0.18;
+    hero.attackSwingDuration = 0.22;
+    hero.attackSwingTimer = 0.22;
+    hero.springLeanVel += 6.5;
+    hero.squashX = 1.09;
+    hero.squashY = 0.92;
 
     const color = hexToNum(hero.def.themeColor);
     const isMelee = hero.stats.attackRange < 140;

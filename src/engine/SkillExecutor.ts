@@ -219,7 +219,11 @@ export class SkillExecutor {
     const radius = skill.radius * (1 + hero.stats.aoeRadiusBonus);
     const angle = Math.atan2(ty - hero.y, tx - hero.x);
     hero.facing = tx >= hero.x ? 1 : -1;
-    hero.attackSwingTimer = 0.35;
+    hero.attackSwingDuration = 0.36;
+    hero.attackSwingTimer = 0.36;
+    hero.springLeanVel += 10.5;
+    hero.squashX = 1.14;
+    hero.squashY = 0.88;
 
     // Trigger sleek Mini Anime Skill Callout strip on S1 / S2 casts + hero-specific casting aura!
     if (!isUlt) {
@@ -271,9 +275,18 @@ export class SkillExecutor {
         });
       }
       if (hero.heroId === 'elara') {
-        // Elara detonates decoy at origin and vaults to target
-        hero.x = tx;
-        hero.y = ty;
+        // Elara detonates decoy at origin and vaults smoothly in a luminous arc to target!
+        hero.dashState = {
+          startX: originX,
+          startY: originY,
+          endX: tx,
+          endY: ty,
+          elapsed: 0,
+          duration: 0.18,
+          color,
+          ghostTimer: 0,
+          arcHeight: 38,
+        };
         hero.atkSpdBuffTimer = 4.0;
         hero.atkSpdBuffValue = 0.35;
         ctx.spawnRingWave(originX, originY, radius, color, 0.38);
@@ -281,9 +294,18 @@ export class SkillExecutor {
         audioManager.playSfx('slash');
         return;
       }
-      // Vaelen & Zephyrion dash through foes along line to target
-      hero.x = tx;
-      hero.y = ty;
+      // Vaelen & Zephyrion dash smoothly through foes along line leaving tinted silhouette afterimages!
+      hero.dashState = {
+        startX: originX,
+        startY: originY,
+        endX: tx,
+        endY: ty,
+        elapsed: 0,
+        duration: 0.15,
+        color,
+        ghostTimer: 0,
+        arcHeight: 12,
+      };
       const hitEnemies = this.findEnemiesInShape(ctx, 'LINE', originX, originY, tx, ty, radius, angle);
       for (const e of hitEnemies) {
         if (hero.heroId === 'vaelen') e.starfallMarkTimer = 6.0;

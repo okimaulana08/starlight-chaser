@@ -45,13 +45,68 @@ export class EnemyAI {
       }
     }
 
+    const aliveEnemies = ctx.enemies.filter((e) => e.alive);
+
     // 2. Update every living enemy
-    for (const enemy of ctx.enemies) {
-      if (!enemy.alive) continue;
+    for (const enemy of aliveEnemies) {
       enemy.animTime += dt;
       enemy.hitFlashTimer = Math.max(0, enemy.hitFlashTimer - dt);
       enemy.basicTimer = Math.max(0, enemy.basicTimer - dt);
       enemy.aiCooldown = Math.max(0, enemy.aiCooldown - dt);
+      enemy.attackSwingTimer = Math.max(0, enemy.attackSwingTimer - dt);
+
+      // Always integrate decaying spring knockback (even while staggered/casting!)
+      if (Math.abs(enemy.knockVx) > 1 || Math.abs(enemy.knockVy) > 1) {
+        enemy.x = Math.max(ctx.bounds.minX + 40, Math.min(ctx.bounds.maxX - 40, enemy.x + enemy.knockVx * dt));
+        enemy.y = Math.max(ctx.bounds.minY + 40, Math.min(ctx.bounds.maxY - 40, enemy.y + enemy.knockVy * dt));
+        const kbDecay = Math.exp(-10.5 * dt);
+        enemy.knockVx *= kbDecay;
+        enemy.knockVy *= kbDecay;
+      } else {
+        enemy.knockVx = 0;
+        enemy.knockVy = 0;
+      }
+
+      // Smooth interpolated enemy dash (e.g., Tempest Drake Dive) + ghost afterimages
+      if (enemy.dashState) {
+        const dash = enemy.dashState;
+        dash.elapsed += dt;
+        const p = Math.min(1, dash.elapsed / Math.max(0.06, dash.duration));
+        const ep = 1 - Math.pow(1 - p, 3);
+        const prevX = enemy.x;
+        const prevY = enemy.y;
+        enemy.x = dash.startX + (dash.endX - dash.startX) * ep;
+        enemy.y = dash.startY + (dash.endY - dash.startY) * ep;
+        enemy.vx = (enemy.x - prevX) / Math.max(0.008, dt);
+        enemy.vy = (enemy.y - prevY) / Math.max(0.008, dt);
+        dash.ghostTimer -= dt;
+        if (dash.ghostTimer <= 0) {
+          dash.ghostTimer = 0.032;
+          const sc = enemy.baseScaleY ?? 1;
+          const arcLift = Math.sin(p * Math.PI) * dash.arcHeight;
+          ctx.spawnGhostAfterimage(
+            enemy.liveMesh.texture,
+            enemy.x,
+            enemy.y - arcLift,
+            sc * (enemy.facing >= 0 ? -1 : 1),
+            sc,
+            dash.color,
+            0.48,
+            0.22,
+          );
+        }
+        if (p >= 1) {
+          enemy.x = dash.endX;
+          enemy.y = dash.endY;
+          enemy.vx *= 0.2;
+          enemy.vy *= 0.2;
+          enemy.squashX = 1.2;
+          enemy.squashY = 0.82;
+          ctx.spawnFootstepDust(enemy.x, enemy.y, dash.endX - dash.startX, dash.endY - dash.startY, 1.5);
+          enemy.dashState = null;
+        }
+        continue;
+      }
 
       // Debuff timers
       enemy.stunTimer = Math.max(0, enemy.stunTimer - dt);
@@ -117,8 +172,13 @@ export class EnemyAI {
         ctx.notifyBanner('PHASE 2 — OVERCHARGED STARFALL! Break the 15-Hit Shield with Multi-Hit skills!');
       }
 
-      // Handle ongoing cast
+      // Handle ongoing cast — smoothly brake velocity while winding up!
       if (enemy.isCasting) {
+        const brake = Math.exp(-10 * dt);
+        enemy.vx *= brake;
+        enemy.vy *= brake;
+        enemy.x = Math.max(ctx.bounds.minX + 40, Math.min(ctx.bounds.maxX - 40, enemy.x + enemy.vx * dt));
+        enemy.y = Math.max(ctx.bounds.minY + 40, Math.min(ctx.bounds.maxY - 40, enemy.y + enemy.vy * dt));
         enemy.castElapsed += dt;
         if (enemy.castElapsed >= enemy.castDuration) {
           this.resolveEnemyCast(ctx, enemy, telegraphLayer);
@@ -133,7 +193,10 @@ export class EnemyAI {
       const dx = targetHero.x - enemy.x;
       const dy = targetHero.y - enemy.y;
       const dist = Math.hypot(dx, dy);
-      enemy.facing = dx >= 0 ? 1 : -1;
+      // Facing hysteresis (14px deadzone avoids jittery sprite flipping)
+      if (Math.abs(dx) > 14) {
+        enemy.facing = dx >= 0 ? 1 : -1;
+      }
 
       // Boss Special Pattern AI
       if (enemy.def.isBoss && enemy.aiCooldown <= 0) {
@@ -173,17 +236,102 @@ export class EnemyAI {
         continue;
       }
 
-      // Move toward target if outside attack range
+      // Smooth Physics Steering + Organic Flanking + Boids Crowd Separation
       const desiredRange = enemy.def.attackRange + 16;
+      const speedMult = enemy.slowTimer > 0 ? 0.7 : 1.0;
+      const maxSpeed = enemy.def.moveSpeed * speedMult;
+
+      let desVx = 0;
+      let desVy = 0;
+
       if (dist > desiredRange) {
-        const speedMult = enemy.slowTimer > 0 ? 0.7 : 1.0;
-        const step = enemy.def.moveSpeed * speedMult * dt;
-        enemy.x += (dx / dist) * step;
-        enemy.y += (dy / dist) * step;
-        enemy.x = Math.max(ctx.bounds.minX + 40, Math.min(ctx.bounds.maxX - 40, enemy.x));
-        enemy.y = Math.max(ctx.bounds.minY + 40, Math.min(ctx.bounds.maxY - 40, enemy.y));
-      } else if (enemy.basicTimer <= 0) {
+        // Aim for an organic flank position around target Hero so melee packs fan out naturally!
+        const flankRadius = Math.max(46, Math.min(desiredRange * 0.85, 115));
+        const aimAngle = Math.atan2(enemy.y - targetHero.y, enemy.x - targetHero.x) + enemy.flankAngle * 0.35;
+        const goalX = enemy.def.isBoss
+          ? targetHero.x
+          : targetHero.x + Math.cos(aimAngle) * flankRadius;
+        const goalY = enemy.def.isBoss
+          ? targetHero.y
+          : targetHero.y + Math.sin(aimAngle) * flankRadius * 0.75;
+        const gdx = goalX - enemy.x;
+        const gdy = goalY - enemy.y;
+        const gDist = Math.hypot(gdx, gdy);
+        if (gDist > 6) {
+          const arrival = gDist < 55 ? gDist / 55 : 1.0;
+          desVx = (gdx / gDist) * maxSpeed * arrival;
+          desVy = (gdy / gDist) * maxSpeed * arrival;
+        }
+      }
+
+      // Boids Soft Separation: Enemy<->Enemy spacing so minions/elites never collapse onto 1 pixel!
+      let sepX = 0;
+      let sepY = 0;
+      for (const other of aliveEnemies) {
+        if (other.uid === enemy.uid) continue;
+        const sx = enemy.x - other.x;
+        const sy = enemy.y - other.y;
+        const sd = Math.hypot(sx, sy);
+        const minSep = (enemy.def.radius + other.def.radius) * 1.18;
+        if (sd > 0.01 && sd < minSep) {
+          const push = ((minSep - sd) / minSep) * (enemy.def.isBoss ? 55 : 175);
+          sepX += (sx / sd) * push;
+          sepY += (sy / sd) * push;
+        } else if (sd <= 0.01) {
+          sepX += Math.cos(enemy.flankAngle) * 75;
+          sepY += Math.sin(enemy.flankAngle) * 75;
+        }
+      }
+
+      // Weight-calibrated inertia: Bosses/Golems feel heavy & deliberate, minions feel agile!
+      const isHeavy =
+        enemy.def.isBoss || enemy.def.id === 'armored_golem' || enemy.def.id === 'briar_behemoth';
+      const accelRate = isHeavy ? 5.2 : 9.2;
+      const brakeRate = isHeavy ? 7.5 : 12.0;
+      const targetVx = desVx + sepX;
+      const targetVy = desVy + sepY;
+      const isAccel = Math.hypot(targetVx, targetVy) > Math.hypot(enemy.vx, enemy.vy);
+      const blend = 1 - Math.exp(-(isAccel ? accelRate : brakeRate) * dt);
+      enemy.vx += (targetVx - enemy.vx) * blend;
+      enemy.vy += (targetVy - enemy.vy) * blend;
+
+      enemy.x = Math.max(ctx.bounds.minX + 40, Math.min(ctx.bounds.maxX - 40, enemy.x + enemy.vx * dt));
+      enemy.y = Math.max(ctx.bounds.minY + 40, Math.min(ctx.bounds.maxY - 40, enemy.y + enemy.vy * dt));
+
+      const curSpeed = Math.hypot(enemy.vx, enemy.vy);
+      const isFloating =
+        enemy.def.id === 'rift_acolyte' ||
+        enemy.def.id === 'void_wisp' ||
+        enemy.def.id === 'astral_weaver';
+
+      // Distance-driven monster stride phase + grounded stomp dust
+      if (curSpeed > 22) {
+        enemy.stridePhase += (curSpeed / (isHeavy ? 38 : 26)) * dt;
+        const gate = Math.floor(enemy.stridePhase / Math.PI);
+        if (!isFloating && gate !== enemy.stepDustGate) {
+          enemy.stepDustGate = gate;
+          enemy.squashX = Math.max(enemy.squashX, isHeavy ? 1.07 : 1.05);
+          enemy.squashY = Math.min(enemy.squashY, isHeavy ? 0.93 : 0.95);
+          ctx.spawnFootstepDust(
+            enemy.x,
+            enemy.y,
+            enemy.vx,
+            enemy.vy,
+            enemy.def.isBoss ? 1.55 : isHeavy ? 1.25 : 0.82,
+          );
+        }
+      } else if (curSpeed < 3) {
+        enemy.vx = 0;
+        enemy.vy = 0;
+      }
+
+      if (dist <= desiredRange + 8 && enemy.basicTimer <= 0) {
         enemy.basicTimer = 1 / enemy.def.atkSpeed;
+        enemy.attackSwingDuration = isHeavy ? 0.34 : 0.26;
+        enemy.attackSwingTimer = enemy.attackSwingDuration;
+        enemy.springLeanVel += isHeavy ? 6.5 : 8.5;
+        enemy.squashX = 1.11;
+        enemy.squashY = 0.91;
         const atkMult = enemy.atkDownTimer > 0 ? 1 - enemy.atkDownValue : 1.0;
         const dmg = enemy.atk * atkMult;
 
@@ -610,6 +758,11 @@ export class EnemyAI {
     const action = enemy.castAction;
     enemy.isCasting = false;
     enemy.castAction = null;
+    enemy.attackSwingDuration = 0.42;
+    enemy.attackSwingTimer = 0.42;
+    enemy.springLeanVel += 11.5;
+    enemy.squashX = 1.18;
+    enemy.squashY = 0.84;
 
     // Remove this enemy's non-skyfall telegraphs
     if (action !== 'SKYFALL') {
@@ -677,13 +830,30 @@ export class EnemyAI {
       ctx.spawnSlashArc(enemy.x, enemy.y - 26, enemy.castAngle, 255, 0x22d3ee);
       ctx.spawnRingWave(enemy.castTargetX, enemy.castTargetY, 110, 0xa3e635, 0.35);
       ctx.triggerShake(7);
-      // Lunge halfway toward target
-      enemy.x = Math.max(ctx.bounds.minX + 60, Math.min(ctx.bounds.maxX - 60, (enemy.x + enemy.castTargetX) * 0.5));
-      enemy.y = Math.max(ctx.bounds.minY + 60, Math.min(ctx.bounds.maxY - 60, (enemy.y + enemy.castTargetY) * 0.5));
+      // Smooth winged dive halfway toward target with ghost afterimage trail!
+      const diveEndX = Math.max(
+        ctx.bounds.minX + 60,
+        Math.min(ctx.bounds.maxX - 60, (enemy.x + enemy.castTargetX) * 0.5),
+      );
+      const diveEndY = Math.max(
+        ctx.bounds.minY + 60,
+        Math.min(ctx.bounds.maxY - 60, (enemy.y + enemy.castTargetY) * 0.5),
+      );
+      enemy.dashState = {
+        startX: enemy.x,
+        startY: enemy.y,
+        endX: diveEndX,
+        endY: diveEndY,
+        elapsed: 0,
+        duration: 0.22,
+        color: 0x22d3ee,
+        ghostTimer: 0,
+        arcHeight: 36,
+      };
       for (const h of ctx.heroes) {
         if (!h.alive) continue;
-        const dx = h.x - enemy.x;
-        const dy = h.y - enemy.y;
+        const dx = h.x - diveEndX;
+        const dy = h.y - diveEndY;
         if (Math.hypot(dx, dy) <= 170) {
           ctx.damageHero(enemy, h, enemy.atk * 1.7 * atkMult, false);
         }

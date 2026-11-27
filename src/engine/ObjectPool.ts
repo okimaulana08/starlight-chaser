@@ -1,4 +1,4 @@
-import { Container, Sprite, Text, TextStyle } from 'pixi.js';
+import { Container, Sprite, Text, TextStyle, type Texture } from 'pixi.js';
 import { VfxTextureAtlas, type VfxTexKey } from './VfxTextureAtlas';
 
 export type HitImpactStyle = 'SLASH' | 'PIERCE' | 'ARCANE' | 'BLUNT' | 'HEAL';
@@ -81,6 +81,14 @@ interface PooledText {
   baseScale: number;
 }
 
+interface PooledGhost {
+  active: boolean;
+  sprite: Sprite;
+  life: number;
+  maxLife: number;
+  startAlpha: number;
+}
+
 /**
  * Procedural Soft-Texture Anime VFX ObjectPool (Zero-GC, 60 FPS).
  * Eliminates all blocky .rect() / .arc() / .lineTo() primitives in favor of
@@ -95,6 +103,7 @@ export class ObjectPool {
   private fxPool: PooledSpriteFx[] = [];
   private projectiles: PooledProjectile[] = [];
   private texts: PooledText[] = [];
+  private ghosts: PooledGhost[] = [];
   private atlas = VfxTextureAtlas.get();
 
   private normalStyle = new TextStyle({
@@ -204,6 +213,21 @@ export class ObjectPool {
         life: 0,
         maxLife: 0.85,
         baseScale: 1,
+      });
+    }
+
+    // 28 translucent anime dash / lunge silhouette afterimages
+    for (let i = 0; i < 28; i++) {
+      const sprite = new Sprite(this.atlas.softGlow);
+      sprite.anchor.set(0.5, 0.95);
+      sprite.visible = false;
+      this.vfxLayer.addChild(sprite);
+      this.ghosts.push({
+        active: false,
+        sprite,
+        life: 0,
+        maxLife: 0.24,
+        startAlpha: 0.55,
       });
     }
   }
@@ -801,6 +825,70 @@ export class ObjectPool {
     t.text.visible = true;
   }
 
+  /**
+   * Subtle grounded footstep dust puff emitted on stride foot-plant or landing.
+   */
+  public spawnFootstepDust(
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    scale = 1,
+    tint = 0xe2d9c8,
+  ): void {
+    const speed = Math.max(1, Math.hypot(vx, vy));
+    const backX = -(vx / speed) * (24 + Math.random() * 18);
+    const backY = -(vy / speed) * (14 + Math.random() * 10) - 8;
+    this.spawnSpriteFx({
+      tex: 'smokePuff',
+      x: x + (Math.random() - 0.5) * 10,
+      y: y + 1,
+      vx: backX,
+      vy: backY,
+      drag: 0.9,
+      scaleX: 0.16 * scale,
+      scaleY: 0.11 * scale,
+      endScaleX: 0.34 * scale,
+      endScaleY: 0.22 * scale,
+      rotation: Math.random() * Math.PI * 2,
+      spin: (Math.random() - 0.5) * 2.2,
+      alpha: 0.36,
+      tint,
+      life: 0.32,
+      additive: false,
+      groundLayer: true,
+    });
+  }
+
+  /**
+   * Tinted character silhouette ghost trail used during smooth anime dashes & dives.
+   */
+  public spawnGhostAfterimage(
+    texture: Texture,
+    x: number,
+    y: number,
+    scaleX: number,
+    scaleY: number,
+    tint: number,
+    alpha = 0.52,
+    life = 0.24,
+  ): void {
+    const g = this.ghosts.find((item) => !item.active);
+    if (!g) return;
+    g.active = true;
+    g.maxLife = Math.max(0.08, life);
+    g.life = g.maxLife;
+    g.startAlpha = alpha;
+    g.sprite.texture = texture;
+    g.sprite.anchor.set(0.5, 0.95);
+    g.sprite.position.set(x, y);
+    g.sprite.scale.set(scaleX, scaleY);
+    g.sprite.tint = tint;
+    g.sprite.blendMode = 'add';
+    g.sprite.alpha = alpha;
+    g.sprite.visible = true;
+  }
+
   public update(dt: number): void {
     // 1. Update soft-texture pooled Sprites
     for (const f of this.fxPool) {
@@ -903,6 +991,19 @@ export class ObjectPool {
       t.text.scale.set(t.baseScale * pop);
       t.text.alpha = Math.min(1, ratio * 2.1);
     }
+
+    // 4. Update anime dash / lunge silhouette afterimages
+    for (const g of this.ghosts) {
+      if (!g.active) continue;
+      g.life -= dt;
+      if (g.life <= 0) {
+        g.active = false;
+        g.sprite.visible = false;
+        continue;
+      }
+      const ratio = g.life / g.maxLife;
+      g.sprite.alpha = g.startAlpha * ratio * ratio;
+    }
   }
 
   public clearAll(): void {
@@ -918,6 +1019,10 @@ export class ObjectPool {
     for (const t of this.texts) {
       t.active = false;
       t.text.visible = false;
+    }
+    for (const g of this.ghosts) {
+      g.active = false;
+      g.sprite.visible = false;
     }
   }
 

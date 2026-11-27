@@ -1,7 +1,20 @@
-import type { Container, Graphics, Sprite } from 'pixi.js';
+import type { Container, Graphics, Texture } from 'pixi.js';
 import type { ComputedHeroStats } from './CombatMath';
+import type { LiveMeshActor } from './LiveMeshActor';
 import type { HitImpactStyle, SpriteFxOptions } from './ObjectPool';
 import type { EnemyDef, HeroDef, SkillDef } from '../types/game';
+
+export interface DashMotionState {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  elapsed: number;
+  duration: number;
+  color: number;
+  ghostTimer: number;
+  arcHeight: number;
+}
 
 export interface TimedBuff {
   id: string;
@@ -63,12 +76,25 @@ export interface HeroUnit {
   hitFlashTimer: number;
   animTime: number;
   attackSwingTimer: number;
+  attackSwingDuration: number;
+  // Option 1+2 Smooth Physics, Gait & Live2D-Lite Deformation State
+  knockVx: number;
+  knockVy: number;
+  visualFacing: number; // Smoothly interpolated -1..+1 turn scalar
+  stridePhase: number;
+  stepDustGate: number;
+  springLean: number;
+  springLeanVel: number;
+  squashX: number;
+  squashY: number;
+  dashState: DashMotionState | null;
   // Stats tracking
   totalDamage: number;
   totalHealing: number;
   // Pixi display
   container: Container;
-  sprite: Sprite;
+  liveMesh: LiveMeshActor;
+  shadowGfx: Graphics;
   fallbackCrestGroup?: Container;
   hasFullSprite?: boolean;
   baseScaleY?: number;
@@ -82,7 +108,20 @@ export interface EnemyUnit {
   def: EnemyDef;
   x: number;
   y: number;
+  vx: number;
+  vy: number;
+  knockVx: number;
+  knockVy: number;
   facing: number;
+  visualFacing: number;
+  stridePhase: number;
+  stepDustGate: number;
+  springLean: number;
+  springLeanVel: number;
+  squashX: number;
+  squashY: number;
+  flankAngle: number;
+  dashState: DashMotionState | null;
   hp: number;
   maxHp: number;
   atk: number;
@@ -135,11 +174,13 @@ export interface EnemyUnit {
   maxHitShield: number;
   hitFlashTimer: number;
   animTime: number;
-  attackSwingTimer?: number;
+  attackSwingTimer: number;
+  attackSwingDuration: number;
   baseScaleY?: number;
   // Pixi display
   container: Container;
-  sprite: Sprite;
+  liveMesh: LiveMeshActor;
+  shadowGfx: Graphics;
   hpBarGfx: Graphics;
   statusGfx: Graphics;
 }
@@ -210,6 +251,17 @@ export interface CombatContext {
   spawnSkyPillar: (x: number, y: number, radius: number, color: number, isUlt?: boolean) => void;
   spawnSpriteFx: (opts: SpriteFxOptions) => void;
   spawnHitImpact: (x: number, y: number, style: HitImpactStyle, color: number, isCrit?: boolean) => void;
+  spawnFootstepDust: (x: number, y: number, vx: number, vy: number, scale?: number, tint?: number) => void;
+  spawnGhostAfterimage: (
+    texture: Texture,
+    x: number,
+    y: number,
+    scaleX: number,
+    scaleY: number,
+    tint: number,
+    alpha?: number,
+    life?: number,
+  ) => void;
   triggerArenaDim: (color: number, duration: number, peakAlpha?: number) => void;
   triggerSkillCallout: (hero: HeroUnit, skillName: string, slot: 1 | 2 | 'ULT') => void;
   spawnProjectile: (opts: {
