@@ -26,6 +26,7 @@ import { useCombatStore } from '../store/useCombatStore';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { SkillDef } from '../types/game';
+import { BossBanterOverlay } from './BossBanterOverlay';
 import { GameIcon } from './GameIcon';
 import { ROLE_META } from './RoleBadge';
 import { SettingsModal } from './SettingsModal';
@@ -112,6 +113,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
     aiming,
     heroes,
     boss,
+    activeBanter,
     bannerToast,
     combatResult,
     toggleAutoMove,
@@ -797,6 +799,14 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
             style={{ left: touchJoystick.knobX, top: touchJoystick.knobY }}
           />
         </div>
+      )}
+
+      {/* PRE-BOSS ANIME VN CONFRONTATION BANTER OVERLAY */}
+      {activeBanter && !combatResult && (
+        <BossBanterOverlay
+          banter={activeBanter}
+          onComplete={() => engineRef.current?.dismissBossBanter()}
+        />
       )}
 
       {/* 4-Phase Anime Ultimate Cut-In & Impact Flash */}

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  ActiveBossBanter,
   ActiveCutInState,
   BossCombatSnapshot,
   CombatLootSummary,
@@ -66,6 +67,7 @@ interface CombatStore {
   heroes: HeroCombatSnapshot[];
   boss: BossCombatSnapshot | null;
   activeCutIn: ActiveCutInState | null;
+  activeBanter: ActiveBossBanter | null;
   skillCallout: SkillCalloutState | null;
   impactFlash: boolean;
   bannerToast: string | null;
@@ -79,6 +81,7 @@ interface CombatStore {
   togglePause: () => void;
   setAiming: (aiming: AimingState | null) => void;
   setActiveCutIn: (cutIn: ActiveCutInState | null) => void;
+  setActiveBanter: (banter: ActiveBossBanter | null) => void;
   setSkillCallout: (callout: SkillCalloutState | null) => void;
   setBossWarning: (warning: BossWarningState | null) => void;
   setWaveBanner: (label: string | null) => void;
@@ -103,8 +106,8 @@ export const useCombatStore = create<CombatStore>((set) => ({
   maxSp: 10,
   ultGauge: 0,
   maxUltGauge: 40,
-  autoMove: false,
-  autoSkill: false,
+  autoMove: true,
+  autoSkill: true,
   fps: 60,
   comboCount: 0,
   comboDecayRatio: 0,
@@ -120,6 +123,7 @@ export const useCombatStore = create<CombatStore>((set) => ({
   heroes: [],
   boss: null,
   activeCutIn: null,
+  activeBanter: null,
   skillCallout: null,
   impactFlash: false,
   bannerToast: null,
@@ -150,6 +154,7 @@ export const useCombatStore = create<CombatStore>((set) => ({
       heroes: [],
       boss: null,
       activeCutIn: null,
+      activeBanter: null,
       skillCallout: null,
       impactFlash: false,
       bannerToast: null,
@@ -163,6 +168,7 @@ export const useCombatStore = create<CombatStore>((set) => ({
   togglePause: () => set((s) => ({ paused: !s.paused })),
   setAiming: (aiming) => set({ aiming }),
   setActiveCutIn: (activeCutIn) => set({ activeCutIn }),
+  setActiveBanter: (activeBanter) => set({ activeBanter }),
   setSkillCallout: (skillCallout) => set({ skillCallout }),
   setBossWarning: (bossWarning) => set({ bossWarning }),
   setWaveBanner: (waveBanner) => set({ waveBanner }),

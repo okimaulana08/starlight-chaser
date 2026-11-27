@@ -1,10 +1,14 @@
 import React, { useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   Crown,
   Download,
+  Heart,
+  Image as ImageIcon,
   MessageSquare,
   RefreshCw,
   Settings,
+  Sparkles,
   Users,
   Volume2,
   VolumeX,
@@ -13,6 +17,7 @@ import { DAILY_DUNGEON_FREE_ENTRIES, DUNGEONS } from '../data/dungeons';
 import { ENEMIES } from '../data/enemies';
 import { FACTIONS } from '../data/factions';
 import { HEROES, HERO_MAP } from '../data/heroes';
+import { getHeroLobbyLines } from '../data/heroVoiceLines';
 import { RELICS } from '../data/relics';
 import { REGION_MAP, REGIONS } from '../data/regions';
 import { getHighestUnlockedStage, getStagesByRegion, isStageUnlocked, STAGE_MAP } from '../data/stages';
@@ -85,12 +90,15 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     claimDailySupply,
   } = usePlayerStore();
 
-  const { muted, toggleMuted } = useSettingsStore();
+  const { muted, toggleMuted, lobbySceneId, setLobbySceneId } = useSettingsStore();
   const { canInstall, promptInstall } = usePwaInstall();
   const [showMap, setShowMap] = useState(false);
   const [showPartyModal, setShowPartyModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showDialogue, setShowDialogue] = useState(true);
+  const [lineIndex, setLineIndex] = useState(0);
+  const [tapPulseKey, setTapPulseKey] = useState(0);
+  const [tapHearts, setTapHearts] = useState<Array<{ id: number; dx: number; dy: number; isHeart: boolean }>>([]);
   const [supplyToast, setSupplyToast] = useState<string | null>(null);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
 
@@ -152,6 +160,83 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
   const selectedRegion = REGION_MAP[selectedStage.regionId] ?? REGIONS[0];
 
+  // Dynamic Lobby Scene presets: Aurelia Citadel + Active Chapter + unlocked/scenic Chapter Skies!
+  const lobbySceneOptions = useMemo(() => {
+    const unlockedChapterIds = new Set<string>(['region_1', 'region_2', 'region_3', selectedRegion.id]);
+    for (const r of REGIONS) {
+      const stages = getStagesByRegion(r.id);
+      if (stages.length > 0 && isStageUnlocked(stages[0], clearedStages)) {
+        unlockedChapterIds.add(r.id);
+      }
+    }
+    const opts: Array<{ id: string; label: string; bgAsset: string; motes: [string, string] }> = [
+      {
+        id: 'CITADEL',
+        label: 'Aurelia Citadel',
+        bgAsset: '/assets/environments/bg_lobby_aurelia.webp',
+        motes: ['#fde047', '#7dd3fc'],
+      },
+      {
+        id: 'AUTO_CHAPTER',
+        label: `Auto • Ch.${selectedRegion.chapter}`,
+        bgAsset: selectedRegion.arenaAsset,
+        motes: [
+          selectedRegion.themeColor,
+          `#${selectedRegion.ambientMoteColors[1].toString(16).padStart(6, '0')}`,
+        ],
+      },
+    ];
+    for (const r of REGIONS) {
+      if (!unlockedChapterIds.has(r.id)) continue;
+      opts.push({
+        id: r.id,
+        label: `Ch.${r.chapter} ${r.name}`,
+        bgAsset: r.arenaAsset,
+        motes: [
+          r.themeColor,
+          `#${r.ambientMoteColors[1].toString(16).padStart(6, '0')}`,
+        ],
+      });
+    }
+    return opts;
+  }, [clearedStages, selectedRegion]);
+
+  const activeLobbyScene =
+    lobbySceneOptions.find((o) => o.id === lobbySceneId) ?? lobbySceneOptions[0];
+
+  const cycleLobbyScene = () => {
+    const idx = lobbySceneOptions.findIndex((o) => o.id === activeLobbyScene.id);
+    const next = lobbySceneOptions[(idx + 1) % lobbySceneOptions.length];
+    if (next) {
+      setLobbySceneId(next.id);
+      audioManager.playSfx('button');
+    }
+  };
+
+  const heroLines = useMemo(
+    () => getHeroLobbyLines(displayHero.id, displayOwned?.bondLevel ?? 1),
+    [displayHero.id, displayOwned?.bondLevel],
+  );
+  const currentDialogueText = heroLines[lineIndex % heroLines.length] ?? displayHero.quote;
+
+  const handleHeroTapReaction = () => {
+    setShowDialogue(true);
+    setLineIndex((i) => (i + 1) % heroLines.length);
+    const burstKey = Date.now() + Math.random();
+    setTapPulseKey(burstKey);
+    const newParticles = Array.from({ length: 7 }, (_, i) => ({
+      id: burstKey + i,
+      dx: (i - 3) * 28 + (Math.random() - 0.5) * 24,
+      dy: -(75 + Math.random() * 90),
+      isHeart: i % 2 === 0,
+    }));
+    setTapHearts(newParticles);
+    window.setTimeout(() => {
+      setTapHearts((prev) => prev.filter((p) => p.id < burstKey || p.id >= burstKey + 10));
+    }, 950);
+    audioManager.playSfx(lineIndex % 3 === 2 ? 'ult_chime' : 'button', 0.08);
+  };
+
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const nx = (e.clientX / window.innerWidth - 0.5) * 2;
     const ny = (e.clientY / window.innerHeight - 0.5) * 2;
@@ -163,6 +248,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     const nextId = ownedHeroIds[(idx + 1) % ownedHeroIds.length];
     if (nextId) {
       setFavoriteHero(nextId);
+      setLineIndex(0);
       setShowDialogue(true);
       audioManager.playSfx('button');
     }
@@ -173,10 +259,15 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
       onMouseMove={handleMouseMove}
       className="relative w-full h-full overflow-hidden select-none"
     >
-      {/* LAYER 0: Painted Aurelia Sky Terrace + Animated Embers */}
-      <StarlightBackdrop variant="LOBBY" accentColor={displayHero.themeColor} />
+      {/* LAYER 0: Dynamic Chapter / Citadel Sky Terrace + Biome-Matched Animated Embers */}
+      <StarlightBackdrop
+        variant="LOBBY"
+        accentColor={displayHero.themeColor}
+        bgAsset={activeLobbyScene.bgAsset}
+        moteColors={activeLobbyScene.motes}
+      />
 
-      {/* LAYER 1: Full-Height Standing Anime Champion (True Transparent Cutout OR Seamless Full-Bleed Splash — ZERO Boxy Edges!) */}
+      {/* LAYER 1: Full-Height Interactive Standing Anime Champion (Tap for Reaction & Voice Lines!) */}
       {displayHero.assets.standing.includes('/assets/standing/') ? (
         <div
           className="pointer-events-none absolute inset-0 sm:inset-y-0 sm:left-0 sm:w-[58%] md:w-[62%] flex items-end justify-center sm:justify-start sm:pl-4 md:pl-10 lg:pl-14 z-10 overflow-hidden pb-36 sm:pb-8 md:pb-10"
@@ -185,9 +276,13 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             transition: 'transform 0.18s ease-out',
           }}
         >
-          {/* Ambient Faction Backlight Halo behind shoulders */}
-          <div
-            className="absolute bottom-[20%] left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-[12%] w-[280px] sm:w-[380px] md:w-[460px] h-[280px] sm:h-[380px] md:h-[460px] rounded-full opacity-40 blur-3xl"
+          {/* Ambient Faction Backlight Halo behind shoulders (pulses brightly on Hero tap!) */}
+          <motion.div
+            key={`aura_${tapPulseKey}`}
+            initial={{ scale: 1.28, opacity: 0.78 }}
+            animate={{ scale: 1, opacity: 0.42 }}
+            transition={{ duration: 0.65, ease: 'easeOut' }}
+            className="absolute bottom-[20%] left-1/2 -translate-x-1/2 sm:translate-x-0 sm:left-[12%] w-[280px] sm:w-[380px] md:w-[460px] h-[280px] sm:h-[380px] md:h-[460px] rounded-full blur-3xl"
             style={{
               background: `radial-gradient(circle, ${displayHero.themeColor}cc 0%, transparent 70%)`,
             }}
@@ -211,11 +306,37 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             <div className="absolute w-[62%] h-[42%] rounded-full bg-black/55 blur-md" />
           </div>
 
-          {/* Crisp Full-Body Transparent Standing Cutout */}
-          <div
+          {/* Crisp Full-Body Transparent Standing Cutout with Tactile Tap Reaction! */}
+          <motion.div
+            key={`hero_${displayHero.id}_${tapPulseKey}`}
+            initial={tapPulseKey > 0 ? { scale: 1.045, y: -12 } : { opacity: 0, x: -18 }}
+            animate={{ opacity: 1, x: 0, scale: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 20 }}
             className="relative h-[56dvh] sm:h-[82dvh] md:h-[88dvh] max-h-[820px] flex items-end justify-center animate-breathe cursor-pointer pointer-events-auto"
-            onClick={() => setShowDialogue((d) => !d)}
+            onClick={handleHeroTapReaction}
+            title={`Tap ${displayHero.name} to interact!`}
           >
+            {/* Floating Tap Reaction Hearts & Faction Sparkles */}
+            <AnimatePresence>
+              {tapHearts.map((p) => (
+                <motion.div
+                  key={p.id}
+                  initial={{ opacity: 0.95, x: 0, y: -220, scale: 0.5 }}
+                  animate={{ opacity: 0, x: p.dx, y: -220 + p.dy, scale: 1.25 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.88, ease: 'easeOut' }}
+                  className="pointer-events-none absolute bottom-12 left-1/2 z-30"
+                  style={{ color: p.isHeart ? '#fb7185' : displayHero.themeColor }}
+                >
+                  {p.isHeart ? (
+                    <Heart className="w-4 h-4 fill-rose-400 drop-shadow-[0_0_8px_rgba(251,113,133,0.9)]" />
+                  ) : (
+                    <Sparkles className="w-4 h-4 drop-shadow-[0_0_10px_rgba(253,224,71,0.95)]" />
+                  )}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
             <ArtImage
               kind="HERO"
               id={displayHero.id}
@@ -226,10 +347,10 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 filter: `drop-shadow(0 18px 28px rgba(4,6,16,0.88)) drop-shadow(0 0 18px ${displayHero.themeColor}44)`,
               }}
             />
-          </div>
+          </motion.div>
         </div>
       ) : (
-        /* Seamless Full-Bleed Splash Art fallback for heroes without transparent standing art yet (NO visible rectangle edge!) */
+        /* Seamless Full-Bleed Splash Art fallback for heroes without transparent standing art yet */
         <div
           className="pointer-events-none absolute inset-0 sm:inset-y-0 sm:left-0 sm:w-[66%] md:w-[68%] z-10 overflow-hidden"
           style={{
@@ -243,7 +364,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
         >
           <div
             className="relative w-full h-full animate-breathe cursor-pointer pointer-events-auto"
-            onClick={() => setShowDialogue((d) => !d)}
+            onClick={handleHeroTapReaction}
           >
             <ArtImage
               kind="HERO"
@@ -252,7 +373,6 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               alt={displayHero.name}
               className="w-full h-full object-cover object-top"
             />
-            {/* Smooth bottom & top atmospheric vignette blend */}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#060916]/90 via-transparent to-[#060916]/40" />
           </div>
         </div>
@@ -343,36 +463,69 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
         {/* MIDDLE LAYER: Speech Ribbon (Left) + Sculpted RPG Command Crests (Right) */}
         <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center justify-end sm:justify-between gap-2 my-1 min-h-0">
-          {/* Left Floating Hero Dialogue & Switcher */}
+          {/* Left Floating Interactive Hero Dialogue, Hero Switcher & Dynamic Chapter Scene Switcher */}
           <div className="flex flex-col items-start justify-end sm:h-full sm:pb-2 sm:pl-1 max-w-xs md:max-w-sm">
             {showDialogue && (
-              <div className="pointer-events-auto hidden md:block ls-hide rpg-panel-subtle px-3.5 py-2.5 mb-2 border-l-2 border-l-cyan-400">
-                <div className="flex items-center gap-2 mb-1">
-                  <RarityCrest tier={displayHero.tier} size="xs" />
-                  <RoleBadge role={displayHero.role} variant="medallion" size="sm" />
-                  <span className="font-display font-bold text-sm text-white">
-                    {displayHero.name}
-                  </span>
-                  <span className="text-[10px] text-amber-300/90 uppercase truncate">
-                    • {displayHero.title}
+              <motion.button
+                type="button"
+                onClick={handleHeroTapReaction}
+                key={`dlg_${displayHero.id}_${lineIndex}`}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.22 }}
+                title="Tap to hear another line"
+                className="pointer-events-auto hidden md:block ls-hide text-left rpg-panel-subtle hover:border-cyan-300/60 px-3.5 py-2.5 mb-2 border-l-2 border-l-cyan-400 transition"
+              >
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <RarityCrest tier={displayHero.tier} size="xs" />
+                    <RoleBadge role={displayHero.role} variant="medallion" size="sm" />
+                    <span className="font-display font-bold text-sm text-white truncate">
+                      {displayHero.name}
+                    </span>
+                    <span className="text-[10px] text-amber-300/90 uppercase truncate">
+                      • {displayHero.title}
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-400/50 text-[9px] font-mono font-bold text-rose-200 shrink-0">
+                    <Heart className="w-2.5 h-2.5 fill-rose-400 text-rose-400" />
+                    Lv.{displayOwned?.bondLevel ?? 1}
                   </span>
                 </div>
                 <p className="text-xs text-slate-200 italic leading-snug flex items-start gap-1.5">
                   <MessageSquare className="w-3.5 h-3.5 text-cyan-300 shrink-0 mt-0.5" />
-                  "{displayHero.quote}"
+                  <span>“{currentDialogueText}”</span>
                 </p>
-              </div>
+                <div className="mt-1 flex items-center justify-between text-[9px] text-slate-400">
+                  <span>Tap hero to interact</span>
+                  <span className="font-mono text-cyan-300/80">
+                    {(lineIndex % heroLines.length) + 1}/{heroLines.length}
+                  </span>
+                </div>
+              </motion.button>
             )}
 
-            <button
-              onClick={cycleFavorite}
-              className="pointer-events-auto rpg-panel-subtle hover:border-amber-400/80 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-200 hover:text-amber-300 flex items-center gap-1.5 transition"
-            >
-              <RefreshCw className="w-3 h-3 text-cyan-300" />
-              <span>
-                {displayHero.name} Lv.{displayOwned?.level ?? 1} ({ownedHeroIds.length}/{HEROES.length})
-              </span>
-            </button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                onClick={cycleFavorite}
+                className="pointer-events-auto rpg-panel-subtle hover:border-amber-400/80 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-200 hover:text-amber-300 flex items-center gap-1.5 transition"
+                title="Switch displayed Lobby Hero"
+              >
+                <RefreshCw className="w-3 h-3 text-cyan-300" />
+                <span>
+                  {displayHero.name} Lv.{displayOwned?.level ?? 1} ({ownedHeroIds.length}/{HEROES.length})
+                </span>
+              </button>
+
+              <button
+                onClick={cycleLobbyScene}
+                className="pointer-events-auto rpg-panel-subtle hover:border-cyan-400/80 px-2.5 py-1 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-cyan-200 hover:text-white flex items-center gap-1.5 transition"
+                title="Cycle Living Lobby Backdrop Scene (Citadel / Auto Chapter / Unlocked Chapters)"
+              >
+                <ImageIcon className="w-3 h-3 text-amber-300" />
+                <span className="max-w-[130px] truncate">{activeLobbyScene.label}</span>
+              </button>
+            </div>
           </div>
 
           {/* Right Side Sculpted RPG Crest Menu Cards (4 Core Menus: Heroes, Shop, Summon, Codex) */}

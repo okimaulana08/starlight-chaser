@@ -21,6 +21,25 @@ export interface GameSettings {
   defaultBattleSpeed: 1 | 2;
   defaultAutoSkill: boolean;
   defaultAutoMove: boolean;
+  lobbySceneId: string; // 'CITADEL' | 'AUTO_CHAPTER' | 'region_1'..'region_10'
+}
+
+export interface BossBanterLine {
+  speakerSide: 'HERO' | 'BOSS';
+  speakerName: string;
+  speakerTitle: string;
+  text: string;
+}
+
+export interface ActiveBossBanter {
+  id: string;
+  chapterLabel: string;
+  heroId: string;
+  bossName: string;
+  bossTitle: string;
+  bossAsset: string;
+  accentColor: string;
+  lines: BossBanterLine[];
 }
 
 export type EquipmentSlot = 'WEAPON' | 'ARMOR' | 'ACCESSORY' | 'EMBLEM';

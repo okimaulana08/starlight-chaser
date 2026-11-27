@@ -1,24 +1,43 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 
 interface StarlightBackdropProps {
   variant?: 'LOBBY' | 'SUMMON' | 'FORGE' | 'CODEX';
   accentColor?: string;
+  /** Optional custom painted environment asset (e.g. dynamic Chapter Lobby backdrop!) */
+  bgAsset?: string;
+  /** Optional [primary, secondary] hex particle colors matching the selected Chapter biome */
+  moteColors?: [string, string];
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '');
+  const num = parseInt(clean.length === 3 ? clean.replace(/(.)/g, '$1$1') : clean, 16);
+  if (Number.isNaN(num)) return `rgba(253, 224, 71, ${alpha})`;
+  const r = (num >> 16) & 255;
+  const g = (num >> 8) & 255;
+  const b = num & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 /**
  * Full-bleed living celestial world backdrop:
- * - In LOBBY mode, renders the full-resolution painted Aurelia Bastion sky terrace
- *   (`bg_lobby_aurelia.webp`) at vivid clarity with animated rising golden starlight embers
- *   and faint astrolabe rings layered smoothly over it!
- * - In SUMMON / FORGE / CODEX modes, blends a tinted atmospheric backdrop of Aurelia
- *   with animated constellation rings, volumetric glow, and rising starlight particles.
+ * - In LOBBY mode, supports seamless cross-fading between the flagship Aurelia Bastion sky terrace
+ *   (`bg_lobby_aurelia.webp`) and any dynamic Chapter environment with biome-matched floating embers!
+ * - In SUMMON / FORGE / CODEX modes, blends a tinted atmospheric backdrop with constellation rings.
  */
 export const StarlightBackdrop: React.FC<StarlightBackdropProps> = ({
   variant = 'LOBBY',
   accentColor = '#f5c84c',
+  bgAsset = '/assets/environments/bg_lobby_aurelia.webp',
+  moteColors = ['#fde047', '#7dd3fc'],
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [customBgReady, setCustomBgReady] = useState(true);
+  const [failedAssets, setFailedAssets] = useState<Record<string, boolean>>({});
+  const effectiveSrc = failedAssets[bgAsset]
+    ? '/assets/environments/bg_lobby_aurelia.webp'
+    : bgAsset;
+  const customBgReady = !failedAssets[effectiveSrc];
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -113,8 +132,8 @@ export const StarlightBackdrop: React.FC<StarlightBackdropProps> = ({
         const pulse = 0.55 + 0.45 * Math.sin(t * 2.8 + m.twinkle);
         const a = m.alpha * pulse;
         ctx.fillStyle = m.isGold
-          ? `rgba(253, 224, 71, ${a})`
-          : `rgba(125, 211, 252, ${a})`;
+          ? hexToRgba(moteColors[0], a)
+          : hexToRgba(moteColors[1], a);
         ctx.beginPath();
         ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
         ctx.fill();
@@ -128,25 +147,32 @@ export const StarlightBackdrop: React.FC<StarlightBackdropProps> = ({
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', handleResize);
     };
-  }, [variant, accentColor, customBgReady]);
+  }, [variant, accentColor, customBgReady, moteColors[0], moteColors[1]]);
 
   return (
     <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden bg-[#060916]">
-      {/* Real Painted Aurelia Bastion Sky Terrace */}
-      {customBgReady && (
-        <img
-          src="/assets/environments/bg_lobby_aurelia.webp"
-          alt=""
-          onError={() => setCustomBgReady(false)}
-          className={`absolute inset-0 w-full h-full object-cover object-center transition-all duration-700 ${
-            variant === 'LOBBY'
-              ? 'opacity-90 scale-[1.02]'
-              : variant === 'SUMMON'
-                ? 'opacity-40 scale-105 blur-[2px] saturate-125'
-                : 'opacity-30 scale-105 blur-[3px]'
-          }`}
-        />
-      )}
+      {/* Real Painted World Backdrop (Cross-Fades Smoothly Across Lobby Chapters!) */}
+      <AnimatePresence mode="sync">
+        {customBgReady && (
+          <motion.img
+            key={effectiveSrc}
+            src={effectiveSrc}
+            alt=""
+            initial={{ opacity: 0, scale: 1.05 }}
+            animate={{ opacity: variant === 'LOBBY' ? 0.9 : variant === 'SUMMON' ? 0.4 : 0.3, scale: variant === 'LOBBY' ? 1.02 : 1.05 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            onError={() => setFailedAssets((prev) => ({ ...prev, [effectiveSrc]: true }))}
+            className={`absolute inset-0 w-full h-full object-cover object-center ${
+              variant === 'LOBBY'
+                ? ''
+                : variant === 'SUMMON'
+                  ? 'blur-[2px] saturate-125'
+                  : 'blur-[3px]'
+            }`}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Atmospheric Readability Veil (subtle in Lobby so sky shines, deeper in menus) */}
       <div

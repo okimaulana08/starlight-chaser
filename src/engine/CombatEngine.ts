@@ -1,4 +1,5 @@
 import { Application, Container, Graphics, Sprite } from 'pixi.js';
+import { buildBossBanter } from '../data/bossBanter';
 import { resolveAnyStageDef } from '../data/dungeons';
 import { ENEMY_MAP } from '../data/enemies';
 import { generateEquipment } from '../data/equipment';
@@ -109,6 +110,7 @@ export class CombatEngine {
   private perfectDodgeSlowTimer = 0;
   private breakZoomTimer = 0;
   private perfectDodgeClearHandle: number | null = null;
+  private pendingBossWarning: { name: string; title: string } | null = null;
   private joystickVec: { x: number; y: number } | null = null;
   private battleEnded = false;
   private destroyed = false;
@@ -684,16 +686,27 @@ export class CombatEngine {
       audioManager.playBgm('boss');
       const bossUnit = this.ctx.enemies.find((e) => e.def.isBoss && e.alive);
       if (bossUnit) {
-        this.ctx.triggerShake(7);
-        useCombatStore.getState().setBossWarning({
-          id: Date.now(),
-          name: stage.bossNameOverride ?? bossUnit.def.name,
-          title: stage.bossTitleOverride ?? bossUnit.def.title,
+        const bName = stage.bossNameOverride ?? bossUnit.def.name;
+        const bTitle = stage.bossTitleOverride ?? bossUnit.def.title;
+        const bAsset = stage.bossAssetOverride ?? bossUnit.def.assetKey;
+
+        // Trigger Pre-Boss Anime VN Banter for Chapter Boss Stages & Rift Abyss Boss Rush!
+        const banter = buildBossBanter({
+          stageId: stage.id,
+          chapter: stage.chapter,
+          bossName: bName,
+          bossTitle: bTitle,
+          bossAsset: bAsset,
+          squadIds: this.ctx.heroes.map((h) => h.heroId),
+          isDungeon: stage.isDungeon,
         });
-        if (this.bossWarnClearHandle) window.clearTimeout(this.bossWarnClearHandle);
-        this.bossWarnClearHandle = window.setTimeout(() => {
-          useCombatStore.getState().setBossWarning(null);
-        }, 2150);
+
+        if (banter) {
+          this.pendingBossWarning = { name: bName, title: bTitle };
+          useCombatStore.getState().setActiveBanter(banter);
+        } else {
+          this.fireBossWarningBanner(bName, bTitle);
+        }
       }
     } else {
       useCombatStore.getState().setWaveBanner(`WAVE ${index + 1} / ${stage.waves.length}`);
@@ -1124,9 +1137,31 @@ export class CombatEngine {
     }
   }
 
+  private fireBossWarningBanner(name: string, title: string): void {
+    this.ctx.triggerShake(7);
+    useCombatStore.getState().setBossWarning({
+      id: Date.now(),
+      name,
+      title,
+    });
+    if (this.bossWarnClearHandle) window.clearTimeout(this.bossWarnClearHandle);
+    this.bossWarnClearHandle = window.setTimeout(() => {
+      useCombatStore.getState().setBossWarning(null);
+    }, 2150);
+  }
+
+  public dismissBossBanter(): void {
+    useCombatStore.getState().setActiveBanter(null);
+    if (this.pendingBossWarning) {
+      const { name, title } = this.pendingBossWarning;
+      this.pendingBossWarning = null;
+      this.fireBossWarningBanner(name, title);
+    }
+  }
+
   private tick(realDt: number): void {
     const store = useCombatStore.getState();
-    if (store.paused || this.battleEnded) return;
+    if (store.paused || store.activeBanter || this.battleEnded) return;
 
     // 1. Update Ultimate Choreography, Perfect Dodge Bullet-Time & Micro-Hitstop on REAL time
     let speedMult = 1.0;
@@ -2444,6 +2479,7 @@ export class CombatEngine {
     this.weatherSystem = null;
     useCombatStore.getState().setTouchJoystick(null);
     useCombatStore.getState().setPerfectDodge(false);
+    useCombatStore.getState().setActiveBanter(null);
     useCombatStore.getState().setBossWarning(null);
     useCombatStore.getState().setWaveBanner(null);
     window.removeEventListener('keydown', this.boundKeyDown);

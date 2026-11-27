@@ -11,8 +11,9 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   enableScreenShake: true,
   enableDamageNumbers: true,
   defaultBattleSpeed: 1,
-  defaultAutoSkill: false,
-  defaultAutoMove: false,
+  defaultAutoSkill: true,
+  defaultAutoMove: true,
+  lobbySceneId: 'CITADEL',
 };
 
 interface SettingsStore extends GameSettings {
@@ -26,6 +27,7 @@ interface SettingsStore extends GameSettings {
   setDefaultBattleSpeed: (speed: 1 | 2) => void;
   setDefaultAutoSkill: (on: boolean) => void;
   setDefaultAutoMove: (on: boolean) => void;
+  setLobbySceneId: (sceneId: string) => void;
   resetSettings: () => void;
 }
 
@@ -64,6 +66,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setDefaultBattleSpeed: (defaultBattleSpeed) => set({ defaultBattleSpeed }),
       setDefaultAutoSkill: (defaultAutoSkill) => set({ defaultAutoSkill }),
       setDefaultAutoMove: (defaultAutoMove) => set({ defaultAutoMove }),
+      setLobbySceneId: (lobbySceneId) => set({ lobbySceneId }),
 
       resetSettings: () => {
         audioManager.applySettings(DEFAULT_GAME_SETTINGS);
@@ -72,6 +75,20 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'starlight-chasers-settings-v1',
+      version: 2,
+      migrate: (persisted: unknown, version: number) => {
+        const prev = (persisted && typeof persisted === 'object' ? persisted : {}) as Partial<GameSettings>;
+        if (version < 2) {
+          return {
+            ...DEFAULT_GAME_SETTINGS,
+            ...prev,
+            defaultAutoMove: true,
+            defaultAutoSkill: true,
+            lobbySceneId: prev.lobbySceneId ?? 'CITADEL',
+          };
+        }
+        return { ...DEFAULT_GAME_SETTINGS, ...prev };
+      },
       onRehydrateStorage: () => (state) => {
         if (state) {
           audioManager.applySettings({
