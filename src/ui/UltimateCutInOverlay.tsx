@@ -126,15 +126,16 @@ export const UltimateCutInOverlay: React.FC = () => {
               background: `linear-gradient(105deg, #070913 0%, ${activeCutIn.themeColor}55 44%, #0c1229 100%)`,
             }}
           >
-            {/* Layer 1: Animated Diagonal Anime Speed-Lines */}
+            {/* Layer 1: High-Velocity Animated Diagonal Anime Speed-Lines */}
             <div
-              className="absolute inset-0 opacity-45"
+              className="absolute inset-0 opacity-50 animate-cutin-speedlines"
               style={{
-                backgroundImage: `repeating-linear-gradient(-12deg, transparent, transparent 12px, ${activeCutIn.themeColor}66 12px, ${activeCutIn.themeColor}66 16px)`,
+                backgroundImage: `repeating-linear-gradient(-12deg, transparent, transparent 10px, ${activeCutIn.themeColor}77 10px, ${activeCutIn.themeColor}77 14px, transparent 14px, transparent 26px, rgba(255,255,255,0.3) 26px, rgba(255,255,255,0.3) 28px)`,
+                backgroundSize: '200% 200%',
               }}
             />
 
-            {/* Layer 2: 1080p Animated Sakuga Video (SSR) OR Panoramic Cut-In Artwork */}
+            {/* Layer 2: 1080p Animated Sakuga Video (SSR) OR Kinetic Surging Panoramic Artwork */}
             {showVideo ? (
               <video
                 ref={videoRef}
@@ -152,9 +153,33 @@ export const UltimateCutInOverlay: React.FC = () => {
                 src={imgSrc}
                 alt={activeCutIn.heroName}
                 onError={() => setCutInFallback(true)}
-                className="absolute inset-0 w-full h-full object-cover object-center opacity-95 scale-105 skew-x-[10deg]"
+                className="absolute inset-0 w-full h-full object-cover object-center opacity-95 skew-x-[10deg] animate-cutin-surge"
               />
             )}
+
+            {/* Layer 2.5: Diagonal Razor Sakuga Light Slash & Streaming Kinetic Sparks */}
+            <div
+              className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 animate-cutin-slash"
+              style={{
+                background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.75) 50%, ${activeCutIn.themeColor}aa 72%, transparent 100%)`,
+                transform: 'skewX(-24deg)',
+              }}
+            />
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              {[14, 31, 52, 68, 84].map((topPct, i) => (
+                <div
+                  key={topPct}
+                  className="absolute h-[2px] rounded-full animate-cutin-spark"
+                  style={{
+                    top: `${topPct}%`,
+                    left: `${-15 + i * 18}%`,
+                    width: `${90 + (i % 3) * 65}px`,
+                    background: `linear-gradient(90deg, transparent, ${i % 2 === 0 ? '#ffffff' : activeCutIn.themeColor}, transparent)`,
+                    animationDelay: `${i * 0.08}s`,
+                  }}
+                />
+              ))}
+            </div>
 
             {/* Dramatic left-to-right readability gradient (lighter on video so animation shines!) */}
             <div

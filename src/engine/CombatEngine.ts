@@ -1,4 +1,5 @@
 import { Application, Container, Graphics, Sprite } from 'pixi.js';
+import { ENEMY_ATTACK_SPRITES, HERO_ATTACK_SPRITES } from '../data/attackSprites';
 import { buildBossBanter } from '../data/bossBanter';
 import { resolveAnyStageDef } from '../data/dungeons';
 import { ENEMY_MAP } from '../data/enemies';
@@ -603,11 +604,20 @@ export class CombatEngine {
         castShadowSprite.texture = loaded;
         castShadowSprite.scale.set(sc, sc * this.biomeLighting.shadowScaleY);
         castShadowSprite.visible = true;
+        heroUnit.idleTexture = loaded;
+        heroUnit.activePose = 'IDLE';
         heroUnit.hasFullSprite = true;
         heroUnit.baseScaleY = sc;
         fallbackCrestGroup.visible = false;
         weaponGfx.visible = false;
       });
+      const atkSpriteUrl = HERO_ATTACK_SPRITES[def.id];
+      if (atkSpriteUrl) {
+        tryLoadPixiTexture(atkSpriteUrl).then((atkLoaded) => {
+          if (!atkLoaded || this.destroyed || liveMesh.mesh.destroyed) return;
+          heroUnit.attackTexture = atkLoaded;
+        });
+      }
     });
 
     // Start every expedition with 16/80 Chaser Resonance + Relic startingGauge + Spire Starlight Surge (+24)!
@@ -867,7 +877,17 @@ export class CombatEngine {
             castShadowSprite.texture = loaded;
             castShadowSprite.scale.set(-sc, sc * this.biomeLighting.shadowScaleY);
             castShadowSprite.visible = true;
+            enemyUnit.idleTexture = loaded;
+            enemyUnit.activePose = 'IDLE';
             enemyUnit.baseScaleY = sc;
+          });
+        }
+        const enemyAtkUrl =
+          ENEMY_ATTACK_SPRITES[enemySpriteUrl] ?? ENEMY_ATTACK_SPRITES[def.id];
+        if (enemyAtkUrl) {
+          tryLoadPixiTexture(enemyAtkUrl).then((atkLoaded) => {
+            if (!atkLoaded || this.destroyed || liveMesh.mesh.destroyed) return;
+            enemyUnit.attackTexture = atkLoaded;
           });
         }
       }
@@ -1877,6 +1897,17 @@ export class CombatEngine {
       const baseSc = h.baseScaleY ?? 0.9;
       const hitBend = h.hitFlashTimer > 0 ? Math.min(1, h.hitFlashTimer / 0.15) : 0;
 
+      // Multi-Pose Action Keyframe Swap (Idle <-> Attack/Cast, synced with 2.5D Cast Shadow!)
+      if (h.attackTexture && h.idleTexture) {
+        const nextPose: 'IDLE' | 'ATTACK' = h.alive && swingRemain > 0 ? 'ATTACK' : 'IDLE';
+        if (h.activePose !== nextPose) {
+          h.activePose = nextPose;
+          const nextTex = nextPose === 'ATTACK' ? h.attackTexture : h.idleTexture;
+          h.liveMesh.swapTextureFast(nextTex);
+          h.castShadowSprite.texture = nextTex;
+        }
+      }
+
       // Apply Live2D-Lite real-time 5×7 vertex deformation!
       h.liveMesh.deform({
         time: h.animTime,
@@ -2217,6 +2248,18 @@ export class CombatEngine {
 
       const hitBend = e.hitFlashTimer > 0 ? Math.min(1, e.hitFlashTimer / 0.14) : 0;
       const brokenStagger = e.isBroken ? Math.sin(e.animTime * 22) * 0.25 : 0;
+
+      // Multi-Pose Action Keyframe Swap for Enemies & Bosses (synced with 2.5D Cast Shadow!)
+      if (e.attackTexture && e.idleTexture) {
+        const nextPose: 'IDLE' | 'ATTACK' =
+          e.alive && (swingRemain > 0 || windup > 0.62) ? 'ATTACK' : 'IDLE';
+        if (e.activePose !== nextPose) {
+          e.activePose = nextPose;
+          const nextTex = nextPose === 'ATTACK' ? e.attackTexture : e.idleTexture;
+          e.liveMesh.swapTextureFast(nextTex);
+          e.castShadowSprite.texture = nextTex;
+        }
+      }
 
       // Enemy textures natively face LEFT (-1), so pass nativeForwardSign: -1!
       e.liveMesh.deform({

@@ -101,6 +101,9 @@ export interface HeroUnit {
   // Pixi display
   container: Container;
   liveMesh: LiveMeshActor;
+  idleTexture?: Texture;
+  attackTexture?: Texture;
+  activePose?: 'IDLE' | 'ATTACK';
   castShadowSprite: Sprite;
   shadowGfx: Graphics;
   auraPivot: Container;
@@ -208,6 +211,9 @@ export interface EnemyUnit {
   // Pixi display
   container: Container;
   liveMesh: LiveMeshActor;
+  idleTexture?: Texture;
+  attackTexture?: Texture;
+  activePose?: 'IDLE' | 'ATTACK';
   castShadowSprite: Sprite;
   shadowGfx: Graphics;
   auraPivot: Container;

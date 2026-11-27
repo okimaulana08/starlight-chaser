@@ -31,6 +31,7 @@ import type { DungeonId, Faction, ScreenId } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { CommissionsModal } from './CommissionsModal';
 import { GameIcon } from './GameIcon';
+import { Live2DLobbyStage } from './Live2DLobbyStage';
 import { PartyManagerModal } from './PartyManagerModal';
 import { RarityCrest, RoleBadge } from './RoleBadge';
 import { SettingsModal } from './SettingsModal';
@@ -312,16 +313,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             <div className="absolute w-[62%] h-[42%] rounded-full bg-black/55 blur-md" />
           </div>
 
-          {/* Crisp Full-Body Transparent Standing Cutout with Tactile Tap Reaction! */}
-          <motion.div
-            key={`hero_${displayHero.id}_${tapPulseKey}`}
-            initial={tapPulseKey > 0 ? { scale: 1.045, y: -12 } : { opacity: 0, x: -18 }}
-            animate={{ opacity: 1, x: 0, scale: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 20 }}
-            className="relative h-[56dvh] sm:h-[82dvh] md:h-[88dvh] max-h-[820px] flex items-end justify-center animate-breathe cursor-pointer pointer-events-auto"
-            onClick={handleHeroTapReaction}
-            title={`Tap ${displayHero.name} to interact!`}
-          >
+          {/* Live2D-Style Breathing, Wind-Sway, Specular Glint & Elemental Aura Standing Champion! */}
+          <div className="relative flex items-end justify-center">
             {/* Floating Tap Reaction Hearts & Faction Sparkles */}
             <AnimatePresence>
               {tapHearts.map((p) => (
@@ -343,17 +336,18 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               ))}
             </AnimatePresence>
 
-            <ArtImage
-              kind="HERO"
-              id={displayHero.id}
+            <Live2DLobbyStage
+              heroId={displayHero.id}
+              heroName={displayHero.name}
               src={displayHero.assets.standing}
-              alt={displayHero.name}
-              className="h-full w-auto max-w-[92vw] sm:max-w-[54vw] object-contain object-bottom"
-              style={{
-                filter: `drop-shadow(0 18px 28px rgba(4,6,16,0.88)) drop-shadow(0 0 18px ${displayHero.themeColor}44)`,
-              }}
+              faction={displayHero.faction}
+              themeColor={displayHero.themeColor}
+              parallaxX={parallax.x}
+              parallaxY={parallax.y}
+              tapPulseKey={tapPulseKey}
+              onTap={handleHeroTapReaction}
             />
-          </motion.div>
+          </div>
         </div>
       ) : (
         /* Seamless Full-Bleed Splash Art fallback for heroes without transparent standing art yet */

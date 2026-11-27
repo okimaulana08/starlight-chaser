@@ -70,6 +70,18 @@ export class LiveMeshActor {
     this.captureBaseGeometry();
   }
 
+  /**
+   * Zero-GC texture swap between same-size Idle and Attack/Cast action keyframe poses!
+   */
+  public swapTextureFast(texture: Texture): void {
+    if (this.mesh.destroyed || this.mesh.texture === texture) return;
+    if (texture.width === this.texW && texture.height === this.texH) {
+      this.mesh.texture = texture;
+    } else {
+      this.setTexture(texture, this.pivotYFrac);
+    }
+  }
+
   private captureBaseGeometry(): void {
     const tex = this.mesh.texture;
     this.texW = Math.max(1, tex.width);
@@ -161,8 +173,13 @@ export class LiveMeshActor {
         Math.abs(side) *
         clothWeight;
 
-      // 3. Inertia lean + attack whip + hit recoil + stride sway
-      const actionX = (bendX + windupJitter) * bendWeight + strideSway * up * (1 - up * 0.3);
+      // 3. Inertia lean + attack whip + kinetic strike weapon-reach surge + hit recoil + stride sway
+      const strikeReach =
+        p.attackWhip > 0.01
+          ? (side * fwd > 0 ? 0.095 : -0.055) * p.attackWhip * fwd * w * Math.sin(up * Math.PI * 0.9)
+          : 0;
+      const actionX =
+        (bendX + windupJitter) * bendWeight + strideSway * up * (1 - up * 0.3) + strikeReach;
 
       // 4. Vertical compression during cast wind-up / stride + arc drop as head leans over
       const leanArcDrop = Math.abs(rawBendX) * h * 0.045 * bendWeight;

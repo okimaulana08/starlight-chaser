@@ -852,6 +852,82 @@
   pointer-events: none;
 }
 
+/* 2B Kinetic Anime Ultimate Cut-In Motion Keyframes */
+@keyframes cutin-speedlines {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 180% 0%;
+  }
+}
+
+@keyframes cutin-surge {
+  0% {
+    transform: skewX(10deg) scale(1.26) translateX(-4%);
+    filter: brightness(1.35) contrast(1.1);
+  }
+  22% {
+    transform: skewX(10deg) scale(1.07) translateX(0%);
+    filter: brightness(1.06) contrast(1.04);
+  }
+  100% {
+    transform: skewX(10deg) scale(1.14) translateX(2.5%);
+    filter: brightness(1.02) contrast(1.02);
+  }
+}
+
+@keyframes cutin-slash {
+  0% {
+    left: -40%;
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.92;
+  }
+  58% {
+    left: 125%;
+    opacity: 0;
+  }
+  100% {
+    left: 125%;
+    opacity: 0;
+  }
+}
+
+@keyframes cutin-spark {
+  0% {
+    transform: translateX(-25vw);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.95;
+  }
+  85% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateX(125vw);
+    opacity: 0;
+  }
+}
+
+.animate-cutin-speedlines {
+  animation: cutin-speedlines 0.75s linear infinite;
+}
+
+.animate-cutin-surge {
+  animation: cutin-surge 1.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-cutin-slash {
+  animation: cutin-slash 0.85s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+.animate-cutin-spark {
+  animation: cutin-spark 0.58s linear infinite;
+}
+
 /* Custom sleek scrollbars */
 ::-webkit-scrollbar {
   width: 5px;
