@@ -81,4 +81,24 @@ export const RELIC_BANNER: BannerDef = {
   backgroundAsset: '/assets/banners/bg_summon_relics.webp',
 };
 
-export const BANNERS = [HERO_BANNER_UR, HERO_BANNER_NEW, HERO_BANNER, RELIC_BANNER];
+export const PET_BANNER: BannerDef = {
+  id: 'banner_pet_sanctuary',
+  type: 'PET',
+  name: 'Starlight Companion Sanctuary',
+  subtitle: 'Summon Celestial Pets: Aetherion (SSR), Cinderfang (SR) & Lumina (R)',
+  featuredIds: ['pet_aetherion', 'pet_cinderfang', 'pet_lumina'],
+  poolSSR: ['pet_aetherion'],
+  poolSR: ['pet_cinderfang'],
+  poolR: ['pet_lumina'],
+  ssrBaseRate: 0.04,
+  srBaseRate: 0.22,
+  softPity: 30,
+  hardPity: 45,
+  singleCost: 120,
+  tenCost: 1200,
+  sparkCost: 80,
+  accentColor: '#38e8ff',
+  backgroundAsset: '/assets/banners/bg_summon_pets.webp',
+};
+
+export const BANNERS = [HERO_BANNER_UR, HERO_BANNER_NEW, HERO_BANNER, PET_BANNER, RELIC_BANNER];

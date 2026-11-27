@@ -1,4 +1,4 @@
-import type { HeroDef } from '../types/game';
+import type { HeroDef, OwnedHeroState } from '../types/game';
 
 export const HEROES: HeroDef[] = [
   // ==================== TIER UR (CELESTIAL SOVEREIGN) ====================
@@ -94,6 +94,34 @@ export const HEROES: HeroDef[] = [
       ascendedSprite: '/assets/sprites/battle_astraea_ascended.webp',
       cutIn: '/assets/cutins/cutin_astraea.webp',
       cutInVideo: '/assets/cutins/cutin_astraea.mp4',
+    },
+    transcendence: {
+      enabled: true,
+      formTitle: 'Empyrean Archon of the Shattered Sky',
+      quote: 'Beyond six stars lies the Empyrean Throne—behold the unbroken Fifth Pillar!',
+      summary:
+        'Unlocks Max Lv.100, +20% Base HP/ATK/DEF, +8% Crit Rate, +20% Crit DMG, Transcended Empyrean Visuals (Card, Lobby & Battle), upgraded Sovereign Authority (+18% Final DMG / +20% Crit DMG / +70% Link Burst), 5-stack Six-Star Barrage, and 12s rapid Celestial Domain.',
+      maxLevelCap: 100,
+      statSurge: {
+        baseStatMultBonus: 0.2,
+        critRateBonus: 0.08,
+        critDmgBonus: 0.2,
+      },
+      upgradedSovereignAura: {
+        name: 'Empyrean Sovereign Authority',
+        description:
+          'Transcended Celestial Wildcard: harmonizes Faction Resonance or 4-Faction Harmony. Grants all allies +18% Final DMG, +20% Crit DMG, and upgrades Astraea Starlight Link Bursts to +70% Bonus DMG.',
+        squadFinalDmgBonus: 0.18,
+        squadCritDmgBonus: 0.2,
+        linkBurstBonus: 0.7,
+      },
+      assets: {
+        card: '/assets/heroes/hero_astraea_transcended_card.webp',
+        standing: '/assets/standing/standing_astraea_transcended.webp',
+        sprite: '/assets/sprites/battle_astraea_transcended.webp',
+        attackSprite: '/assets/sprites/battle_astraea_transcended_atk.webp',
+        attackScaleBoost: 1.15,
+      },
     },
   },
 
@@ -1512,3 +1540,52 @@ export const HEROES: HeroDef[] = [
 export const HERO_MAP: Record<string, HeroDef> = Object.fromEntries(
   HEROES.map((hero) => [hero.id, hero]),
 );
+
+export interface ResolvedHeroVisuals {
+  card: string;
+  standing: string;
+  sprite: string;
+  attackSprite?: string;
+  attackScaleBoost?: number;
+  title: string;
+  quote: string;
+  isTranscendedVisual: boolean;
+}
+
+/**
+ * Resolves a hero's active visual assets & title, automatically upgrading to their
+ * Transcended form once unlocked (while respecting the player's Classic/Transcended toggle).
+ */
+export function resolveHeroVisuals(
+  hero: HeroDef,
+  owned?: OwnedHeroState | null,
+): ResolvedHeroVisuals {
+  const tr = hero.transcendence;
+  const active = Boolean(
+    tr?.enabled && owned?.transcended && (owned.useTranscendedVisual ?? true),
+  );
+  if (active && tr) {
+    return {
+      card: tr.assets.card,
+      standing: tr.assets.standing,
+      sprite: tr.assets.sprite,
+      attackSprite: tr.assets.attackSprite,
+      attackScaleBoost: tr.assets.attackScaleBoost ?? 1.15,
+      title: tr.formTitle,
+      quote: tr.quote,
+      isTranscendedVisual: true,
+    };
+  }
+  return {
+    card: hero.assets.card,
+    standing: hero.assets.standing,
+    sprite: hero.assets.sprite,
+    title: hero.title,
+    quote: hero.quote,
+    isTranscendedVisual: false,
+  };
+}
+
+export function isTranscendenceEligibleTier(hero: HeroDef): boolean {
+  return hero.tier === 'UR' || hero.tier === 'SSR';
+}

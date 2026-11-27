@@ -222,31 +222,39 @@ export class SkillExecutor {
     if (slot === 1) hero.cd1 = effectiveCd;
     else hero.cd2 = effectiveCd;
 
-    // Astraea UR Passive (Crown of Six Stars): Any ally casting an active skill ignites 1 Starlight Blade (max 6)!
+    // Astraea UR Passive (Crown of Six Stars): Any ally casting an active skill ignites 1 Starlight Blade (6 stacks, or 5 when Transcended)!
     const astraea = ctx.heroes.find((h) => h.alive && h.heroId === 'astraea');
     if (astraea) {
-      astraea.starlightBlades = Math.min(6, astraea.starlightBlades + 1);
-      if (astraea.starlightBlades >= 6) {
+      const neededStacks = astraea.transcended ? 5 : 6;
+      astraea.starlightBlades = Math.min(neededStacks, astraea.starlightBlades + 1);
+      if (astraea.starlightBlades >= neededStacks) {
         astraea.starlightBlades = 0;
         const target =
           ctx.enemies.find((e) => e.alive && e.def.isBoss) ??
           ctx.enemies.find((e) => e.alive);
         if (target) {
-          ctx.addSp(0.6);
-          ctx.spawnDamageText(astraea.x, astraea.y - 68, '✦ SIX-STAR BARRAGE! +0.6 SP', 0xf0abfc, true);
+          const spBonus = astraea.transcended ? 0.8 : 0.6;
+          ctx.addSp(spBonus);
+          ctx.spawnDamageText(
+            astraea.x,
+            astraea.y - 68,
+            astraea.transcended ? '❖ EMPYREAN BARRAGE! +0.8 SP' : '✦ SIX-STAR BARRAGE! +0.6 SP',
+            astraea.transcended ? 0xfde047 : 0xf0abfc,
+            true,
+          );
           for (let b = 0; b < 6; b++) {
             const ang = (b * Math.PI * 2) / 6;
             const ox = astraea.x + Math.cos(ang) * 42;
             const oy = astraea.y - 54 + Math.sin(ang) * 24;
-            ctx.spawnBeam(ox, oy, target.x, target.y - 26, b % 2 === 0 ? 0xfde047 : 0x38e8ff, 9);
+            ctx.spawnBeam(ox, oy, target.x, target.y - 26, b % 2 === 0 ? 0xfde047 : 0x38e8ff, astraea.transcended ? 11 : 9);
           }
-          ctx.spawnRingWave(target.x, target.y, 130, 0xe879f9, 0.45);
+          ctx.spawnRingWave(target.x, target.y, astraea.transcended ? 155 : 130, astraea.transcended ? 0xfde047 : 0xe879f9, 0.45);
           ctx.damageEnemy(astraea, target, {
-            multiplier: 2.2,
+            multiplier: astraea.transcended ? 2.6 : 2.2,
             isSkill: true,
             isTrueDamage: true,
             hitShieldHits: 6,
-            breakDamage: 18,
+            breakDamage: astraea.transcended ? 24 : 18,
           });
         }
       }
@@ -535,14 +543,15 @@ export class SkillExecutor {
 
     // Special zones & UR/SSR signature enhancements
     if (skill.id === 'astraea_ult') {
-      // UR CELESTIAL DOMAIN (9s) + ASCENSION FORM + SQUAD ATK/ATKSPD BUFF!
-      hero.ascensionTimer = 9.0;
+      // UR CELESTIAL DOMAIN (9s, or 12s when Transcended!) + ASCENSION FORM + SQUAD ATK/ATKSPD BUFF!
+      const domainDur = hero.transcended ? 12.0 : 9.0;
+      hero.ascensionTimer = domainDur;
       for (const ally of ctx.heroes) {
         if (!ally.alive) continue;
-        ally.atkBuffTimer = Math.max(ally.atkBuffTimer, 9.0);
-        ally.atkBuffValue = Math.max(ally.atkBuffValue, 0.2);
-        ally.atkSpdBuffTimer = Math.max(ally.atkSpdBuffTimer, 9.0);
-        ally.atkSpdBuffValue = Math.max(ally.atkSpdBuffValue, 0.15);
+        ally.atkBuffTimer = Math.max(ally.atkBuffTimer, domainDur);
+        ally.atkBuffValue = Math.max(ally.atkBuffValue, hero.transcended ? 0.25 : 0.2);
+        ally.atkSpdBuffTimer = Math.max(ally.atkSpdBuffTimer, domainDur);
+        ally.atkSpdBuffValue = Math.max(ally.atkSpdBuffValue, hero.transcended ? 0.2 : 0.15);
       }
       ctx.addZone({
         id: `celestial_domain_${Date.now()}`,
@@ -550,13 +559,17 @@ export class SkillExecutor {
         ownerHeroId: hero.heroId,
         x: tx,
         y: ty,
-        radius: 410,
-        remaining: 9.0,
-        maxDuration: 9.0,
-        tickTimer: 1.2,
-        color: 0xe879f9,
+        radius: hero.transcended ? 450 : 410,
+        remaining: domainDur,
+        maxDuration: domainDur,
+        tickTimer: hero.transcended ? 0.9 : 1.2,
+        color: hero.transcended ? 0xfde047 : 0xe879f9,
       });
-      ctx.notifyBanner('❖ CELESTIAL DOMAIN EXPANDED — ASTRAEA ASCENSION FORM! ❖');
+      ctx.notifyBanner(
+        hero.transcended
+          ? '❖ EMPYREAN CELESTIAL DOMAIN — TRANSCENDED ARCHON UNLEASHED! ❖'
+          : '❖ CELESTIAL DOMAIN EXPANDED — ASTRAEA ASCENSION FORM! ❖',
+      );
     } else if (skill.id === 'astraea_s2') {
       // Prismatic Judgment also cloaks the squad in a 15% Max HP Starlight Aegis!
       for (const ally of ctx.heroes) {

@@ -152,20 +152,21 @@ export function factionToEssenceKey(faction: Faction): MaterialKey {
 }
 
 /**
- * Hero Level Cap tied to Awakening Star (★0..★6):
- * ★0=20, ★1=30, ★2=40, ★3=50, ★4=60, ★5=70, ★6=80.
+ * Hero Level Cap tied to Awakening Star (★0..★6) & Transcendence (Lv.100!):
+ * ★0=20, ★1=30, ★2=40, ★3=50, ★4=60, ★5=70, ★6=80, Transcended=100.
  */
-export function getHeroLevelCap(awakening: number): number {
+export function getHeroLevelCap(awakening: number, transcended = false): number {
+  if (transcended && awakening >= 6) return 100;
   return Math.min(80, 20 + Math.max(0, Math.min(6, awakening)) * 10);
 }
 
 /**
  * Clean RPG EXP threshold required to advance from `level` to `level + 1` (rounded to multiples of 50).
  * Calibrated for ~3.5-4.5 normal clears (or ~2-3 Boss clears) per natural combat Level Up.
- * e.g. Lv.8 = 2,100, Lv.15 = 5,050, Lv.20 = 7,950, Lv.40 = 26,650.
+ * e.g. Lv.8 = 2,100, Lv.15 = 5,050, Lv.20 = 7,950, Lv.40 = 26,650, Lv.80..100 endgame Transcendence curve.
  */
 export function getExpToNextLevel(level: number): number {
-  const lv = Math.max(1, Math.min(80, level));
+  const lv = Math.max(1, Math.min(100, level));
   return Math.round((450 + lv * lv * 14 + lv * 95) / 50) * 50;
 }
 
@@ -192,6 +193,7 @@ export function getLevelUpCost(
   currentLevel: number,
   levelsToAdd: number,
   awakening: number,
+  transcended = false,
 ): {
   actualLevels: number;
   potions: number;
@@ -199,7 +201,7 @@ export function getLevelUpCost(
   atAwakenCap: boolean;
   levelCap: number;
 } {
-  const levelCap = getHeroLevelCap(awakening);
+  const levelCap = getHeroLevelCap(awakening, transcended);
   const actualLevels = Math.max(0, Math.min(levelsToAdd, levelCap - currentLevel));
   let potions = 0;
   let gold = 0;
@@ -214,9 +216,13 @@ export function getLevelUpCost(
     } else if (lv < 60) {
       potions += 6 + Math.floor((lv - 40) / 6);
       gold += 480 + lv * 66;
-    } else {
+    } else if (lv < 80) {
       potions += 9 + Math.floor((lv - 60) / 5);
       gold += 760 + lv * 88;
+    } else {
+      // Transcendence Lv.80 -> Lv.100 endgame growth curve
+      potions += 14 + Math.floor((lv - 80) / 4);
+      gold += 1200 + lv * 110;
     }
   }
   return {
@@ -225,6 +231,40 @@ export function getLevelUpCost(
     gold,
     atAwakenCap: currentLevel >= levelCap && levelCap < 80,
     levelCap,
+  };
+}
+
+export interface TranscendenceCost {
+  essences: number;
+  starCores: number;
+  astralAnvilCores: number;
+  gold: number;
+  shardAltCost: number;
+  shardAltGold: number;
+}
+
+/**
+ * Endgame Hero Transcendence Ritual Cost (Unlocked after Max Awakening ★6; UR & SSR eligible).
+ */
+export function getTranscendenceCost(tier: Tier): TranscendenceCost | null {
+  if (tier !== 'UR' && tier !== 'SSR') return null;
+  if (tier === 'UR') {
+    return {
+      essences: 60,
+      starCores: 25,
+      astralAnvilCores: 15,
+      gold: 60000,
+      shardAltCost: 50,
+      shardAltGold: 30000,
+    };
+  }
+  return {
+    essences: 45,
+    starCores: 18,
+    astralAnvilCores: 10,
+    gold: 45000,
+    shardAltCost: 40,
+    shardAltGold: 22000,
   };
 }
 

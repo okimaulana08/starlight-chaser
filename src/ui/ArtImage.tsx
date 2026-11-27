@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getFallbackCardSvg } from '../engine/AssetManager';
 
 interface ArtImageProps {
-  kind: 'HERO' | 'RELIC' | 'ENEMY';
+  kind: 'HERO' | 'RELIC' | 'ENEMY' | 'PET';
   id: string;
   src: string;
   alt: string;

@@ -1,6 +1,7 @@
 import { Assets, Container, Graphics, RenderTexture, Renderer, Sprite, Texture } from 'pixi.js';
 import { FACTIONS } from '../data/factions';
 import { HERO_MAP } from '../data/heroes';
+import { PET_MAP } from '../data/pets';
 import { RELIC_MAP } from '../data/relics';
 import type { EnemyDef, HeroDef, Role } from '../types/game';
 
@@ -170,7 +171,7 @@ export function getProceduralEnemyTexture(renderer: Renderer, enemy: EnemyDef): 
   return rt;
 }
 
-export function getFallbackCardSvg(kind: 'HERO' | 'RELIC' | 'ENEMY', id: string): string {
+export function getFallbackCardSvg(kind: 'HERO' | 'RELIC' | 'ENEMY' | 'PET', id: string): string {
   const key = `${kind}_${id}`;
   if (svgFallbackCache.has(key)) return svgFallbackCache.get(key)!;
 
@@ -194,6 +195,12 @@ export function getFallbackCardSvg(kind: 'HERO' | 'RELIC' | 'ENEMY', id: string)
             : h.role === 'MAGE'
               ? '✦'
               : '✚';
+  } else if (kind === 'PET' && PET_MAP[id]) {
+    const p = PET_MAP[id];
+    primary = p.themeColor;
+    secondary = p.tier === 'SSR' ? '#7e22ce' : p.tier === 'SR' ? '#9a3412' : '#0369a1';
+    initial = p.name.slice(0, 1).toUpperCase();
+    emblem = '🐾';
   } else if (kind === 'RELIC' && RELIC_MAP[id]) {
     const r = RELIC_MAP[id];
     primary = r.tier === 'SSR' ? '#f5c84c' : r.tier === 'SR' ? '#c084fc' : '#38bdf8';

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { FastForward, Play, Sparkles } from 'lucide-react';
 import { HERO_MAP } from '../data/heroes';
+import { PET_MAP } from '../data/pets';
 import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -153,6 +154,7 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
   const enableUltVideo = useSettingsStore((s) => s.enableUltVideo);
   const hero = result.kind === 'HERO' ? HERO_MAP[result.id] : null;
   const relic = result.kind === 'RELIC' ? RELIC_MAP[result.id] : null;
+  const pet = result.kind === 'PET' ? PET_MAP[result.id] : null;
   const hasSsrVideo = Boolean(
     enableUltVideo &&
       hero &&
@@ -225,6 +227,7 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
 
   const accentColor =
     hero?.themeColor ??
+    pet?.themeColor ??
     (result.tier === 'UR'
       ? '#e879f9'
       : result.tier === 'SSR'
@@ -485,6 +488,38 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
                   }}
                 />
               </motion.div>
+            ) : pet ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.65, y: 24 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                className="relative flex items-center justify-center shrink-0"
+              >
+                <div
+                  className="pointer-events-none absolute w-64 h-64 sm:w-80 sm:h-80 rounded-full border-2 border-dashed animate-spin opacity-65"
+                  style={{
+                    animationDuration: '16s',
+                    borderColor: accentColor,
+                    boxShadow: `0 0 60px ${accentColor}66`,
+                  }}
+                />
+                <motion.div
+                  animate={{ y: [0, -14, 0] }}
+                  transition={{ duration: 3.1, repeat: Infinity, ease: 'easeInOut' }}
+                  className="relative w-56 h-56 sm:w-80 sm:h-80 flex items-center justify-center"
+                >
+                  <ArtImage
+                    kind="PET"
+                    id={pet.id}
+                    src={pet.assets.sprite}
+                    alt={pet.name}
+                    className="w-full h-full object-contain"
+                    style={{
+                      filter: `drop-shadow(0 22px 38px rgba(0,0,0,0.95)) drop-shadow(0 0 34px ${accentColor}99)`,
+                    }}
+                  />
+                </motion.div>
+              </motion.div>
             ) : relic ? (
               <motion.div
                 initial={{ opacity: 0, scale: 0.65, rotateY: 90 }}
@@ -583,12 +618,18 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
                     ★ RATE-UP
                   </span>
                 )}
+                {pet && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-300/70 text-[10px] font-display font-black uppercase tracking-widest text-cyan-200">
+                    🐾 {pet.petRole} PET
+                  </span>
+                )}
                 {result.isNew ? (
                   <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-widest shadow-[0_0_16px_rgba(251,191,36,0.75)]">
-                    NEW {hero ? 'HERO' : 'RELIC'}!
+                    NEW {hero ? 'HERO' : pet ? 'PET' : 'RELIC'}!
                   </span>
                 ) : (
                   <span className="px-2.5 py-0.5 rounded-full bg-fuchsia-950/90 border border-fuchsia-400/60 text-fuchsia-200 font-mono font-bold text-[10px]">
+                    {pet && result.petNewRank ? `RANK R${result.petNewRank} • ` : ''}
                     {result.shardsGained > 0 ? `+${result.shardsGained} Shards • ` : ''}+
                     {result.starDustGained} Star Dust
                   </span>
@@ -598,10 +639,10 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
               {/* Title & Name */}
               <div>
                 <h2 className="font-display text-4xl sm:text-6xl font-black text-white text-glow-gold leading-none">
-                  {hero ? hero.name : relic?.name}
+                  {hero ? hero.name : pet ? pet.name : relic?.name}
                 </h2>
                 <div className="text-sm sm:text-lg font-serif-italic italic text-cyan-200 tracking-wider mt-1">
-                  {hero ? hero.title : `${relic?.preferredRole ?? ''} Starlight Relic`}
+                  {hero ? hero.title : pet ? pet.title : `${relic?.preferredRole ?? ''} Starlight Relic`}
                 </div>
               </div>
 
@@ -635,6 +676,29 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
                     )}
                   </div>
                 </>
+              ) : pet ? (
+                <div className="space-y-2">
+                  <p
+                    className="text-xs sm:text-sm text-slate-100 italic bg-slate-950/80 border-l-4 px-3.5 py-2 backdrop-blur-md shadow-xl"
+                    style={{ borderColor: accentColor }}
+                  >
+                    “{pet.quote}”
+                  </p>
+                  <div className="text-xs sm:text-sm text-cyan-100 bg-slate-950/80 border border-cyan-400/40 rounded-lg px-3.5 py-2.5 backdrop-blur-md space-y-1.5">
+                    <div>
+                      <span className="text-[10px] font-display font-black uppercase tracking-widest text-amber-300 block">
+                        Companion Squad Aura
+                      </span>
+                      <span>{pet.auraDesc}</span>
+                    </div>
+                    <div className="pt-1 border-t border-white/10">
+                      <span className="text-[10px] font-display font-black uppercase tracking-widest text-cyan-300 block">
+                        Auto-Skill — {pet.activeSkill.name} ({pet.activeSkill.cooldown}s CD)
+                      </span>
+                      <span className="text-slate-200">{pet.activeSkill.description}</span>
+                    </div>
+                  </div>
+                </div>
               ) : relic ? (
                 <div className="space-y-2">
                   <div className="text-xs sm:text-sm text-cyan-100 bg-slate-950/80 border border-cyan-400/40 rounded-lg px-3.5 py-2.5 backdrop-blur-md">
@@ -828,11 +892,15 @@ export const SummonResultsStage: React.FC<SummonResultsStageProps> = ({
           const role =
             res.kind === 'HERO'
               ? HERO_MAP[res.id]?.role
-              : RELIC_MAP[res.id]?.preferredRole;
+              : res.kind === 'RELIC'
+                ? RELIC_MAP[res.id]?.preferredRole
+                : undefined;
           const sub =
             res.kind === 'HERO'
               ? HERO_MAP[res.id]?.title
-              : `${RELIC_MAP[res.id]?.preferredRole ?? ''} Relic`;
+              : res.kind === 'PET'
+                ? PET_MAP[res.id]?.title
+                : `${RELIC_MAP[res.id]?.preferredRole ?? ''} Relic`;
           const flipDelay = idx * 0.075;
           return (
             <motion.div
@@ -886,6 +954,7 @@ export const SummonResultsStage: React.FC<SummonResultsStageProps> = ({
                 footerExtra={
                   !res.isNew ? (
                     <div className="text-[10px] text-fuchsia-200 font-mono font-bold">
+                      {res.kind === 'PET' && res.petNewRank ? `R${res.petNewRank} • ` : ''}
                       {res.shardsGained > 0 ? `+${res.shardsGained} Shards • ` : ''}+
                       {res.starDustGained} Dust
                     </div>

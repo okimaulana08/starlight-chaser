@@ -1,8 +1,15 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ShoppingBag } from 'lucide-react';
-import { HERO_BANNER, HERO_BANNER_NEW, HERO_BANNER_UR, RELIC_BANNER } from '../data/banners';
+import {
+  HERO_BANNER,
+  HERO_BANNER_NEW,
+  HERO_BANNER_UR,
+  PET_BANNER,
+  RELIC_BANNER,
+} from '../data/banners';
 import { HERO_MAP } from '../data/heroes';
+import { PET_MAP } from '../data/pets';
 import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
 import { usePlayerStore } from '../store/usePlayerStore';
@@ -24,24 +31,29 @@ import { SUMMON_POSTER_SRC, SUMMON_VIDEO_SRC, SummonCinematic } from './SummonCi
 import { SummonResultsStage, SummonSpotlight } from './SummonShowcase';
 
 interface GachaScreenProps {
+  initialTab?: 'UR_EVENT' | 'NEW_HERO' | 'HERO' | 'PET' | 'RELIC';
   onBack: () => void;
 }
 
-export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
+export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT', onBack }) => {
   const {
     starlightCrystals,
     starlightTokens,
     pityCounterUR,
     pityCounterHero,
     pityCounterRelic,
+    pityCounterPet,
     guaranteedFeaturedUR,
     guaranteedFeaturedHero,
     guaranteedFeaturedRelic,
+    guaranteedFeaturedPet,
     pullBanner,
     sparkExchange,
   } = usePlayerStore();
 
-  const [bannerTab, setBannerTab] = useState<'UR_EVENT' | 'NEW_HERO' | 'HERO' | 'RELIC'>('UR_EVENT');
+  const [bannerTab, setBannerTab] = useState<'UR_EVENT' | 'NEW_HERO' | 'HERO' | 'PET' | 'RELIC'>(
+    initialTab,
+  );
   const [phase, setPhase] = useState<'IDLE' | 'CINEMATIC' | 'SPOTLIGHT' | 'REVEAL'>('IDLE');
   const [pendingResults, setPendingResults] = useState<GachaPullResult[]>([]);
   const [spotlightIndex, setSpotlightIndex] = useState(0);
@@ -89,18 +101,25 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
         ? HERO_BANNER_NEW
         : bannerTab === 'HERO'
           ? HERO_BANNER
-          : RELIC_BANNER;
+          : bannerTab === 'PET'
+            ? PET_BANNER
+            : RELIC_BANNER;
   const isUrEvent = isURBanner(banner);
+  const isPetBanner = banner.type === 'PET';
   const pity = isUrEvent
     ? (pityCounterUR ?? 0)
-    : bannerTab === 'RELIC'
-      ? pityCounterRelic
-      : pityCounterHero;
+    : isPetBanner
+      ? (pityCounterPet ?? 0)
+      : bannerTab === 'RELIC'
+        ? pityCounterRelic
+        : pityCounterHero;
   const guaranteed = isUrEvent
     ? Boolean(guaranteedFeaturedUR)
-    : bannerTab === 'RELIC'
-      ? guaranteedFeaturedRelic
-      : guaranteedFeaturedHero;
+    : isPetBanner
+      ? Boolean(guaranteedFeaturedPet)
+      : bannerTab === 'RELIC'
+        ? guaranteedFeaturedRelic
+        : guaranteedFeaturedHero;
   const nextUrRate = getURProbability(pity, banner);
   const nextSsrRate = getSSRProbability(pity, banner);
 
@@ -175,16 +194,27 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
           tier: HERO_MAP[id].tier,
           role: HERO_MAP[id].role,
         }
-      : {
-          id,
-          name: RELIC_MAP[id].name,
-          sub: `${RELIC_MAP[id].preferredRole} Starlight Relic`,
-          card: RELIC_MAP[id].assetCard,
-          standing: RELIC_MAP[id].assetCard,
-          themeColor: '#38e8ff',
-          tier: RELIC_MAP[id].tier,
-          role: RELIC_MAP[id].preferredRole,
-        },
+      : banner.type === 'PET'
+        ? {
+            id,
+            name: PET_MAP[id].name,
+            sub: PET_MAP[id].title,
+            card: PET_MAP[id].assets.card,
+            standing: PET_MAP[id].assets.sprite,
+            themeColor: PET_MAP[id].themeColor,
+            tier: PET_MAP[id].tier,
+            role: undefined,
+          }
+        : {
+            id,
+            name: RELIC_MAP[id].name,
+            sub: `${RELIC_MAP[id].preferredRole} Starlight Relic`,
+            card: RELIC_MAP[id].assetCard,
+            standing: RELIC_MAP[id].assetCard,
+            themeColor: '#38e8ff',
+            tier: RELIC_MAP[id].tier,
+            role: RELIC_MAP[id].preferredRole,
+          },
   );
 
   return (
@@ -238,6 +268,7 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
               { key: 'UR_EVENT', label: '❖ UR Event', icon: 'summon', accent: 'gold' },
               { key: 'NEW_HERO', label: 'New SSR', icon: 'summon', accent: 'gold' },
               { key: 'HERO', label: 'Eclipse', icon: 'heroes', accent: 'gold' },
+              { key: 'PET', label: '🐾 Pets', icon: 'summon', accent: 'cyan' },
               { key: 'RELIC', label: 'Relics', icon: 'relic', accent: 'cyan' },
             ]}
           />
@@ -334,6 +365,65 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                 </div>
               ))}
             </div>
+          ) : banner.type === 'PET' ? (
+            <div className="relative flex items-center justify-center w-full h-full max-h-[560px]">
+              {/* Starlight Sanctuary Floating Pet Pedestal */}
+              <div
+                className="pointer-events-none absolute bottom-[18%] w-60 h-60 sm:w-80 sm:h-80 rounded-full border-2 border-dashed border-cyan-300/45 animate-spin z-0"
+                style={{
+                  animationDuration: '26s',
+                  boxShadow: '0 0 60px rgba(56,232,255,0.32), inset 0 0 36px rgba(245,200,76,0.25)',
+                }}
+              />
+              <div className="pointer-events-none absolute bottom-5 w-[78%] max-w-md h-12 rounded-full border-2 border-cyan-300/60 bg-gradient-to-r from-cyan-400/15 via-amber-400/20 to-orange-400/15 shadow-[0_0_46px_rgba(56,232,255,0.45)] blur-[1px]" />
+              <div className="relative z-10 flex items-end justify-center gap-1 sm:gap-3 w-full px-2">
+                {[featuredItems[2], featuredItems[0], featuredItems[1]].filter(Boolean).map((item, idx) => {
+                  const isCenter = idx === 1;
+                  return (
+                    <motion.div
+                      key={item.id}
+                      animate={{ y: isCenter ? [0, -14, 0] : [0, -9, 0] }}
+                      transition={{
+                        duration: isCenter ? 3.2 : 3.6 + idx * 0.3,
+                        repeat: Infinity,
+                        ease: 'easeInOut',
+                      }}
+                      className={`relative flex flex-col items-center ${
+                        isCenter ? 'z-20 -mx-3 sm:-mx-4 pb-6' : 'z-10 pb-1 opacity-95'
+                      }`}
+                    >
+                      <div
+                        className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-28 sm:w-44 h-28 sm:h-44 rounded-full blur-3xl opacity-50"
+                        style={{ background: item.themeColor }}
+                      />
+                      <ArtImage
+                        kind="PET"
+                        id={item.id}
+                        src={item.standing}
+                        alt={item.name}
+                        className={`relative object-contain ${
+                          isCenter
+                            ? 'w-40 h-40 sm:w-64 sm:h-64 md:w-72 md:h-72'
+                            : 'w-28 h-28 sm:w-44 sm:h-44 md:w-52 md:h-52'
+                        }`}
+                        style={{
+                          filter: `drop-shadow(0 16px 28px rgba(4,6,16,0.92)) drop-shadow(0 0 22px ${item.themeColor}88)`,
+                        }}
+                      />
+                      <div
+                        className="relative z-30 -mt-2 px-2.5 py-0.5 rounded-full bg-slate-950/92 backdrop-blur-md flex items-center gap-1.5 shadow-xl border"
+                        style={{ borderColor: `${item.themeColor}99` }}
+                      >
+                        <RarityCrest tier={item.tier} size="xs" />
+                        <span className="font-display font-black text-[11px] sm:text-xs text-white tracking-wider">
+                          {item.name}
+                        </span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
           ) : (
             <div className="relative flex items-end justify-center gap-2.5 sm:gap-4 md:gap-6 my-auto">
               {featuredItems.map((item, i) => (
@@ -344,7 +434,7 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                   }`}
                 >
                   <CollectibleCard
-                    kind={banner.type}
+                    kind="RELIC"
                     id={item.id}
                     src={item.card}
                     name={item.name}
@@ -370,13 +460,20 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
               >
                 {isUrEvent
                   ? '❖ LIMITED CELESTIAL SOVEREIGN EVENT ❖'
-                  : banner.type === 'HERO'
-                    ? 'STARLIGHT RESONANCE BANNER'
-                    : 'ANCIENT RELIC ALTAR'}
+                  : isPetBanner
+                    ? '🐾 STARLIGHT COMPANION SANCTUARY'
+                    : banner.type === 'HERO'
+                      ? 'STARLIGHT RESONANCE BANNER'
+                      : 'ANCIENT RELIC ALTAR'}
               </div>
               {isUrEvent && (
                 <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-300/25 via-fuchsia-500/30 to-cyan-400/25 border border-white/75 text-[9px] font-display font-black uppercase tracking-widest text-white shadow-[0_0_14px_rgba(232,121,249,0.7)] animate-pulse">
                   UR DEBUT
+                </span>
+              )}
+              {isPetBanner && (
+                <span className="px-2 py-0.5 rounded-full bg-cyan-400/20 border border-cyan-300/75 text-[9px] font-display font-black uppercase tracking-widest text-cyan-200">
+                  NEW PETS
                 </span>
               )}
             </div>
@@ -391,11 +488,17 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
             <CornerFiligree color={banner.accentColor} size={7} opacity={0.55} />
             <div className="flex items-center justify-between text-xs">
               <span className="font-display text-slate-300 uppercase tracking-[0.16em] text-[10px] font-bold">
-                {isUrEvent ? 'UR Sovereign Pity' : 'SSR Pity Counter'}
+                {isUrEvent
+                  ? 'UR Sovereign Pity'
+                  : isPetBanner
+                    ? 'SSR Pet Pity Counter'
+                    : 'SSR Pity Counter'}
               </span>
               <span className="font-mono font-bold text-sm text-white">
-                <span className={isUrEvent ? 'text-fuchsia-300' : 'text-amber-300'}>{pity}</span> /{' '}
-                {banner.hardPity}{' '}
+                <span className={isUrEvent ? 'text-fuchsia-300' : isPetBanner ? 'text-cyan-300' : 'text-amber-300'}>
+                  {pity}
+                </span>{' '}
+                / {banner.hardPity}{' '}
                 <span className="text-slate-400 text-[11px] font-sans">(Soft @{banner.softPity})</span>
               </span>
             </div>
@@ -410,7 +513,7 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
 
             <div className="flex items-center justify-between text-xs">
               <span
-                className={`font-mono font-bold ${isUrEvent ? 'text-fuchsia-200' : 'text-amber-300'}`}
+                className={`font-mono font-bold ${isUrEvent ? 'text-fuchsia-200' : isPetBanner ? 'text-cyan-200' : 'text-amber-300'}`}
               >
                 {isUrEvent
                   ? `UR: ${(nextUrRate * 100).toFixed(1)}% • SSR: ${(nextSsrRate * 100).toFixed(1)}%`
@@ -420,16 +523,20 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                 className={`px-2 py-0.5 rounded-full text-[10px] font-display font-black uppercase tracking-wider border ${
                   isUrEvent
                     ? 'bg-fuchsia-500/20 border-fuchsia-300/70 text-fuchsia-100'
-                    : guaranteed
-                      ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-300'
-                      : 'bg-cyan-500/15 border-cyan-400/45 text-cyan-200'
+                    : isPetBanner
+                      ? 'bg-cyan-500/20 border-cyan-300/70 text-cyan-100'
+                      : guaranteed
+                        ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-300'
+                        : 'bg-cyan-500/15 border-cyan-400/45 text-cyan-200'
                 }`}
               >
                 {isUrEvent
                   ? '❖ 100% Astraea on UR'
-                  : guaranteed
-                    ? '★ 100% Featured'
-                    : '50/50 Featured Rate-Up'}
+                  : isPetBanner
+                    ? '🐾 100% Aetherion on SSR'
+                    : guaranteed
+                      ? '★ 100% Featured'
+                      : '50/50 Featured Rate-Up'}
               </span>
             </div>
           </div>
@@ -441,6 +548,13 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                 <strong className="text-amber-300">SSR 2.5% (Vespera 50% Up)</strong> •{' '}
                 <strong className="text-violet-300">SR 17.5%</strong>. SSR pulls keep UR Pity intact!
                 10× guarantees SR+.
+              </>
+            ) : isPetBanner ? (
+              <>
+                Base: <strong className="text-amber-300">SSR Aetherion 4%</strong> •{' '}
+                <strong className="text-orange-300">SR Cinderfang 22%</strong> •{' '}
+                <strong className="text-cyan-300">R Lumina 74%</strong>. Duplicates auto-refine Pet
+                Rank (R1→R5)! 10× guarantees SR+.
               </>
             ) : (
               <>
@@ -468,7 +582,9 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
               <span className="font-display font-extrabold text-xs sm:text-sm text-white uppercase tracking-wider">
                 1× Summon
               </span>
-              <span className="text-[10px] sm:text-[11px] font-mono text-cyan-300 mt-0.5">160 Crystals</span>
+              <span className="text-[10px] sm:text-[11px] font-mono text-cyan-300 mt-0.5">
+                {banner.singleCost.toLocaleString()} Crystals
+              </span>
             </button>
             <button
               onClick={() => handleSummon(10)}
@@ -478,7 +594,7 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                 <GameIcon name="summon" className="w-4 h-4 sm:w-5 sm:h-5" /> 10× Summon
               </span>
               <span className="text-[10px] sm:text-[11px] font-mono font-bold text-amber-950 mt-0.5">
-                1,600 Crystals
+                {banner.tenCost.toLocaleString()} Crystals
               </span>
             </button>
           </div>
@@ -582,7 +698,7 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                   STARLIGHT SPARK EXCHANGE
                 </h3>
                 <p className="text-xs text-slate-300">
-                  Redeem 160 Tokens for UR Sovereign or 120 Tokens for any SSR Hero / Relic (Balance:{' '}
+                  Redeem 160 Tokens for UR Sovereign, 120 for SSR Hero/Relic, or 80/40 for Companion Pets (Balance:{' '}
                   <span className="text-amber-300 font-mono font-bold text-sm">{starlightTokens}</span>)
                 </p>
               </div>
@@ -649,6 +765,38 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
                       className="w-full font-display font-black uppercase tracking-wider"
                     >
                       Exchange 120
+                    </RpgButton>
+                  </div>
+                );
+              })}
+
+              {[...PET_BANNER.poolSSR, ...PET_BANNER.poolSR].map((pid) => {
+                const p = PET_MAP[pid];
+                if (!p) return null;
+                const cost = p.tier === 'SSR' ? 80 : 40;
+                return (
+                  <div key={pid} className="flex flex-col gap-1.5">
+                    <CollectibleCard
+                      kind="PET"
+                      id={pid}
+                      src={p.assets.card}
+                      name={p.name}
+                      subtitle={p.title}
+                      tier={p.tier}
+                      topBannerLabel="🐾 PET"
+                      compact
+                      interactive={false}
+                    />
+                    <RpgButton
+                      variant="cyan"
+                      size="xs"
+                      disabled={starlightTokens < cost}
+                      onClick={() => {
+                        if (sparkExchange('PET', pid)) audioManager.playSfx('ssr_reveal');
+                      }}
+                      className="w-full font-display font-black uppercase tracking-wider"
+                    >
+                      Exchange {cost}
                     </RpgButton>
                   </div>
                 );

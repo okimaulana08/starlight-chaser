@@ -80,13 +80,16 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
   const { muted, toggleMuted } = useSettingsStore();
   const clearedStages = usePlayerStore((s) => s.clearedStages);
   const squadIds = usePlayerStore((s) => s.squadIds);
+  const roster = usePlayerStore((s) => s.roster);
+  const activePetId = usePlayerStore((s) => s.activePetId);
+  const ownedPets = usePlayerStore((s) => s.ownedPets);
   const getDungeonEntriesLeft = usePlayerStore((s) => s.getDungeonEntriesLeft);
   const parsedDungeon = parseDungeonStageId(stageId);
   const parsedSpireFloor = parseSpireStageId(stageId);
   const isDungeonStage = Boolean(parsedDungeon);
   const isSpireStage = parsedSpireFloor !== null;
   const resolvedStageDef = resolveAnyStageDef(stageId);
-  const activeSynergies = getSquadSynergyPills(squadIds);
+  const activeSynergies = getSquadSynergyPills(squadIds, roster, activePetId, ownedPets);
   const dungeonCanReplay = parsedDungeon
     ? getDungeonEntriesLeft(parsedDungeon.dungeonId).canEnter
     : true;
@@ -124,6 +127,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
     touchJoystick,
     aiming,
     heroes,
+    activePet,
     boss,
     activeBanter,
     linkWindow,
@@ -578,7 +582,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                       <div className="w-full h-full rounded-full overflow-hidden bg-slate-950">
                         <PortraitImg
                           heroId={h.heroId}
-                          src={def.assets.card}
+                          src={h.cardAsset ?? def.assets.card}
                           className="w-full h-full object-cover object-top"
                         />
                       </div>
@@ -751,9 +755,40 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
         </div>
       </div>
 
-      {/* TACTILE SQUAD EVADE / PERFECT DODGE ACTION ORB (Right Edge Above Hero Dock) */}
+      {/* TACTILE SQUAD EVADE & ACTIVE COMPANION PET ORB (Right Edge Above Hero Dock) */}
       {!combatResult && !paused && (
-        <div className="fixed right-3 sm:right-5 bottom-[126px] sm:bottom-[104px] z-30 flex flex-col items-center gap-1">
+        <div className="fixed right-3 sm:right-5 bottom-[126px] sm:bottom-[104px] z-30 flex flex-col items-center gap-2">
+          {activePet && (
+            <div
+              title={`🐾 ${activePet.name} (R${activePet.rank} Lv.${activePet.level}) — Auto-Skill: ${activePet.skillName} (${activePet.cd <= 0.2 ? 'CASTING!' : `ready in ${activePet.cd.toFixed(1)}s`})`}
+              className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-full p-[2px] bg-slate-950/90 border-2 shadow-xl flex items-center justify-center overflow-hidden"
+              style={{
+                borderColor: activePet.themeColor,
+                boxShadow: `0 0 18px ${activePet.themeColor}66`,
+              }}
+            >
+              <img
+                src={activePet.spriteAsset}
+                alt={activePet.name}
+                className="w-9 h-9 sm:w-10 sm:h-10 object-contain"
+              />
+              {activePet.cd > 0.2 && (
+                <div
+                  className="absolute inset-0 rounded-full flex items-center justify-center"
+                  style={{
+                    background: `conic-gradient(rgba(3, 7, 18, 0.84) ${Math.min(100, (activePet.cd / Math.max(1, activePet.maxCd)) * 100)}%, rgba(3, 7, 18, 0.15) 0)`,
+                  }}
+                >
+                  <span className="font-mono text-[10px] font-black text-cyan-200 drop-shadow-[0_1px_4px_rgba(0,0,0,1)]">
+                    {Math.ceil(activePet.cd)}s
+                  </span>
+                </div>
+              )}
+              <span className="absolute -bottom-0.5 inset-x-0 text-center bg-black/85 text-[7px] font-display font-black text-amber-200 leading-tight">
+                🐾 R{activePet.rank}
+              </span>
+            </div>
+          )}
           <button
             disabled={!evadeReady}
             onClick={handleSquadEvade}

@@ -5,7 +5,8 @@ import { resolveAnyStageDef } from '../data/dungeons';
 import { ENEMY_MAP } from '../data/enemies';
 import { generateEquipment } from '../data/equipment';
 import { FACTIONS } from '../data/factions';
-import { HERO_MAP } from '../data/heroes';
+import { HERO_MAP, resolveHeroVisuals } from '../data/heroes';
+import { PET_MAP, computePetAura } from '../data/pets';
 import {
   getExpToNextLevel,
   getHeroLevelCap,
@@ -23,6 +24,7 @@ import type {
   Faction,
   HeroBattleExpResult,
   HeroCombatSnapshot,
+  PetCombatSnapshot,
   SkillDef,
 } from '../types/game';
 import {
@@ -46,7 +48,7 @@ import {
   getActiveFactionBonuses,
   isFourFactionHarmony,
 } from './CombatMath';
-import type { CombatContext, EnemyUnit, GroundZone, HeroUnit } from './CombatTypes';
+import type { CombatContext, EnemyUnit, GroundZone, HeroUnit, PetUnit } from './CombatTypes';
 import { EnemyAI } from './EnemyAI';
 import { getHeroHitStyle } from './HeroVfxChoreographer';
 import { LiveMeshActor } from './LiveMeshActor';
@@ -102,6 +104,7 @@ export class CombatEngine {
   private ultDirector = new UltimateDirector();
 
   private ctx!: CombatContext;
+  private petUnit: PetUnit | null = null;
   private cameraX = 1040;
   private cameraY = 740;
   private cameraZoom = 1.0;
@@ -354,7 +357,7 @@ export class CombatEngine {
           heroId: hero.heroId,
           heroName: hero.def.name,
           skillName,
-          cardAsset: hero.def.assets.card,
+          cardAsset: hero.resolvedCardAsset ?? hero.def.assets.card,
           themeColor: hero.def.themeColor,
           isUlt: slot === 'ULT',
         });
@@ -419,6 +422,10 @@ export class CombatEngine {
   private spawnSquad(): void {
     const player = usePlayerStore.getState();
     const squadIds = player.squadIds;
+    const activeOwnedPet =
+      player.activePetId && player.ownedPets?.[player.activePetId]
+        ? player.ownedPets[player.activePetId]
+        : null;
     let totalStartingGauge = 0;
 
     squadIds.forEach((heroId, idx) => {
@@ -426,6 +433,7 @@ export class CombatEngine {
       const owned = player.roster[heroId];
       if (!def || !owned) return;
 
+      const visuals = resolveHeroVisuals(def, owned);
       const stats = computeHeroStats(
         def,
         owned,
@@ -433,6 +441,7 @@ export class CombatEngine {
         squadIds,
         player.unlockedCodexIds.length,
         player.relicRanks,
+        { roster: player.roster, activePet: activeOwnedPet },
       );
       totalStartingGauge += stats.startingGauge;
 
@@ -538,6 +547,9 @@ export class CombatEngine {
         def,
         stats,
         relicId: owned.equippedRelicId,
+        transcended: Boolean(def.transcendence?.enabled && owned.transcended),
+        useTranscendedVisual: visuals.isTranscendedVisual,
+        resolvedCardAsset: visuals.card,
         slotIndex: idx,
         x,
         y,
@@ -627,12 +639,12 @@ export class CombatEngine {
       };
       this.ctx.heroes.push(heroUnit);
 
-      // Load real full-body transparent anime battle sprite onto LiveMeshActor & Cast Shadow!
-      const spriteUrl = `/assets/sprites/battle_${def.id}.webp`;
+      // Load real full-body transparent anime battle sprite onto LiveMeshActor & Cast Shadow (Transcended visual when active!)
+      const spriteUrl = visuals.sprite;
       tryLoadPixiTexture(spriteUrl).then((loaded) => {
         if (!loaded || this.destroyed || liveMesh.mesh.destroyed) return;
         liveMesh.setTexture(loaded, 0.95);
-        const targetH = def.role === 'TANK' ? 152 : 142;
+        const targetH = visuals.isTranscendedVisual ? 156 : def.role === 'TANK' ? 152 : 142;
         const sc = targetH / Math.max(1, loaded.height);
         liveMesh.mesh.scale.set(sc);
         castShadowSprite.texture = loaded;
@@ -645,21 +657,27 @@ export class CombatEngine {
         fallbackCrestGroup.visible = false;
         weaponGfx.visible = false;
       });
-      const atkCfg = HERO_ATTACK_SPRITES[def.id];
-      if (atkCfg) {
-        tryLoadPixiTexture(atkCfg.url).then((atkLoaded) => {
+      const atkUrl = visuals.attackSprite ?? HERO_ATTACK_SPRITES[def.id]?.url;
+      const atkBoost = visuals.attackSprite
+        ? (visuals.attackScaleBoost ?? 1.15)
+        : (HERO_ATTACK_SPRITES[def.id]?.scaleBoost ?? 1.0);
+      if (atkUrl) {
+        tryLoadPixiTexture(atkUrl).then((atkLoaded) => {
           if (!atkLoaded || this.destroyed || liveMesh.mesh.destroyed) return;
           heroUnit.attackTexture = atkLoaded;
-          heroUnit.attackScaleBoost = atkCfg.scaleBoost ?? 1.0;
+          heroUnit.attackScaleBoost = atkBoost;
         });
       }
-      if (def.assets.ascendedSprite) {
+      if (!visuals.isTranscendedVisual && def.assets.ascendedSprite) {
         tryLoadPixiTexture(def.assets.ascendedSprite).then((ascLoaded) => {
           if (!ascLoaded || this.destroyed || liveMesh.mesh.destroyed) return;
           heroUnit.ascendedTexture = ascLoaded;
         });
       }
     });
+
+    // Spawn Equipped Companion Pet hovering beside the Squad!
+    this.spawnActivePet();
 
     // Start every expedition with 8/90 Chaser Resonance + Relic startingGauge + Spire Starlight Surge (+24)!
     const stageDef = resolveAnyStageDef(this.stageId);
@@ -669,6 +687,201 @@ export class CombatEngine {
     // 4-Faction Harmony Synergy Bonus: +1.0 Starting Squad SP!
     if (isFourFactionHarmony(squadIds)) {
       this.ctx.addSp(1.0);
+    }
+  }
+
+  private spawnActivePet(): void {
+    const player = usePlayerStore.getState();
+    const petId = player.activePetId;
+    if (!petId) return;
+    const owned = player.ownedPets?.[petId];
+    const def = PET_MAP[petId];
+    if (!owned || !def) return;
+
+    const aura = computePetAura(def, owned);
+    const atlas = VfxTextureAtlas.get();
+    const container = new Container();
+
+    const shadowGfx = new Graphics();
+    shadowGfx.ellipse(0, 2, 22, 7).fill({ color: 0x050814, alpha: 0.34 });
+
+    const haloSprite = new Sprite(atlas.magicCircle);
+    haloSprite.anchor.set(0.5);
+    haloSprite.position.set(0, -68);
+    haloSprite.tint = hexToNum(def.themeColor);
+    haloSprite.blendMode = 'add';
+    haloSprite.alpha = 0.38;
+    haloSprite.scale.set(0.28);
+
+    const sprite = new Sprite();
+    sprite.anchor.set(0.5, 0.5);
+    sprite.position.set(0, -68);
+    sprite.visible = false;
+
+    container.addChild(shadowGfx);
+    container.addChild(haloSprite);
+    container.addChild(sprite);
+    this.actorLayer.addChild(container);
+
+    const startX = this.ctx.squadAnchor.x - 84;
+    const startY = this.ctx.squadAnchor.y - 46;
+    container.position.set(startX, startY);
+
+    const petUnit: PetUnit = {
+      petId,
+      def,
+      level: owned.level,
+      rank: owned.rank,
+      skillPowerMult: aura.skillPowerMult,
+      x: startX,
+      y: startY,
+      facing: 1,
+      cd: Math.max(3.5, def.activeSkill.cooldown * 0.45),
+      maxCd: def.activeSkill.cooldown,
+      castFlashTimer: 0,
+      animTime: 0,
+      container,
+      sprite,
+      haloSprite,
+      shadowGfx,
+    };
+    this.petUnit = petUnit;
+
+    tryLoadPixiTexture(def.assets.sprite).then((tex) => {
+      if (!tex || this.destroyed || sprite.destroyed) return;
+      sprite.texture = tex;
+      const targetSize = def.tier === 'SSR' ? 86 : 78;
+      const sc = targetSize / Math.max(1, Math.max(tex.width, tex.height));
+      sprite.scale.set(sc);
+      sprite.visible = true;
+    });
+  }
+
+  private updatePetCompanion(dt: number): void {
+    const pet = this.petUnit;
+    if (!pet) return;
+    pet.animTime += dt;
+    if (pet.castFlashTimer > 0) pet.castFlashTimer = Math.max(0, pet.castFlashTimer - dt);
+
+    const lead = this.ctx.heroes.find((h) => h.alive) ?? this.ctx.heroes[0];
+    if (!lead) return;
+
+    const targetX = lead.x - lead.facing * 72;
+    const targetY = lead.y - 36;
+    const follow = Math.min(1, dt * 5.2);
+    pet.x += (targetX - pet.x) * follow;
+    pet.y += (targetY - pet.y) * follow;
+    pet.facing = lead.facing;
+
+    const hoverY = -72 + Math.sin(pet.animTime * 3.8) * 10;
+    const pulse = pet.castFlashTimer > 0 ? 1.24 : 1 + Math.sin(pet.animTime * 4.2) * 0.04;
+    pet.container.position.set(pet.x, pet.y);
+    pet.container.zIndex = pet.y + 8;
+
+    pet.haloSprite.position.set(0, hoverY);
+    pet.haloSprite.rotation = pet.animTime * (pet.castFlashTimer > 0 ? 4.2 : 1.15);
+    pet.haloSprite.alpha = pet.castFlashTimer > 0 ? 0.88 : 0.36;
+    pet.haloSprite.scale.set((pet.castFlashTimer > 0 ? 0.48 : 0.28) * pulse);
+
+    if (pet.sprite.visible && pet.sprite.texture) {
+      const targetSize = pet.def.tier === 'SSR' ? 86 : 78;
+      const baseSc = targetSize / Math.max(1, Math.max(pet.sprite.texture.width, pet.sprite.texture.height));
+      pet.sprite.position.set(0, hoverY);
+      pet.sprite.scale.set(baseSc * pet.facing * pulse, baseSc * pulse);
+      pet.sprite.rotation = Math.sin(pet.animTime * 2.6) * 0.06;
+    }
+
+    // Active Companion Pet Auto-Skill Execution!
+    const aliveEnemies = this.ctx.enemies.filter((e) => e.alive);
+    if (aliveEnemies.length === 0 || this.ultDirector.isRunning()) return;
+
+    pet.cd = Math.max(0, pet.cd - dt);
+    if (pet.cd > 0) return;
+
+    pet.cd = pet.maxCd;
+    pet.castFlashTimer = 0.7;
+    const petColor = hexToNum(pet.def.themeColor);
+    this.pool.spawnRingWave(pet.x, pet.y - 52, 95, petColor, 0.45);
+    this.pool.spawnBurst(pet.x, pet.y - 68, petColor, 14, 42);
+    audioManager.playSfx(pet.def.activeSkill.kind === 'HEAL_SP' ? 'heal' : 'ult_chime', 0.14);
+
+    if (pet.def.activeSkill.kind === 'HEAL_SP') {
+      // Lumina: Starlight Dew — heals lowest HP ally + restores +0.5 Squad SP
+      const livingAllies = this.ctx.heroes.filter((h) => h.alive);
+      const lowest = livingAllies.sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+      if (lowest) {
+        const healAmt = Math.round(lowest.maxHp * 0.12 * pet.skillPowerMult);
+        this.handleHealHero(lead, lowest, healAmt, false);
+        this.pool.spawnRingWave(lowest.x, lowest.y, 110, 0x38e8ff, 0.48);
+        this.pool.spawnBurst(lowest.x, lowest.y - 36, 0x67e8f9, 14, 40);
+      }
+      this.ctx.addSp(0.5);
+      this.pool.spawnFloatingText(pet.x, pet.y - 104, '🐾 STARLIGHT DEW! +0.5 SP', 0x67e8f9, true);
+    } else if (pet.def.activeSkill.kind === 'MAGMA_VOLLEY') {
+      // Cinderfang: Magma Breath — 3 homing volcanic fireballs + Burn + DEF Shred
+      const focus = aliveEnemies.find((e) => e.def.isBoss) ?? aliveEnemies[0];
+      this.pool.spawnFloatingText(pet.x, pet.y - 104, '🐾 MAGMA BREATH!', 0xfb923c, true);
+      for (let i = 0; i < 3; i++) {
+        const target = aliveEnemies[i % aliveEnemies.length] ?? focus;
+        if (!target) continue;
+        this.ctx.delayedStrikes.push({
+          delay: i * 0.12,
+          fn: () => {
+            if (!target.alive) return;
+            this.pool.spawnProjectile({
+              x: pet.x + pet.facing * 18,
+              y: pet.y - 68,
+              tx: target.x,
+              ty: target.y - 34,
+              speed: 780,
+              color: 0xf97316,
+              radius: 13,
+              fromHero: true,
+              onHit: (hx, hy) => {
+                if (!target.alive) return;
+                this.pool.spawnBurst(hx, hy, 0xfb923c, 12, 34);
+                this.pool.spawnRingWave(target.x, target.y, 82, 0xf97316, 0.34);
+                target.burnStacks = Math.min(5, target.burnStacks + (i === 0 ? 2 : 1));
+                target.burnTimer = 6.0;
+                target.burnSourceAtk = Math.max(target.burnSourceAtk, lead.stats.atk);
+                target.defShredTimer = Math.max(target.defShredTimer, 5.0);
+                target.defShredValue = Math.max(target.defShredValue, 0.12);
+                this.handleDamageEnemy(lead, target, {
+                  multiplier: 0.47 * pet.skillPowerMult,
+                  isSkill: true,
+                  breakDamage: 6,
+                });
+              },
+            });
+          },
+        });
+      }
+    } else if (pet.def.activeSkill.kind === 'ASTRAL_DECREE') {
+      // Aetherion SSR: Astral Decree — golden orbital beam AoE + Heavy Break + Squad Shield + +10 Ult Gauge!
+      const focus = aliveEnemies.find((e) => e.def.isBoss) ?? aliveEnemies[0];
+      if (focus) {
+        this.pool.spawnBeam(pet.x, pet.y - 72, focus.x, focus.y - 34, 0xfde047, 16);
+        this.pool.spawnSkyPillar(focus.x, focus.y, 130, 0xf5c84c, false);
+        this.pool.spawnRingWave(focus.x, focus.y, 175, 0xe879f9, 0.55);
+        this.pool.spawnBurst(focus.x, focus.y - 34, 0xfde047, 22, 60);
+        for (const e of aliveEnemies) {
+          if (Math.hypot(e.x - focus.x, e.y - focus.y) <= 185 + e.def.radius) {
+            this.handleDamageEnemy(lead, e, {
+              multiplier: 2.4 * pet.skillPowerMult,
+              isSkill: true,
+              hitShieldHits: 3,
+              breakDamage: 24,
+            });
+          }
+        }
+      }
+      for (const ally of this.ctx.heroes) {
+        if (!ally.alive) continue;
+        const sh = Math.round(ally.maxHp * 0.1 * pet.skillPowerMult);
+        this.handleGrantShield(lead, ally, sh, false);
+      }
+      this.ctx.addUltGauge(10);
+      this.pool.spawnFloatingText(pet.x, pet.y - 104, '🐾 ASTRAL DECREE! +10 ULT', 0xfde047, true);
     }
   }
 
@@ -1423,20 +1636,20 @@ export class CombatEngine {
             }
           }
         } else if (z.kind === 'CELESTIAL_DOMAIN') {
-          // Every 1.2s, rain prismatic orbital star-lances across enemies inside the Celestial Domain (75% ATK AoE)!
-          z.tickTimer = 1.2;
+          // Every 1.2s (0.9s when Transcended!), rain prismatic orbital star-lances across enemies inside Celestial Domain!
+          z.tickTimer = owner.transcended ? 0.9 : 1.2;
           const aliveFoes = this.ctx.enemies.filter((e) => e.alive);
-          const targets = aliveFoes.slice(0, 3);
+          const targets = aliveFoes.slice(0, owner.transcended ? 4 : 3);
           const cols = [0xfde047, 0x38e8ff, 0xe879f9];
           targets.forEach((e, idx) => {
             const col = cols[idx % cols.length];
-            this.pool.spawnSkyPillar(e.x, e.y, 68, col, false);
+            this.pool.spawnSkyPillar(e.x, e.y, owner.transcended ? 78 : 68, col, false);
             this.pool.spawnBurst(e.x, e.y - 26, col, 10, 36);
             this.handleDamageEnemy(owner, e, {
-              multiplier: 0.75,
+              multiplier: owner.transcended ? 0.92 : 0.75,
               isSkill: true,
               hitShieldHits: 1,
-              breakDamage: 6,
+              breakDamage: owner.transcended ? 8 : 6,
             });
           });
         }
@@ -1533,12 +1746,13 @@ export class CombatEngine {
       );
     }
 
-    // 2. Passive SP regen (0.45 SP/sec + Verdant 3-hero bonus + Spire Shadow Frenzy +25% SP!)
+    // 2. Passive SP regen (0.45 SP/sec + Verdant 3-hero bonus + Active Pet SP Regen + Spire Shadow Frenzy +25% SP!)
     const factionBonuses = getActiveFactionBonuses(this.ctx.heroes.map((h) => h.heroId));
     const verdant3 = factionBonuses.some((f) => f.faction === 'VERDANT' && f.tier === 3);
+    const petSpBonus = this.ctx.heroes[0]?.stats.spRegenBonus ?? 0;
     const spireSpMult =
       resolveAnyStageDef(this.stageId).spireModifier?.id === 'SHADOW_FRENZY' ? 1.25 : 1.0;
-    this.ctx.addSp(0.45 * (verdant3 ? 1.1 : 1.0) * spireSpMult * dt);
+    this.ctx.addSp(0.45 * (verdant3 ? 1.1 : 1.0) * (1 + petSpBonus) * spireSpMult * dt);
 
     // 3. Delayed multi-hit strikes
     for (let i = this.ctx.delayedStrikes.length - 1; i >= 0; i--) {
@@ -1550,9 +1764,10 @@ export class CombatEngine {
       }
     }
 
-    // 4. Core Combat Simulation
+    // 4. Core Combat Simulation + Active Companion Pet AI
     this.squadCtrl.update(this.ctx, dt, store.autoMove);
     this.skillExec.updateAutoSkill(this.ctx, dt, store.autoSkill);
+    this.updatePetCompanion(dt);
     this.enemyAI.update(this.ctx, dt, this.telegraphLayer);
     this.updateZones(dt);
     this.pool.update(dt, this.ctx.heroes);
@@ -1621,13 +1836,15 @@ export class CombatEngine {
     audioManager.playSfx('ult_impact', 0.04);
     audioManager.playSynthSfx('link_burst');
 
-    // Refund +1.5 Squad SP & blast ALL alive enemies with Link Resonance (+50% when a UR Sovereign links!)
-    const sovereignBonus = Math.max(
-      partner.def.sovereignAura?.linkBurstBonus ?? 0,
-      finisher.def.sovereignAura?.linkBurstBonus ?? 0,
-    );
+    // Refund +1.5 Squad SP & blast ALL alive enemies with Link Resonance (+50% UR Sovereign, +70% Transcended UR!)
+    const getLinkBonus = (u: HeroUnit) =>
+      u.transcended && u.def.transcendence?.upgradedSovereignAura
+        ? u.def.transcendence.upgradedSovereignAura.linkBurstBonus
+        : (u.def.sovereignAura?.linkBurstBonus ?? 0);
+    const sovereignBonus = Math.max(getLinkBonus(partner), getLinkBonus(finisher));
     const linkBonusDmg = sovereignBonus > 0 ? sovereignBonus : 0.35;
     const isSovereignLink = sovereignBonus > 0;
+    const isTranscendedLink = sovereignBonus >= 0.7;
     this.ctx.addSp(1.5);
     let bonusTotal = 0;
     for (const e of aliveEnemies) {
@@ -1655,19 +1872,23 @@ export class CombatEngine {
     this.pool.spawnFloatingText(
       cx,
       cy - 112,
-      isSovereignLink ? '❖ SOVEREIGN LINK BURST +50%! ❖' : '✦ STARLIGHT LINK BURST! ✦',
-      isSovereignLink ? 0xf0abfc : 0xfde047,
+      isTranscendedLink
+        ? '❖ EMPYREAN LINK BURST +70%! ❖'
+        : isSovereignLink
+          ? '❖ SOVEREIGN LINK BURST +50%! ❖'
+          : '✦ STARLIGHT LINK BURST! ✦',
+      isTranscendedLink ? 0xfde047 : isSovereignLink ? 0xf0abfc : 0xfde047,
       true,
     );
     useCombatStore.getState().setActiveLinkBurst({
       id: Date.now() + Math.random(),
       heroAId: partner.heroId,
       heroAName: partner.def.name,
-      heroACard: partner.def.assets.card,
+      heroACard: partner.resolvedCardAsset ?? partner.def.assets.card,
       heroAColor: partner.def.themeColor,
       heroBId: finisher.heroId,
       heroBName: finisher.def.name,
-      heroBCard: finisher.def.assets.card,
+      heroBCard: finisher.resolvedCardAsset ?? finisher.def.assets.card,
       heroBColor: finisher.def.themeColor,
       bonusDamageTotal: bonusTotal,
       breakDamage,
@@ -2141,17 +2362,19 @@ export class CombatEngine {
 
         if (h.backRuneSprite) {
           const asc = h.ascensionTimer > 0;
+          const tr = Boolean(h.transcended);
           h.backRuneSprite.visible = true;
           h.backRuneSprite.position.set(lungeX, -88 + totalLiftY * 0.75);
-          h.backRuneSprite.rotation = -this.elapsedSec * (asc ? 1.8 : 0.65);
-          const brSc = (asc ? 0.72 : 0.46) * auraPulse;
+          h.backRuneSprite.rotation = -this.elapsedSec * (asc ? 1.8 : tr ? 1.05 : 0.65);
+          const brSc = (asc ? 0.78 : tr ? 0.62 : 0.46) * auraPulse;
           h.backRuneSprite.scale.set(brSc);
-          h.backRuneSprite.tint = asc
-            ? Math.sin(this.elapsedSec * 5) > 0
-              ? 0xfde047
-              : 0xe879f9
-            : 0xfde047;
-          h.backRuneSprite.alpha = asc ? 0.72 : 0.36;
+          h.backRuneSprite.tint =
+            asc || tr
+              ? Math.sin(this.elapsedSec * (asc ? 5 : 2.6)) > 0
+                ? 0xfde047
+                : 0xe879f9
+              : 0xfde047;
+          h.backRuneSprite.alpha = asc ? 0.78 : tr ? 0.58 : 0.36;
         }
 
         if (h.shield > 0) {
@@ -3104,7 +3327,7 @@ export class CombatEngine {
     for (const h of this.ctx.heroes) {
       const owned = player.roster[h.heroId];
       if (!owned) continue;
-      const levelCap = getHeroLevelCap(owned.awakening);
+      const levelCap = getHeroLevelCap(owned.awakening, Boolean(owned.transcended));
       const prevLevel = owned.level;
       const prevExp = owned.exp ?? 0;
       const expGained = victory
@@ -3268,8 +3491,26 @@ export class CombatEngine {
         stacksLabel,
         stacksCount,
         activeBuffs,
+        transcended: h.transcended,
+        cardAsset: h.resolvedCardAsset ?? h.def.assets.card,
       };
     });
+
+    const activePetSnap: PetCombatSnapshot | null = this.petUnit
+      ? {
+          petId: this.petUnit.petId,
+          name: this.petUnit.def.name,
+          tier: this.petUnit.def.tier,
+          themeColor: this.petUnit.def.themeColor,
+          cardAsset: this.petUnit.def.assets.card,
+          spriteAsset: this.petUnit.def.assets.sprite,
+          skillName: this.petUnit.def.activeSkill.name,
+          cd: Number(this.petUnit.cd.toFixed(1)),
+          maxCd: this.petUnit.maxCd,
+          rank: this.petUnit.rank,
+          level: this.petUnit.level,
+        }
+      : null;
 
     const activeStage = resolveAnyStageDef(this.stageId);
     const bossUnit = this.ctx.enemies.find((e) => e.def.isBoss && e.alive);
@@ -3328,12 +3569,14 @@ export class CombatEngine {
           }
         : null,
       heroes: heroesSnap,
+      activePet: activePetSnap,
       boss: bossSnap,
     });
   }
 
   public destroy(): void {
     this.destroyed = true;
+    this.petUnit = null;
     if (this.bannerClearHandle) window.clearTimeout(this.bannerClearHandle);
     if (this.calloutClearHandle) window.clearTimeout(this.calloutClearHandle);
     if (this.bossWarnClearHandle) window.clearTimeout(this.bossWarnClearHandle);

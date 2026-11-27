@@ -22,8 +22,15 @@ import {
   getHeroLevelCap,
   getLevelUpCost,
   getStageCombatHeroExp,
+  getTranscendenceCost,
   type RegionChestRewardDef,
 } from '../data/materials';
+import {
+  MAX_PET_LEVEL,
+  MAX_PET_RANK,
+  PET_MAP,
+  getPetLevelUpCost,
+} from '../data/pets';
 import { RELIC_MAP } from '../data/relics';
 import { getStagesByRegion, STAGE_MAP } from '../data/stages';
 import { computeHeroStats } from '../engine/CombatMath';
@@ -121,9 +128,9 @@ export function buildDefaultSaveState(): PlayerSaveState {
   const preset3Squad: [string, string, string, string] = ['vaelen', 'nyx', 'kael', 'clara'];
 
   const partyPresets: [PartyPreset, PartyPreset, PartyPreset] = [
-    { id: 'preset_1', name: 'Vanguard', heroIds: [...defaultSquad] as [string, string, string, string] },
-    { id: 'preset_2', name: 'Boss Raid', heroIds: preset2Squad },
-    { id: 'preset_3', name: 'Farm Squad', heroIds: preset3Squad },
+    { id: 'preset_1', name: 'Vanguard', heroIds: [...defaultSquad] as [string, string, string, string], petId: null },
+    { id: 'preset_2', name: 'Boss Raid', heroIds: preset2Squad, petId: null },
+    { id: 'preset_3', name: 'Farm Squad', heroIds: preset3Squad, petId: null },
   ];
 
   return {
@@ -149,9 +156,11 @@ export function buildDefaultSaveState(): PlayerSaveState {
     pityCounterUR: 0,
     pityCounterHero: 0,
     pityCounterRelic: 0,
+    pityCounterPet: 0,
     guaranteedFeaturedUR: false,
     guaranteedFeaturedHero: false,
     guaranteedFeaturedRelic: false,
+    guaranteedFeaturedPet: false,
     squadIds: defaultSquad,
     partyPresets,
     activePresetIndex: 0,
@@ -164,6 +173,8 @@ export function buildDefaultSaveState(): PlayerSaveState {
     },
     ownedRelics: [],
     relicRanks: {},
+    ownedPets: {},
+    activePetId: null,
     equipmentInventory: fixedGear,
     unlockedCodexIds: ['vaelen', 'garrick', 'clara', 'kael', 'nyx'],
     claimedCodexMilestones: [],
@@ -221,6 +232,10 @@ interface PlayerStore extends PlayerSaveState {
   autoFillPreset: (presetIndex: 0 | 1 | 2) => void;
   levelUpHero: (heroId: string, levels?: number) => { ok: boolean; message?: string };
   awakenHero: (heroId: string, mode?: 'MATERIALS' | 'SHARDS') => { ok: boolean; message?: string };
+  transcendHero: (heroId: string, mode?: 'MATERIALS' | 'SHARDS') => { ok: boolean; message: string };
+  toggleHeroTranscendedVisual: (heroId: string) => void;
+  equipPet: (petId: string | null) => void;
+  levelUpPet: (petId: string, levels?: number) => { ok: boolean; message: string };
   giveBondGift: (heroId: string) => boolean;
   equipRelic: (heroId: string, relicId: string | null) => void;
   equipGear: (heroId: string, slot: EquipmentSlot, uid: string | null) => void;
@@ -250,7 +265,7 @@ interface PlayerStore extends PlayerSaveState {
     banner: BannerDef,
     count: 1 | 10,
   ) => { ok: boolean; error?: string; results: GachaPullResult[] };
-  sparkExchange: (kind: 'HERO' | 'RELIC', id: string) => boolean;
+  sparkExchange: (kind: 'HERO' | 'RELIC' | 'PET', id: string) => boolean;
   claimCodexMilestone: (threshold: number) => boolean;
   claimRegionChest: (
     regionId: string,
@@ -784,7 +799,7 @@ export const usePlayerStore = create<PlayerStore>()(
         state.squadIds.forEach((hid, idx) => {
           const owned = state.roster[hid];
           if (!owned) return;
-          const levelCap = getHeroLevelCap(owned.awakening);
+          const levelCap = getHeroLevelCap(owned.awakening, Boolean(owned.transcended));
           const prevLevel = owned.level;
           const prevExp = owned.exp ?? 0;
           const expGained = Math.round(perRunHeroExp * runs * (idx === 1 ? 1.15 : 1.0));
@@ -853,9 +868,16 @@ export const usePlayerStore = create<PlayerStore>()(
         const state = get();
         const preset = state.partyPresets[presetIndex];
         if (!preset) return;
+        const presetPet =
+          preset.petId !== undefined
+            ? preset.petId && state.ownedPets?.[preset.petId]
+              ? preset.petId
+              : null
+            : (state.activePetId ?? null);
         set({
           activePresetIndex: presetIndex,
           squadIds: [...preset.heroIds] as [string, string, string, string],
+          activePetId: presetPet,
         });
       },
 
@@ -984,9 +1006,12 @@ export const usePlayerStore = create<PlayerStore>()(
         const state = get();
         const hero = state.roster[heroId];
         if (!hero) return { ok: false, message: 'Hero not owned.' };
-        if (hero.level >= 80) return { ok: false, message: 'Already at Max Level 80!' };
+        const maxPossibleCap = hero.transcended ? 100 : 80;
+        if (hero.level >= maxPossibleCap) {
+          return { ok: false, message: `Already at Max Level ${maxPossibleCap}!` };
+        }
 
-        const cost = getLevelUpCost(hero.level, levels, hero.awakening);
+        const cost = getLevelUpCost(hero.level, levels, hero.awakening, Boolean(hero.transcended));
         if (cost.atAwakenCap || cost.actualLevels <= 0) {
           return {
             ok: false,
@@ -1099,6 +1124,157 @@ export const usePlayerStore = create<PlayerStore>()(
           ok: true,
           message: `Awakened ★${cost.nextStar}! Max Lv.${cost.nextLevelCap} unlocked!`,
         };
+      },
+
+      transcendHero: (heroId, mode) => {
+        const state = get();
+        const hero = state.roster[heroId];
+        const def = HERO_MAP[heroId];
+        if (!hero || !def) return { ok: false, message: 'Hero not found.' };
+        if (def.tier !== 'UR' && def.tier !== 'SSR') {
+          return { ok: false, message: 'Only UR and SSR Chasers can Transcend.' };
+        }
+        if (!def.transcendence?.enabled) {
+          return { ok: false, message: `${def.name} Transcendence form coming soon!` };
+        }
+        if (hero.awakening < 6) {
+          return { ok: false, message: 'Reach Maximum Awakening ★6 first to unlock Transcendence.' };
+        }
+        if (hero.transcended) {
+          return { ok: false, message: `${def.name} has already Transcended!` };
+        }
+        const cost = getTranscendenceCost(def.tier);
+        if (!cost) return { ok: false, message: 'Transcendence unavailable.' };
+
+        const ownedEssence = state.factionEssences[def.faction] ?? 0;
+        const canUseShards = hero.shards >= cost.shardAltCost && state.gold >= cost.shardAltGold;
+        const canUseMaterials =
+          ownedEssence >= cost.essences &&
+          state.starCores >= cost.starCores &&
+          state.astralAnvilCores >= cost.astralAnvilCores &&
+          state.gold >= cost.gold;
+
+        const useShards =
+          mode === 'SHARDS' ? true : mode === 'MATERIALS' ? false : canUseShards;
+
+        if (useShards) {
+          if (!canUseShards) {
+            return {
+              ok: false,
+              message: `Need ${cost.shardAltCost} ${def.name} Shards & ${cost.shardAltGold.toLocaleString()} Gold.`,
+            };
+          }
+          set({
+            gold: state.gold - cost.shardAltGold,
+            roster: {
+              ...state.roster,
+              [heroId]: {
+                ...hero,
+                shards: hero.shards - cost.shardAltCost,
+                transcended: true,
+                useTranscendedVisual: true,
+              },
+            },
+          });
+          return {
+            ok: true,
+            message: `${def.name} TRANSCENDED into ${def.transcendence.formTitle}! Max Lv.${def.transcendence.maxLevelCap} unlocked!`,
+          };
+        }
+
+        if (!canUseMaterials) {
+          if (ownedEssence < cost.essences) {
+            return { ok: false, message: `Need ${cost.essences} ${def.faction} Essences (Have ${ownedEssence}).` };
+          }
+          if (state.starCores < cost.starCores) {
+            return { ok: false, message: `Need ${cost.starCores} Starlight Cores (Have ${state.starCores}).` };
+          }
+          if (state.astralAnvilCores < cost.astralAnvilCores) {
+            return { ok: false, message: `Need ${cost.astralAnvilCores} Astral Anvil Cores (Have ${state.astralAnvilCores}).` };
+          }
+          return { ok: false, message: `Need ${cost.gold.toLocaleString()} Gold.` };
+        }
+
+        set({
+          gold: state.gold - cost.gold,
+          starCores: state.starCores - cost.starCores,
+          astralAnvilCores: state.astralAnvilCores - cost.astralAnvilCores,
+          factionEssences: {
+            ...state.factionEssences,
+            [def.faction]: ownedEssence - cost.essences,
+          },
+          roster: {
+            ...state.roster,
+            [heroId]: {
+              ...hero,
+              transcended: true,
+              useTranscendedVisual: true,
+            },
+          },
+        });
+        return {
+          ok: true,
+          message: `${def.name} TRANSCENDED into ${def.transcendence.formTitle}! Max Lv.${def.transcendence.maxLevelCap} unlocked!`,
+        };
+      },
+
+      toggleHeroTranscendedVisual: (heroId) => {
+        const state = get();
+        const hero = state.roster[heroId];
+        if (!hero || !hero.transcended) return;
+        const current = hero.useTranscendedVisual ?? true;
+        set({
+          roster: {
+            ...state.roster,
+            [heroId]: {
+              ...hero,
+              useTranscendedVisual: !current,
+            },
+          },
+        });
+      },
+
+      equipPet: (petId) => {
+        const state = get();
+        if (petId && !(state.ownedPets ?? {})[petId]) return;
+        const nextPresets = state.partyPresets.map((p, i) =>
+          i === state.activePresetIndex ? { ...p, petId } : p,
+        ) as [PartyPreset, PartyPreset, PartyPreset];
+        set({
+          activePetId: petId,
+          partyPresets: nextPresets,
+        });
+      },
+
+      levelUpPet: (petId, levels = 1) => {
+        const state = get();
+        const pets = state.ownedPets ?? {};
+        const owned = pets[petId];
+        const def = PET_MAP[petId];
+        if (!owned || !def) return { ok: false, message: 'Companion Pet not owned.' };
+        if (owned.level >= MAX_PET_LEVEL) {
+          return { ok: false, message: `${def.name} is already Max Lv.${MAX_PET_LEVEL}!` };
+        }
+        const cost = getPetLevelUpCost(owned.level, levels);
+        if (cost.actualLevels <= 0) {
+          return { ok: false, message: `${def.name} is at Max Level!` };
+        }
+        if (state.expPotions < cost.potions) {
+          return { ok: false, message: `Need ${cost.potions} EXP Elixirs (Have ${state.expPotions}).` };
+        }
+        if (state.gold < cost.gold) {
+          return { ok: false, message: `Need ${cost.gold.toLocaleString()} Gold.` };
+        }
+        const nextLevel = owned.level + cost.actualLevels;
+        set({
+          expPotions: state.expPotions - cost.potions,
+          gold: state.gold - cost.gold,
+          ownedPets: {
+            ...pets,
+            [petId]: { ...owned, level: nextLevel },
+          },
+        });
+        return { ok: true, message: `${def.name} trained to Lv.${nextLevel}!` };
       },
 
       giveBondGift: (heroId) => {
@@ -1596,24 +1772,38 @@ export const usePlayerStore = create<PlayerStore>()(
         }
 
         const isHero = banner.type === 'HERO';
+        const isPet = banner.type === 'PET';
         const isUrEvent = isURBanner(banner);
-        const ownedSet = new Set(isHero ? Object.keys(state.roster) : state.ownedRelics);
+        const existingPets = state.ownedPets ?? {};
+        const ownedSet = new Set(
+          isHero
+            ? Object.keys(state.roster)
+            : isPet
+              ? Object.keys(existingPets)
+              : state.ownedRelics,
+        );
 
         const out = executeGachaPulls(banner, count, {
           pityCounter: isUrEvent
             ? (state.pityCounterUR ?? 0)
             : isHero
               ? state.pityCounterHero
-              : state.pityCounterRelic,
+              : isPet
+                ? (state.pityCounterPet ?? 0)
+                : state.pityCounterRelic,
           guaranteedFeatured: isUrEvent
             ? Boolean(state.guaranteedFeaturedUR)
             : isHero
               ? state.guaranteedFeaturedHero
-              : state.guaranteedFeaturedRelic,
+              : isPet
+                ? Boolean(state.guaranteedFeaturedPet)
+                : state.guaranteedFeaturedRelic,
           ownedIds: ownedSet,
         });
 
         const nextRoster = { ...state.roster };
+        const nextPets = { ...existingPets };
+        let nextActivePetId = state.activePetId ?? null;
         let nextRelics = [...state.ownedRelics];
         let nextRelicRanks = { ...state.relicRanks };
         let nextCodex = [...state.unlockedCodexIds];
@@ -1632,6 +1822,17 @@ export const usePlayerStore = create<PlayerStore>()(
                 shards: nextRoster[res.id].shards + res.shardsGained,
               };
             }
+          } else if (res.kind === 'PET') {
+            const cur = nextPets[res.id];
+            if (!cur) {
+              nextPets[res.id] = { petId: res.id, level: 1, rank: 1 };
+              res.petNewRank = 1;
+              if (!nextActivePetId) nextActivePetId = res.id;
+            } else {
+              const nextRank = Math.min(MAX_PET_RANK, cur.rank + 1);
+              nextPets[res.id] = { ...cur, rank: nextRank };
+              res.petNewRank = nextRank;
+            }
           } else {
             const added = addRelicToState(
               nextRelics,
@@ -1647,6 +1848,13 @@ export const usePlayerStore = create<PlayerStore>()(
           }
         }
 
+        const nextPresets =
+          nextActivePetId && nextActivePetId !== state.activePetId
+            ? (state.partyPresets.map((p, i) =>
+                i === state.activePresetIndex ? { ...p, petId: nextActivePetId } : p,
+              ) as [PartyPreset, PartyPreset, PartyPreset])
+            : state.partyPresets;
+
         set({
           starlightCrystals: state.starlightCrystals - cost,
           starlightTokens: state.starlightTokens + count,
@@ -1654,16 +1862,22 @@ export const usePlayerStore = create<PlayerStore>()(
           relicFragments: nextRelicFragments,
           pityCounterUR: isUrEvent ? out.nextPityCounter : (state.pityCounterUR ?? 0),
           pityCounterHero: isHero && !isUrEvent ? out.nextPityCounter : state.pityCounterHero,
-          pityCounterRelic: !isHero ? out.nextPityCounter : state.pityCounterRelic,
+          pityCounterRelic: !isHero && !isPet ? out.nextPityCounter : state.pityCounterRelic,
+          pityCounterPet: isPet ? out.nextPityCounter : (state.pityCounterPet ?? 0),
           guaranteedFeaturedUR: isUrEvent
             ? out.nextGuaranteedFeatured
             : Boolean(state.guaranteedFeaturedUR),
           guaranteedFeaturedHero:
             isHero && !isUrEvent ? out.nextGuaranteedFeatured : state.guaranteedFeaturedHero,
-          guaranteedFeaturedRelic: !isHero
+          guaranteedFeaturedRelic:
+            !isHero && !isPet ? out.nextGuaranteedFeatured : state.guaranteedFeaturedRelic,
+          guaranteedFeaturedPet: isPet
             ? out.nextGuaranteedFeatured
-            : state.guaranteedFeaturedRelic,
+            : Boolean(state.guaranteedFeaturedPet),
           roster: nextRoster,
+          ownedPets: nextPets,
+          activePetId: nextActivePetId,
+          partyPresets: nextPresets,
           ownedRelics: nextRelics,
           relicRanks: nextRelicRanks,
           unlockedCodexIds: nextCodex,
@@ -1676,7 +1890,14 @@ export const usePlayerStore = create<PlayerStore>()(
       sparkExchange: (kind, id) => {
         const state = get();
         const isUrHero = kind === 'HERO' && HERO_MAP[id]?.tier === 'UR';
-        const sparkCost = isUrHero ? 160 : 120;
+        const isPet = kind === 'PET';
+        const sparkCost = isPet
+          ? PET_MAP[id]?.tier === 'SSR'
+            ? 80
+            : 40
+          : isUrHero
+            ? 160
+            : 120;
         if (state.starlightTokens < sparkCost) return false;
         const nextCodex = state.unlockedCodexIds.includes(id)
           ? state.unlockedCodexIds
@@ -1696,6 +1917,23 @@ export const usePlayerStore = create<PlayerStore>()(
           set({
             starlightTokens: state.starlightTokens - sparkCost,
             roster: nextRoster,
+            unlockedCodexIds: nextCodex,
+          });
+          return true;
+        } else if (kind === 'PET') {
+          if (!PET_MAP[id]) return false;
+          const nextPets = { ...(state.ownedPets ?? {}) };
+          const cur = nextPets[id];
+          if (cur) {
+            nextPets[id] = { ...cur, rank: Math.min(MAX_PET_RANK, cur.rank + 1) };
+          } else {
+            nextPets[id] = { petId: id, level: 1, rank: 1 };
+          }
+          const nextActivePetId = state.activePetId ?? id;
+          set({
+            starlightTokens: state.starlightTokens - sparkCost,
+            ownedPets: nextPets,
+            activePetId: nextActivePetId,
             unlockedCodexIds: nextCodex,
           });
           return true;

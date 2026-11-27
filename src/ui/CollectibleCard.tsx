@@ -5,13 +5,14 @@ import { ArtImage } from './ArtImage';
 import { RarityCrest, RoleBadge } from './RoleBadge';
 
 export interface CollectibleCardProps {
-  kind: 'HERO' | 'RELIC';
+  kind: 'HERO' | 'RELIC' | 'PET';
   id: string;
   src: string;
   name: string;
   subtitle?: string;
   tier: Tier;
   role?: Role;
+  transcended?: boolean;
   locked?: boolean;
   isNew?: boolean;
   topBannerLabel?: string;
@@ -242,6 +243,7 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
   subtitle,
   tier,
   role,
+  transcended = false,
   locked = false,
   isNew = false,
   topBannerLabel,
@@ -430,6 +432,11 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
                 size={compact ? 'xs' : 'sm'}
                 showStars={!compact}
               />
+              {transcended && !locked && (
+                <span className="mt-0.5 px-1.5 py-0.5 rounded bg-gradient-to-r from-amber-300 via-yellow-200 to-fuchsia-300 text-slate-950 font-display font-black text-[8px] sm:text-[9px] uppercase tracking-widest shadow-[0_0_16px_rgba(253,224,71,0.95)] border border-white">
+                  ❖ TRANSCENDED
+                </span>
+              )}
               {isNew && (
                 <span className="mt-0.5 px-1.5 py-0.5 bg-gradient-to-r from-emerald-400 to-cyan-300 text-slate-950 font-display font-black text-[8px] uppercase tracking-wider shadow-[0_0_12px_rgba(52,211,153,0.85)]">
                   ★ NEW

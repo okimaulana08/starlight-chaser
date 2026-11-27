@@ -3,11 +3,12 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle2, Film, Sparkles, X } from 'lucide-react';
 import { ENEMIES } from '../data/enemies';
 import { FACTIONS, FACTION_LIST } from '../data/factions';
-import { HEROES } from '../data/heroes';
+import { HEROES, resolveHeroVisuals } from '../data/heroes';
+import { PETS } from '../data/pets';
 import { RELICS } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
 import { CODEX_MILESTONES, usePlayerStore } from '../store/usePlayerStore';
-import type { EnemyDef, HeroDef, RelicDef } from '../types/game';
+import type { EnemyDef, HeroDef, PetDef, RelicDef } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { CollectibleCard } from './CollectibleCard';
 import { GameIcon } from './GameIcon';
@@ -26,16 +27,18 @@ interface CodexScreenProps {
 
 type InspectItem =
   | { kind: 'HERO'; data: HeroDef }
+  | { kind: 'PET'; data: PetDef }
   | { kind: 'RELIC'; data: RelicDef }
   | { kind: 'ENEMY'; data: EnemyDef };
 
 export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
-  const { unlockedCodexIds, claimedCodexMilestones, claimCodexMilestone } = usePlayerStore();
-  const [tab, setTab] = useState<'HEROES' | 'RELICS' | 'BESTIARY' | 'WORLD'>('HEROES');
+  const { roster, unlockedCodexIds, claimedCodexMilestones, claimCodexMilestone } = usePlayerStore();
+  const [tab, setTab] = useState<'HEROES' | 'PETS' | 'RELICS' | 'BESTIARY' | 'WORLD'>('HEROES');
   const [inspect, setInspect] = useState<InspectItem | null>(null);
   const [previewUltVideo, setPreviewUltVideo] = useState(false);
+  const [previewTranscended, setPreviewTranscended] = useState(false);
 
-  const totalEntries = HEROES.length + RELICS.length + ENEMIES.length;
+  const totalEntries = HEROES.length + PETS.length + RELICS.length + ENEMIES.length;
   const unlockedCount = unlockedCodexIds.length;
   const globalStatPct = Math.floor(unlockedCount / 5);
 
@@ -70,6 +73,7 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
             onChange={setTab}
             items={[
               { key: 'HEROES', label: `Heroes (${HEROES.length})` },
+              { key: 'PETS', label: `🐾 Pets (${PETS.length})`, accent: 'cyan' },
               { key: 'RELICS', label: `Relics (${RELICS.length})`, accent: 'cyan' },
               { key: 'BESTIARY', label: `Bestiary (${ENEMIES.length})` },
               { key: 'WORLD', label: 'Lore' },
@@ -119,21 +123,50 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
             {HEROES.map((h) => {
               const unlocked = unlockedCodexIds.includes(h.id);
+              const ownedHero = roster[h.id];
+              const visuals = resolveHeroVisuals(h, ownedHero);
               return (
                 <CollectibleCard
                   key={h.id}
                   kind="HERO"
                   id={h.id}
-                  src={h.assets.card}
+                  src={visuals.card}
                   name={h.name}
-                  subtitle={h.title}
+                  subtitle={visuals.title}
                   tier={h.tier}
                   role={h.role}
+                  transcended={Boolean(ownedHero?.transcended)}
                   locked={!unlocked}
                   onClick={() => {
                     audioManager.playSfx('button');
                     setPreviewUltVideo(false);
+                    setPreviewTranscended(Boolean(ownedHero?.transcended));
                     setInspect({ kind: 'HERO', data: h });
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
+
+        {tab === 'PETS' && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-w-5xl">
+            {PETS.map((p) => {
+              const unlocked = unlockedCodexIds.includes(p.id);
+              return (
+                <CollectibleCard
+                  key={p.id}
+                  kind="PET"
+                  id={p.id}
+                  src={p.assets.card}
+                  name={p.name}
+                  subtitle={p.title}
+                  tier={p.tier}
+                  topBannerLabel={`🐾 ${p.petRole}`}
+                  locked={!unlocked}
+                  onClick={() => {
+                    audioManager.playSfx('button');
+                    setInspect({ kind: 'PET', data: p });
                   }}
                 />
               );
@@ -300,19 +333,34 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
                     className="w-full h-full object-contain"
                   />
                 </div>
+              ) : inspect.kind === 'PET' ? (
+                <CollectibleCard
+                  kind="PET"
+                  id={inspect.data.id}
+                  src={inspect.data.assets.card}
+                  name={inspect.data.name}
+                  subtitle={inspect.data.title}
+                  tier={inspect.data.tier}
+                  topBannerLabel={`🐾 ${inspect.data.petRole}`}
+                  interactive={false}
+                />
               ) : (
                 <CollectibleCard
                   kind={inspect.kind}
                   id={inspect.data.id}
                   src={
                     inspect.kind === 'HERO'
-                      ? inspect.data.assets.card
+                      ? previewTranscended && inspect.data.transcendence?.enabled
+                        ? inspect.data.transcendence.assets.card
+                        : inspect.data.assets.card
                       : inspect.data.assetCard
                   }
                   name={inspect.data.name}
                   subtitle={
                     inspect.kind === 'HERO'
-                      ? inspect.data.title
+                      ? previewTranscended && inspect.data.transcendence?.enabled
+                        ? inspect.data.transcendence.formTitle
+                        : inspect.data.title
                       : `${inspect.data.preferredRole} Relic`
                   }
                   tier={inspect.data.tier}
@@ -321,6 +369,7 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
                       ? inspect.data.role
                       : inspect.data.preferredRole
                   }
+                  transcended={Boolean(inspect.kind === 'HERO' && previewTranscended && inspect.data.transcendence?.enabled)}
                   interactive={false}
                 />
               )}
@@ -334,6 +383,22 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
                     <span className="text-xs font-bold text-slate-300">
                       {FACTIONS[inspect.data.faction].name}
                     </span>
+                    {inspect.data.transcendence?.enabled && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          audioManager.playSfx('button');
+                          setPreviewTranscended((v) => !v);
+                        }}
+                        className={`ml-auto px-2.5 py-0.5 rounded-full text-[10px] font-display font-black uppercase tracking-wider border transition ${
+                          previewTranscended
+                            ? 'bg-gradient-to-r from-amber-300 to-fuchsia-300 text-slate-950 border-white shadow-[0_0_12px_rgba(253,224,71,0.75)]'
+                            : 'bg-slate-900 border-amber-300/60 text-amber-200 hover:bg-amber-400/15'
+                        }`}
+                      >
+                        {previewTranscended ? '❖ Transcended Form' : 'Preview Transcendence →'}
+                      </button>
+                    )}
                   </div>
                   <h2 className="font-display text-3xl font-black text-white">
                     {inspect.data.name}
@@ -409,6 +474,35 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
                       )}
                     </div>
                   )}
+                </div>
+              )}
+              {inspect.kind === 'PET' && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <RarityCrest tier={inspect.data.tier} size="md" />
+                    <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-300/60 text-xs font-display font-black uppercase text-cyan-200">
+                      🐾 {inspect.data.petRole} COMPANION
+                    </span>
+                  </div>
+                  <h2 className="font-display text-3xl font-black text-white">
+                    {inspect.data.name}
+                  </h2>
+                  <div className="text-xs font-serif-italic italic text-amber-200">
+                    “{inspect.data.quote}”
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">{inspect.data.lore}</p>
+                  <div className="bg-slate-950/80 border-l-2 border-l-amber-400 p-3 text-xs text-amber-100">
+                    <strong className="text-amber-300 uppercase tracking-wider text-[10px] block mb-0.5">
+                      Squad Companion Aura (Rank R1–R5)
+                    </strong>
+                    {inspect.data.auraDesc}
+                  </div>
+                  <div className="bg-slate-950/80 border-l-2 border-l-cyan-400 p-3 text-xs text-cyan-100">
+                    <strong className="text-cyan-300 uppercase tracking-wider text-[10px] block mb-0.5">
+                      Combat Auto-Skill — {inspect.data.activeSkill.name} ({inspect.data.activeSkill.cooldown}s CD)
+                    </strong>
+                    {inspect.data.activeSkill.description}
+                  </div>
                 </div>
               )}
               {inspect.kind === 'RELIC' && (

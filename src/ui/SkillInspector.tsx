@@ -233,17 +233,38 @@ export const SkillInspector: React.FC<SkillInspectorProps> = ({ hero, owned }) =
   const activeSlot = slots.find((s) => s.key === selected) ?? slots[1];
   const activeSkill = activeSlot.skill;
   const bondBonusPct = ((owned.bondLevel - 1) * 1.5).toFixed(1);
+  const isTranscendedAura = Boolean(owned.transcended && hero.transcendence?.upgradedSovereignAura);
+  const activeAura = isTranscendedAura
+    ? hero.transcendence!.upgradedSovereignAura!
+    : hero.sovereignAura;
 
   return (
     <div className="flex-1 flex flex-col gap-3 min-h-0 overflow-y-auto pr-0.5">
-      {/* 0. UR EXCLUSIVE SOVEREIGN LEADER AURA PLAQUE */}
-      {hero.sovereignAura && (
-        <div className="rounded-xl p-2.5 bg-gradient-to-r from-amber-500/15 via-fuchsia-500/20 to-cyan-500/15 border border-fuchsia-300/65 shadow-[0_0_22px_rgba(232,121,249,0.28)]">
-          <div className="flex items-center gap-1.5 text-[10px] font-display font-black uppercase tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-white to-fuchsia-200">
-            <span>❖ UR SOVEREIGN AUTHORITY — {hero.sovereignAura.name}</span>
+      {/* 0. UR EXCLUSIVE SOVEREIGN LEADER AURA PLAQUE (UPGRADES ON TRANSCENDENCE) */}
+      {activeAura && (
+        <div
+          className={`rounded-xl p-2.5 border ${
+            isTranscendedAura
+              ? 'bg-gradient-to-r from-amber-500/20 via-fuchsia-500/25 to-cyan-500/20 border-amber-300/80 shadow-[0_0_26px_rgba(251,191,36,0.32)]'
+              : 'bg-gradient-to-r from-amber-500/15 via-fuchsia-500/20 to-cyan-500/15 border-fuchsia-300/65 shadow-[0_0_22px_rgba(232,121,249,0.28)]'
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-display font-black uppercase tracking-[0.2em] text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-white to-fuchsia-200">
+              <span>
+                {isTranscendedAura
+                  ? `❖ TRANSCENDED SOVEREIGN — ${activeAura.name}`
+                  : `❖ UR SOVEREIGN AUTHORITY — ${activeAura.name}`}
+              </span>
+            </div>
+            {isTranscendedAura && (
+              <span className="shrink-0 px-1.5 py-0.5 rounded bg-amber-400/20 border border-amber-300/70 text-[8px] font-display font-black uppercase tracking-widest text-amber-200">
+                EMPYREAN
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-fuchsia-100/90 leading-relaxed mt-1">
-            {renderHighlightedText(hero.sovereignAura.description)}
+            {renderHighlightedText(activeAura.description)}
           </p>
         </div>
       )}
@@ -452,6 +473,22 @@ export const SkillInspector: React.FC<SkillInspectorProps> = ({ hero, owned }) =
                   : owned.awakening >= 3
                     ? 'ACTIVE (+10% Skill DMG)'
                     : 'Unlock at ★3 (+10% Skill DMG)'}
+              </span>
+            </div>
+          )}
+
+          {/* Transcendence Combat Empowerment Strip */}
+          {owned.transcended && hero.transcendence && (selected === 'PASSIVE' || selected === 'ULT') && (
+            <div className="flex items-start justify-between gap-2 text-[10px] px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/15 via-fuchsia-500/15 to-cyan-500/15 border border-amber-300/60">
+              <span className="font-display font-black uppercase tracking-wider text-amber-200 shrink-0">
+                ❖ Empyrean Empowered
+              </span>
+              <span className="text-right font-bold text-amber-100 leading-snug">
+                {hero.id === 'hero_astraea'
+                  ? selected === 'PASSIVE'
+                    ? '5-Stack Six-Star Barrage (260% True DMG + 0.8 SP)'
+                    : '12s Empyrean Domain (0.9s rapid starfall bolts)'
+                  : hero.transcendence.summary}
               </span>
             </div>
           )}

@@ -1,5 +1,6 @@
 import { FACTIONS, HARMONY_RESONANCE } from '../data/factions';
 import { HERO_MAP } from '../data/heroes';
+import { PET_MAP, computePetAura } from '../data/pets';
 import { RELIC_MAP } from '../data/relics';
 import { getEnhancedMainStatValue } from '../data/equipment';
 import type {
@@ -8,6 +9,7 @@ import type {
   Faction,
   HeroDef,
   OwnedHeroState,
+  OwnedPetState,
 } from '../types/game';
 
 export interface ActiveFactionBonus {
@@ -111,16 +113,38 @@ export function getActiveFactionBonuses(squadIds: string[]): ActiveFactionBonus[
     }));
 }
 
-export function getSquadSynergyPills(squadIds: string[]): SquadSynergyPill[] {
+export function getSquadSynergyPills(
+  squadIds: string[],
+  roster?: Record<string, OwnedHeroState>,
+  activePetId?: string | null,
+  ownedPets?: Record<string, OwnedPetState>,
+): SquadSynergyPill[] {
   const pills: SquadSynergyPill[] = [];
   const sovereign = getActiveSovereignHero(squadIds);
   if (sovereign?.sovereignAura) {
+    const isTranscended = Boolean(
+      sovereign.transcendence?.enabled &&
+        sovereign.transcendence.upgradedSovereignAura &&
+        roster?.[sovereign.id]?.transcended,
+    );
+    const up = sovereign.transcendence?.upgradedSovereignAura;
     pills.push({
       id: `SOVEREIGN_${sovereign.id}`,
-      label: sovereign.sovereignAura.name,
-      shortLabel: '❖ SOVEREIGN',
-      color: '#e879f9',
-      desc: sovereign.sovereignAura.description,
+      label: isTranscended && up ? up.name : sovereign.sovereignAura.name,
+      shortLabel: isTranscended ? '❖ EMPYREAN' : '❖ SOVEREIGN',
+      color: isTranscended ? '#fde047' : '#e879f9',
+      desc: isTranscended && up ? up.description : sovereign.sovereignAura.description,
+    });
+  }
+  if (activePetId && ownedPets?.[activePetId] && PET_MAP[activePetId]) {
+    const pet = PET_MAP[activePetId];
+    const ownedPet = ownedPets[activePetId];
+    pills.push({
+      id: `PET_${pet.id}`,
+      label: `${pet.name} (R${ownedPet.rank} Lv.${ownedPet.level})`,
+      shortLabel: `🐾 ${pet.name.toUpperCase()}`,
+      color: pet.themeColor,
+      desc: `${pet.activeSkill.name}: ${pet.auraDesc}`,
     });
   }
   if (isFourFactionHarmony(squadIds)) {
@@ -147,6 +171,16 @@ export function getSquadSynergyPills(squadIds: string[]): SquadSynergyPill[] {
   return pills;
 }
 
+export function getActivePetPower(
+  activePetId?: string | null,
+  ownedPets?: Record<string, OwnedPetState>,
+): number {
+  if (!activePetId || !ownedPets?.[activePetId]) return 0;
+  const pet = PET_MAP[activePetId];
+  if (!pet) return 0;
+  return computePetAura(pet, ownedPets[activePetId]).powerRating;
+}
+
 export function computeHeroStats(
   heroDef: HeroDef,
   owned: OwnedHeroState,
@@ -154,24 +188,37 @@ export function computeHeroStats(
   squadIds: string[],
   codexCount: number,
   relicRanks: Record<string, number> = {},
+  options?: {
+    roster?: Record<string, OwnedHeroState>;
+    activePet?: OwnedPetState | null;
+  },
 ): ComputedHeroStats {
-  // Balanced RPG growth: Stat(L) = BaseStat * (1 + 0.072 * (L - 1)) * AwakeningMult * BondMult
+  // Balanced RPG growth: Stat(L) = BaseStat * (1 + 0.072 * (L - 1)) * AwakeningMult * TranscendMult * BondMult
   const levelMult = 1 + 0.072 * (owned.level - 1);
   const awakeningMult = 1 + 0.1 * owned.awakening;
+  const isTranscended = Boolean(heroDef.transcendence?.enabled && owned.transcended);
+  const transcendMult =
+    isTranscended && heroDef.transcendence
+      ? 1 + heroDef.transcendence.statSurge.baseStatMultBonus
+      : 1;
   const bondMult = 1 + 0.015 * Math.max(0, owned.bondLevel - 1);
   // Codex Global Account Bonus: +1% ATK / +1% HP per 5 unlocked entries
   const codexSteps = Math.floor(codexCount / 5);
   const codexBonus = codexSteps * 0.01;
 
-  let flatHp = heroDef.baseStats.hp * levelMult * awakeningMult * bondMult;
-  let flatAtk = heroDef.baseStats.atk * levelMult * awakeningMult * bondMult;
-  let flatDef = heroDef.baseStats.def * levelMult * awakeningMult * bondMult;
+  let flatHp = heroDef.baseStats.hp * levelMult * awakeningMult * transcendMult * bondMult;
+  let flatAtk = heroDef.baseStats.atk * levelMult * awakeningMult * transcendMult * bondMult;
+  let flatDef = heroDef.baseStats.def * levelMult * awakeningMult * transcendMult * bondMult;
 
   let hpPct = codexBonus;
   let atkPct = codexBonus;
   let defPct = 0;
-  let critRate = heroDef.baseStats.critRate;
-  let critDmg = heroDef.baseStats.critDmg ?? 1.5;
+  let critRate =
+    heroDef.baseStats.critRate +
+    (isTranscended && heroDef.transcendence ? heroDef.transcendence.statSurge.critRateBonus : 0);
+  let critDmg =
+    (heroDef.baseStats.critDmg ?? 1.5) +
+    (isTranscended && heroDef.transcendence ? heroDef.transcendence.statSurge.critDmgBonus : 0);
   let atkSpeedBonus = 0;
   let cdr = 0;
   let healBonus = 0;
@@ -333,11 +380,34 @@ export function computeHeroStats(
     }
   }
 
-  // 4B. UR Celestial Sovereign Leader Aura (max 1 active Sovereign Aura per squad!)
+  // 4B. UR Celestial Sovereign Leader Aura (max 1 active Sovereign Aura per squad; upgrades on Transcendence!)
   const sovereign = getActiveSovereignHero(squadIds);
   if (sovereign?.sovereignAura) {
-    atkPct += sovereign.sovereignAura.squadFinalDmgBonus;
-    critDmg += sovereign.sovereignAura.squadCritDmgBonus;
+    const sovereignOwned =
+      sovereign.id === heroDef.id ? owned : options?.roster?.[sovereign.id];
+    const sovTranscended = Boolean(
+      sovereign.transcendence?.enabled &&
+        sovereign.transcendence.upgradedSovereignAura &&
+        sovereignOwned?.transcended,
+    );
+    const up = sovereign.transcendence?.upgradedSovereignAura;
+    atkPct +=
+      sovTranscended && up ? up.squadFinalDmgBonus : sovereign.sovereignAura.squadFinalDmgBonus;
+    critDmg +=
+      sovTranscended && up ? up.squadCritDmgBonus : sovereign.sovereignAura.squadCritDmgBonus;
+  }
+
+  // 4C. Active Companion Pet Squad Aura!
+  if (options?.activePet && PET_MAP[options.activePet.petId]) {
+    const petAura = computePetAura(PET_MAP[options.activePet.petId], options.activePet);
+    hpPct += petAura.hpPct;
+    atkPct += petAura.atkPct;
+    defPct += petAura.defPct;
+    critRate += petAura.critRate;
+    critDmg += petAura.critDmg;
+    spRegenBonus += petAura.spRegenBonus;
+    breakDmgBonus += petAura.breakDmgBonus;
+    ultGaugeBonus += petAura.ultGaugeBonus;
   }
 
   const maxHp = Math.round(flatHp * (1 + hpPct));
@@ -354,6 +424,7 @@ export function computeHeroStats(
       clampedCrit * 950 +
       critDmg * 280 +
       owned.awakening * 480 +
+      (isTranscended ? 1800 : 0) +
       (owned.equippedRelicId ? 450 * (relicRanks[owned.equippedRelicId] ?? 1) : 0),
   );
 

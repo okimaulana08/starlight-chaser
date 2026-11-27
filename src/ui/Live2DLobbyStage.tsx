@@ -8,6 +8,7 @@ interface Live2DLobbyStageProps {
   src: string;
   faction: Faction;
   tier?: Tier;
+  transcended?: boolean;
   themeColor: string;
   parallaxX: number;
   parallaxY: number;
@@ -71,13 +72,14 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
   src,
   faction,
   tier = 'SSR',
+  transcended = false,
   themeColor,
   parallaxX,
   parallaxY,
   tapPulseKey,
   onTap,
 }) => {
-  const isUR = tier === 'UR';
+  const isUR = tier === 'UR' || transcended;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenRef = useRef<HTMLCanvasElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -369,8 +371,8 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
         }
         // Counter-rotating inner celestial octagon
         ctx.rotate(-clock * 0.5);
-        ctx.strokeStyle = 'rgba(232, 121, 249, 0.34)';
-        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = transcended ? 'rgba(253, 224, 71, 0.58)' : 'rgba(232, 121, 249, 0.34)';
+        ctx.lineWidth = transcended ? 1.8 : 1.2;
         ctx.beginPath();
         for (let k = 0; k < 8; k++) {
           const a = (k * Math.PI) / 4;
@@ -381,6 +383,23 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
         }
         ctx.closePath();
         ctx.stroke();
+
+        // Transcended Exclusive: Third Outer Empyrean Sunburst Ring!
+        if (transcended) {
+          ctx.rotate(clock * 0.85);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.48)';
+          ctx.lineWidth = 1.4;
+          ctx.setLineDash([4, 10]);
+          ctx.beginPath();
+          ctx.arc(0, 0, outerR * 1.15, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          for (let k = 0; k < 12; k++) {
+            const a = (k * Math.PI) / 6;
+            ctx.fillStyle = k % 2 === 0 ? 'rgba(253, 224, 71, 0.82)' : 'rgba(56, 232, 255, 0.72)';
+            drawStar4(ctx, Math.cos(a) * outerR * 1.15, Math.sin(a) * outerR * 1.15, 4.5);
+          }
+        }
         ctx.restore();
       }
 
@@ -507,7 +526,7 @@ export const Live2DLobbyStage: React.FC<Live2DLobbyStageProps> = ({
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [imgLoaded, imgFailed, faction, isUR, themeColor]);
+  }, [imgLoaded, imgFailed, faction, isUR, transcended, themeColor]);
 
   if (imgFailed) {
     return (

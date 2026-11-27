@@ -12,9 +12,14 @@ import {
   X,
 } from 'lucide-react';
 import { FACTIONS } from '../data/factions';
-import { HEROES, HERO_MAP } from '../data/heroes';
+import { HEROES, HERO_MAP, resolveHeroVisuals } from '../data/heroes';
+import { PETS, formatPetAuraSummary } from '../data/pets';
 import { audioManager } from '../engine/AudioManager';
-import { computeHeroStats, getActiveFactionBonuses } from '../engine/CombatMath';
+import {
+  computeHeroStats,
+  getActiveFactionBonuses,
+  getActivePetPower,
+} from '../engine/CombatMath';
 import { usePlayerStore } from '../store/usePlayerStore';
 import type { Role } from '../types/game';
 import { ArtImage } from './ArtImage';
@@ -40,6 +45,8 @@ export const PartyManagerModal: React.FC<PartyManagerModalProps> = ({ open, onCl
     partyPresets,
     activePresetIndex,
     roster,
+    ownedPets,
+    activePetId,
     equipmentInventory,
     unlockedCodexIds,
     relicRanks,
@@ -48,6 +55,7 @@ export const PartyManagerModal: React.FC<PartyManagerModalProps> = ({ open, onCl
     setPresetSlot,
     swapPresetSlots,
     autoFillPreset,
+    equipPet,
   } = usePlayerStore();
 
   const [selectedSlot, setSelectedSlot] = useState<number>(0);
@@ -58,6 +66,8 @@ export const PartyManagerModal: React.FC<PartyManagerModalProps> = ({ open, onCl
 
   const activePreset = partyPresets[activePresetIndex] ?? partyPresets[0];
   const currentHeroIds = activePreset.heroIds;
+  const petsMap = ownedPets ?? {};
+  const activeOwnedPet = activePetId && petsMap[activePetId] ? petsMap[activePetId] : null;
 
   const powerMap = useMemo(() => {
     const map: Record<string, number> = {};
@@ -71,14 +81,17 @@ export const PartyManagerModal: React.FC<PartyManagerModalProps> = ({ open, onCl
         currentHeroIds,
         unlockedCodexIds.length,
         relicRanks,
+        { roster, activePet: activeOwnedPet },
       ).powerRating;
     }
     return map;
-  }, [roster, equipmentInventory, currentHeroIds, unlockedCodexIds.length, relicRanks]);
+  }, [roster, equipmentInventory, currentHeroIds, unlockedCodexIds.length, relicRanks, activeOwnedPet]);
 
   const totalPower = useMemo(
-    () => currentHeroIds.reduce((sum, id) => sum + (powerMap[id] ?? 0), 0),
-    [currentHeroIds, powerMap],
+    () =>
+      currentHeroIds.reduce((sum, id) => sum + (powerMap[id] ?? 0), 0) +
+      getActivePetPower(activePetId, petsMap),
+    [currentHeroIds, powerMap, activePetId, petsMap],
   );
 
   const factionBonuses = useMemo(
@@ -365,7 +378,7 @@ export const PartyManagerModal: React.FC<PartyManagerModalProps> = ({ open, onCl
                           <ArtImage
                             kind="HERO"
                             id={hero.id}
-                            src={hero.assets.card}
+                            src={resolveHeroVisuals(hero, owned).card}
                             alt={hero.name}
                             className="w-full h-full object-cover object-top"
                           />
@@ -401,6 +414,65 @@ export const PartyManagerModal: React.FC<PartyManagerModalProps> = ({ open, onCl
                     </motion.div>
                   );
                 })}
+              </div>
+
+              {/* COMPANION PET SLOT SELECTOR */}
+              <div className="rounded-2xl p-2.5 sm:p-3 bg-slate-950/80 border border-cyan-400/30 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🐾</span>
+                  <div>
+                    <div className="text-[10px] font-display font-black uppercase tracking-widest text-cyan-300">
+                      Companion Pet Slot
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {Object.keys(petsMap).length === 0
+                        ? 'Summon Companion Pets in the Pet Sanctuary to deploy alongside your squad!'
+                        : activeOwnedPet
+                          ? `${PETS.find((p) => p.id === activeOwnedPet.petId)?.name ?? ''} (R${activeOwnedPet.rank} Lv.${activeOwnedPet.level}) active in Lobby & Combat`
+                          : 'Tap a Companion Pet to deploy with this party'}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {PETS.map((pet) => {
+                    const own = petsMap[pet.id];
+                    if (!own) return null;
+                    const equipped = activePetId === pet.id;
+                    const pills = formatPetAuraSummary(pet, own);
+                    return (
+                      <button
+                        key={pet.id}
+                        type="button"
+                        onClick={() => {
+                          equipPet(equipped ? null : pet.id);
+                          audioManager.playSfx('forge');
+                        }}
+                        title={`${pet.name}: ${pills.join(' · ')} — ${pet.activeSkill.name}`}
+                        className={`flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-xl border transition ${
+                          equipped
+                            ? 'bg-cyan-500/25 border-cyan-300 text-white shadow-[0_0_14px_rgba(56,232,255,0.4)]'
+                            : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:border-cyan-400/60'
+                        }`}
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-slate-950 border border-white/15 overflow-hidden p-0.5 shrink-0">
+                          <ArtImage
+                            kind="PET"
+                            id={pet.id}
+                            src={pet.assets.sprite}
+                            alt={pet.name}
+                            className="w-full h-full object-contain"
+                          />
+                        </div>
+                        <div className="text-left leading-tight">
+                          <div className="text-[10px] font-display font-bold">{pet.name}</div>
+                          <div className="text-[8px] font-mono text-cyan-300">
+                            R{own.rank} • Lv.{own.level}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* ROLE COVERAGE + FILTER & SORT BAR */}
@@ -479,7 +551,7 @@ export const PartyManagerModal: React.FC<PartyManagerModalProps> = ({ open, onCl
                         <ArtImage
                           kind="HERO"
                           id={hero.id}
-                          src={hero.assets.card}
+                          src={resolveHeroVisuals(hero, own).card}
                           alt={hero.name}
                           className="w-full h-full object-cover object-top"
                         />

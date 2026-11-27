@@ -16,14 +16,19 @@ import {
 } from 'lucide-react';
 import { DAILY_DUNGEON_FREE_ENTRIES, DUNGEONS } from '../data/dungeons';
 import { ENEMIES } from '../data/enemies';
-import { HEROES, HERO_MAP } from '../data/heroes';
+import { HEROES, HERO_MAP, resolveHeroVisuals } from '../data/heroes';
 import { getHeroLobbyLines } from '../data/heroVoiceLines';
+import { PETS, PET_MAP } from '../data/pets';
 import { RELICS } from '../data/relics';
 import { REGION_MAP, REGIONS } from '../data/regions';
 import { SPIRE_MAX_FLOOR } from '../data/spire';
 import { getHighestUnlockedStage, getStagesByRegion, isStageUnlocked, STAGE_MAP } from '../data/stages';
 import { audioManager } from '../engine/AudioManager';
-import { computeHeroStats, getSquadSynergyPills } from '../engine/CombatMath';
+import {
+  computeHeroStats,
+  getActivePetPower,
+  getSquadSynergyPills,
+} from '../engine/CombatMath';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { CODEX_MILESTONES, DAILY_SUPPLY_COOLDOWN_MS, usePlayerStore } from '../store/usePlayerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -79,6 +84,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     activePresetIndex,
     roster,
     relicRanks,
+    ownedPets,
+    activePetId,
     equipmentInventory,
     unlockedCodexIds,
     claimedCodexMilestones,
@@ -119,6 +126,10 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const displayHeroId = roster[favoriteHeroId] ? favoriteHeroId : squadIds[0];
   const displayHero = HERO_MAP[displayHeroId] ?? HERO_MAP.vaelen;
   const displayOwned = roster[displayHero.id];
+  const displayVisuals = resolveHeroVisuals(displayHero, displayOwned);
+  const petsMap = ownedPets ?? {};
+  const activeOwnedPet = activePetId && petsMap[activePetId] ? petsMap[activePetId] : null;
+  const activePetDef = activeOwnedPet ? PET_MAP[activeOwnedPet.petId] ?? null : null;
   const activePreset = partyPresets[activePresetIndex] ?? partyPresets[0];
   const dailySupplyReady = Date.now() - (lastDailySupplyAt ?? 0) >= DAILY_SUPPLY_COOLDOWN_MS;
 
@@ -137,13 +148,26 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             squadIds,
             unlockedCodexIds.length,
             relicRanks,
+            { roster, activePet: activeOwnedPet },
           ).powerRating
         );
-      }, 0),
-    [squadIds, roster, equipmentInventory, unlockedCodexIds.length, relicRanks],
+      }, 0) + getActivePetPower(activePetId, petsMap),
+    [
+      squadIds,
+      roster,
+      equipmentInventory,
+      unlockedCodexIds.length,
+      relicRanks,
+      activeOwnedPet,
+      activePetId,
+      petsMap,
+    ],
   );
 
-  const synergyPills = useMemo(() => getSquadSynergyPills(squadIds), [squadIds]);
+  const synergyPills = useMemo(
+    () => getSquadSynergyPills(squadIds, roster, activePetId, petsMap),
+    [squadIds, roster, activePetId, petsMap],
+  );
   const claimableCommissions = getClaimableCommissionsCount();
   const claimableCodex = CODEX_MILESTONES.some(
     (m) => unlockedCodexIds.length >= m.threshold && !claimedCodexMilestones.includes(m.threshold),
@@ -339,15 +363,56 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             <Live2DLobbyStage
               heroId={displayHero.id}
               heroName={displayHero.name}
-              src={displayHero.assets.standing}
+              src={displayVisuals.standing}
               faction={displayHero.faction}
               tier={displayHero.tier}
-              themeColor={displayHero.themeColor}
+              transcended={Boolean(displayOwned?.transcended)}
+              themeColor={displayOwned?.transcended ? '#fde047' : displayHero.themeColor}
               parallaxX={parallax.x}
               parallaxY={parallax.y}
               tapPulseKey={tapPulseKey}
               onTap={handleHeroTapReaction}
             />
+
+            {/* Floating Active Companion Pet beside Lobby Champion! */}
+            {activePetDef && activeOwnedPet && (
+              <motion.button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  audioManager.playSfx('ult_chime', 0.12);
+                  setSupplyToast(
+                    `🐾 ${activePetDef.name} (R${activeOwnedPet.rank} Lv.${activeOwnedPet.level}): "${activePetDef.quote}"`,
+                  );
+                  window.setTimeout(() => setSupplyToast(null), 2800);
+                }}
+                animate={{ y: [0, -12, 0] }}
+                transition={{ duration: 3.1, repeat: Infinity, ease: 'easeInOut' }}
+                title={`${activePetDef.name} — ${activePetDef.activeSkill.name}`}
+                className="pointer-events-auto absolute right-2 sm:-right-8 bottom-[36%] sm:bottom-[30%] z-30 flex flex-col items-center group focus:outline-none"
+              >
+                <div
+                  className="pointer-events-none absolute inset-0 rounded-full blur-2xl opacity-55 group-hover:opacity-85 transition"
+                  style={{ background: activePetDef.themeColor }}
+                />
+                <ArtImage
+                  kind="PET"
+                  id={activePetDef.id}
+                  src={activePetDef.assets.sprite}
+                  alt={activePetDef.name}
+                  className="relative w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 object-contain group-hover:scale-110 transition-transform"
+                  style={{
+                    filter: `drop-shadow(0 12px 20px rgba(0,0,0,0.9)) drop-shadow(0 0 18px ${activePetDef.themeColor}88)`,
+                  }}
+                />
+                <span
+                  className="relative -mt-1 px-2 py-0.5 rounded-full bg-slate-950/90 border text-[9px] font-display font-black uppercase tracking-wider text-white shadow-lg"
+                  style={{ borderColor: `${activePetDef.themeColor}99` }}
+                >
+                  🐾 {activePetDef.name} R{activeOwnedPet.rank}
+                </span>
+              </motion.button>
+            )}
           </div>
         </div>
       ) : (
@@ -505,7 +570,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                       {displayHero.name}
                     </span>
                     <span className="text-[10px] text-amber-300/90 uppercase truncate">
-                      • {displayHero.title}
+                      • {displayVisuals.title}
                     </span>
                   </div>
                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-400/50 text-[9px] font-mono font-bold text-rose-200 shrink-0">
@@ -632,7 +697,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                     SUMMON
                   </div>
                   <div className="hidden md:block ls-hide text-[11px] text-fuchsia-200/90 font-semibold">
-                    ❖ UR Event: Astraea & Vespera
+                    ❖ UR Event &amp; 🐾 Pet Summon
                   </div>
                 </div>
               </div>
@@ -672,7 +737,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 </span>
               ) : (
                 <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-fuchsia-400/15 border border-fuchsia-400/40 font-mono text-[10px] text-fuchsia-200">
-                  {unlockedCodexIds.length}/{HEROES.length + RELICS.length + ENEMIES.length}
+                  {unlockedCodexIds.length}/{HEROES.length + PETS.length + RELICS.length + ENEMIES.length}
                 </span>
               )}
             </button>
@@ -702,7 +767,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                     <ArtImage
                       kind="HERO"
                       id={hid}
-                      src={h.assets.card}
+                      src={resolveHeroVisuals(h, roster[hid]).card}
                       alt={h.name}
                       className="w-full h-full object-cover object-top"
                     />
@@ -712,6 +777,24 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   </div>
                 );
               })}
+              {activePetDef && activeOwnedPet && (
+                <div
+                  className="relative w-9 h-9 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-full overflow-hidden border-2 bg-slate-950 shadow-md p-0.5 flex items-center justify-center"
+                  style={{ borderColor: activePetDef.themeColor }}
+                  title={`Companion Pet: ${activePetDef.name} (R${activeOwnedPet.rank} Lv.${activeOwnedPet.level})`}
+                >
+                  <ArtImage
+                    kind="PET"
+                    id={activePetDef.id}
+                    src={activePetDef.assets.sprite}
+                    alt={activePetDef.name}
+                    className="w-full h-full object-contain"
+                  />
+                  <span className="absolute bottom-0 inset-x-0 bg-black/85 text-[7px] font-mono font-bold text-center text-cyan-200 leading-tight">
+                    R{activeOwnedPet.rank}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="text-right sm:text-left pr-1">
               <div className="text-[9px] uppercase tracking-widest text-amber-300 font-black flex items-center justify-end sm:justify-start gap-1 leading-none">

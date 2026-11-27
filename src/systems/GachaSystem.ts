@@ -1,12 +1,14 @@
 import { HERO_MAP } from '../data/heroes';
+import { PET_MAP } from '../data/pets';
 import { RELIC_MAP } from '../data/relics';
 import type { BannerDef, GachaPullResult, Tier } from '../types/game';
 
 /**
- * Exact Soft/Hard Pity formula from GDD Section 4.4 + Limited UR Event Banner:
+ * Exact Soft/Hard Pity formula from GDD Section 4.4 + Limited UR Event & Pet Sanctuary Banners:
  * - UR Event Banner: base 0.6% UR, soft pity at 70 (+3.2% per pull), hard pity at 100 (100% UR).
  * - Hero Banner: base 2.5% SSR, soft pity at 60 (+4.5% per pull), hard pity at 80.
  * - Relic Banner: base 2.5% SSR, soft pity at 45 (+5.5% per pull), hard pity at 60.
+ * - Pet Banner: base 4.0% SSR, 22% SR, 74% R; soft pity at 30 (+6.4% per pull), hard pity at 45.
  */
 export function isURBanner(banner: BannerDef): boolean {
   return Boolean(banner.poolUR && banner.poolUR.length > 0);
@@ -22,12 +24,13 @@ export function getURProbability(pityCount: number, banner: BannerDef): number {
 }
 
 export function getSSRProbability(pityCount: number, banner: BannerDef): number {
-  if (isURBanner(banner)) return 0.025;
+  const base = banner.ssrBaseRate ?? 0.025;
+  if (isURBanner(banner)) return base;
   const nextPullNumber = pityCount + 1;
   if (nextPullNumber >= banner.hardPity) return 1.0;
-  if (nextPullNumber < banner.softPity) return 0.025;
-  const slope = banner.type === 'HERO' ? 0.045 : 0.055;
-  return Math.min(1.0, 0.025 + slope * (nextPullNumber - (banner.softPity - 1)));
+  if (nextPullNumber < banner.softPity) return base;
+  const slope = banner.type === 'PET' ? 0.064 : banner.type === 'HERO' ? 0.045 : 0.055;
+  return Math.min(1.0, base + slope * (nextPullNumber - (banner.softPity - 1)));
 }
 
 function pickRandom<T>(arr: T[]): T {
@@ -61,7 +64,7 @@ export function executeGachaPulls(
   for (let i = 0; i < count; i++) {
     const urChance = hasURPool ? getURProbability(pity, banner) : 0;
     const ssrChance = getSSRProbability(pity, banner);
-    const srChance = 0.175;
+    const srChance = banner.srBaseRate ?? 0.175;
     const roll = Math.random();
 
     let tier: Tier;
@@ -96,16 +99,22 @@ export function executeGachaPulls(
     } else if (tier === 'SSR') {
       if (!hasURPool) {
         pity = 0;
-        const winFeatured = guaranteed || Math.random() < 0.5;
-        if (winFeatured) {
-          pickedId = pickRandom(banner.featuredIds);
+        if (banner.type === 'PET') {
+          pickedId = pickRandom(banner.poolSSR);
           isFeatured = true;
           guaranteed = false;
         } else {
-          const offBanner = banner.poolSSR.filter((id) => !banner.featuredIds.includes(id));
-          pickedId = offBanner.length > 0 ? pickRandom(offBanner) : pickRandom(banner.poolSSR);
-          isFeatured = false;
-          guaranteed = true;
+          const winFeatured = guaranteed || Math.random() < 0.5;
+          if (winFeatured) {
+            pickedId = pickRandom(banner.featuredIds);
+            isFeatured = true;
+            guaranteed = false;
+          } else {
+            const offBanner = banner.poolSSR.filter((id) => !banner.featuredIds.includes(id));
+            pickedId = offBanner.length > 0 ? pickRandom(offBanner) : pickRandom(banner.poolSSR);
+            isFeatured = false;
+            guaranteed = true;
+          }
         }
       } else {
         // On a UR Event Banner, pulling an SSR still advances UR pity! Featured SSR (e.g. Vespera) gets 50% rate-up.
@@ -161,6 +170,21 @@ export function executeGachaPulls(
         assetCard: hero.assets.card,
         themeColor: hero.themeColor,
         quote: hero.quote,
+      });
+    } else if (banner.type === 'PET') {
+      const pet = PET_MAP[pickedId];
+      results.push({
+        kind: 'PET',
+        id: pickedId,
+        name: pet.name,
+        tier,
+        isFeatured: isFeatured || banner.featuredIds.includes(pickedId),
+        isNew,
+        shardsGained: 0,
+        starDustGained,
+        assetCard: pet.assets.card,
+        themeColor: pet.themeColor,
+        quote: pet.quote,
       });
     } else {
       const relic = RELIC_MAP[pickedId];

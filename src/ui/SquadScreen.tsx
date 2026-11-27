@@ -21,12 +21,20 @@ import {
   getEnhancedMainStatValue,
 } from '../data/equipment';
 import { FACTIONS } from '../data/factions';
-import { HEROES, HERO_MAP } from '../data/heroes';
+import { HEROES, HERO_MAP, resolveHeroVisuals } from '../data/heroes';
 import {
   getAwakeningCost,
   getHeroLevelCap,
   getLevelUpCost,
+  getTranscendenceCost,
 } from '../data/materials';
+import {
+  MAX_PET_LEVEL,
+  MAX_PET_RANK,
+  PETS,
+  formatPetAuraSummary,
+  getPetLevelUpCost,
+} from '../data/pets';
 import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
 import { computeHeroStats, getSquadSynergyPills } from '../engine/CombatMath';
@@ -35,7 +43,7 @@ import { getEnhanceCost, getSalvageYield } from '../systems/ForgeSystem';
 import type { DungeonId, EquipmentSlot, Faction } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
-import { AwakenModal, LevelUpModal } from './HeroGrowthModals';
+import { AwakenModal, LevelUpModal, TranscendModal } from './HeroGrowthModals';
 import { PartyManagerModal } from './PartyManagerModal';
 import {
   AnimatedNumber,
@@ -53,9 +61,15 @@ interface SquadScreenProps {
   onBack: () => void;
   onOpenShop: (initialTab?: 'GROWTH' | 'AWAKEN' | 'FORGE' | 'RELIC') => void;
   onOpenDungeon?: (dungeonId: DungeonId, faction?: Faction) => void;
+  onOpenGacha?: () => void;
 }
 
-export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, onOpenDungeon }) => {
+export const SquadScreen: React.FC<SquadScreenProps> = ({
+  onBack,
+  onOpenShop,
+  onOpenDungeon,
+  onOpenGacha,
+}) => {
   const {
     gold,
     expPotions,
@@ -71,11 +85,16 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
     roster,
     ownedRelics,
     relicRanks,
+    ownedPets,
+    activePetId,
     equipmentInventory,
     unlockedCodexIds,
     giveBondGift,
     equipRelic,
     equipGear,
+    equipPet,
+    levelUpPet,
+    toggleHeroTranscendedVisual,
     toggleGearLock,
     autoEquipBestGear,
     batchSalvageGear,
@@ -84,7 +103,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
   } = usePlayerStore();
 
   const [selectedHeroId, setSelectedHeroId] = useState<string>(squadIds[0]);
-  const [rightTab, setRightTab] = useState<'GEAR' | 'RELIC' | 'SKILLS'>('GEAR');
+  const [rightTab, setRightTab] = useState<'GEAR' | 'RELIC' | 'PETS' | 'SKILLS'>('GEAR');
   const [activeSlot, setActiveSlot] = useState<EquipmentSlot>('WEAPON');
   const [showBatchSalvage, setShowBatchSalvage] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
@@ -92,6 +111,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
   const [showPartyModal, setShowPartyModal] = useState(false);
   const [showAwakenModal, setShowAwakenModal] = useState(false);
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
+  const [showTranscendModal, setShowTranscendModal] = useState(false);
 
   const showNotice = (text: string, tone: 'ok' | 'warn' = 'ok') => {
     setStatusMessage({ text, tone });
@@ -106,7 +126,11 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
   const ownedList = useMemo(() => HEROES.filter((h) => Boolean(roster[h.id])), [roster]);
   const heroDef = HERO_MAP[selectedHeroId] ?? HERO_MAP[squadIds[0]];
   const ownedHero = roster[heroDef.id] ?? roster[squadIds[0]];
+  const heroVisuals = resolveHeroVisuals(heroDef, ownedHero);
   const activePreset = partyPresets[activePresetIndex] ?? partyPresets[0];
+  const petsMap = ownedPets ?? {};
+  const ownedPetCount = Object.keys(petsMap).length;
+  const activeOwnedPet = activePetId && petsMap[activePetId] ? petsMap[activePetId] : null;
 
   const computed = useMemo(
     () =>
@@ -117,11 +141,24 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
         squadIds,
         unlockedCodexIds.length,
         relicRanks,
+        { roster, activePet: activeOwnedPet },
       ),
-    [heroDef, ownedHero, equipmentInventory, squadIds, unlockedCodexIds.length, relicRanks],
+    [
+      heroDef,
+      ownedHero,
+      equipmentInventory,
+      squadIds,
+      unlockedCodexIds.length,
+      relicRanks,
+      roster,
+      activeOwnedPet,
+    ],
   );
 
-  const synergyPills = useMemo(() => getSquadSynergyPills(squadIds), [squadIds]);
+  const synergyPills = useMemo(
+    () => getSquadSynergyPills(squadIds, roster, activePetId, petsMap),
+    [squadIds, roster, activePetId, petsMap],
+  );
   const equippedUidForSlot = ownedHero.equippedGear[activeSlot];
   const equippedItemForSlot =
     equipmentInventory.find((e) => e.uid === equippedUidForSlot) ?? null;
@@ -156,13 +193,19 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
             ? 'Ashen Fury / Vanguard'
             : 'Vanguard / Ashen Fury';
 
-  const levelCap = getHeroLevelCap(ownedHero.awakening);
-  const lv1Cost = getLevelUpCost(ownedHero.level, 1, ownedHero.awakening);
+  const levelCap = getHeroLevelCap(ownedHero.awakening, Boolean(ownedHero.transcended));
+  const lv1Cost = getLevelUpCost(
+    ownedHero.level,
+    1,
+    ownedHero.awakening,
+    Boolean(ownedHero.transcended),
+  );
   const awakenCost = getAwakeningCost(ownedHero.awakening, heroDef.tier);
+  const transcendCost = getTranscendenceCost(heroDef.tier);
   const ownedHeroEssence = factionEssences[heroDef.faction] ?? 0;
 
   const canLevelUpQuick =
-    ownedHero.level < 80 &&
+    ownedHero.level < levelCap &&
     !lv1Cost.atAwakenCap &&
     expPotions >= lv1Cost.potions &&
     gold >= lv1Cost.gold;
@@ -176,6 +219,19 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
     awakenCost && ownedHero.shards >= awakenCost.shardAltCost && gold >= awakenCost.shardAltGold,
   );
   const canAwakenReady = canAwakenWithMats || canAwakenWithShards;
+  const canTranscendReady = Boolean(
+    !ownedHero.transcended &&
+      ownedHero.awakening >= 6 &&
+      heroDef.transcendence?.enabled &&
+      transcendCost &&
+      ((ownedHeroEssence >= transcendCost.essences &&
+        starCores >= transcendCost.starCores &&
+        astralAnvilCores >= transcendCost.astralAnvilCores &&
+        gold >= transcendCost.gold) ||
+        (ownedHero.shards >= transcendCost.shardAltCost && gold >= transcendCost.shardAltGold)),
+  );
+  const showTranscendButton =
+    ownedHero.awakening >= 6 && (heroDef.tier === 'UR' || heroDef.tier === 'SSR');
 
   const handleEnhance = (uid: string) => {
     const res = enhanceGear(uid);
@@ -235,7 +291,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
                     <ArtImage
                       kind="HERO"
                       id={hid}
-                      src={h.assets.card}
+                      src={resolveHeroVisuals(h, roster[hid]).card}
                       alt={h.name}
                       className="w-full h-full object-cover object-top"
                     />
@@ -350,7 +406,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
                   <ArtImage
                     kind="HERO"
                     id={h.id}
-                    src={h.assets.card}
+                    src={resolveHeroVisuals(h, own).card}
                     alt={h.name}
                     className="w-full h-full object-cover object-top"
                   />
@@ -419,7 +475,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
             )}
 
             <motion.div
-              key={heroDef.id}
+              key={`${heroDef.id}_${heroVisuals.isTranscendedVisual ? 'tr' : 'base'}`}
               initial={{ opacity: 0, x: -16, scale: 0.96 }}
               animate={{ opacity: 1, x: 0, scale: 1 }}
               transition={{ type: 'spring', stiffness: 320, damping: 26 }}
@@ -428,43 +484,63 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
               <ArtImage
                 kind="HERO"
                 id={heroDef.id}
-                src={heroDef.assets.standing}
+                src={heroVisuals.standing}
                 alt={heroDef.name}
                 className={
-                  heroDef.assets.standing.includes('/assets/standing/')
+                  heroVisuals.standing.includes('/assets/standing/')
                     ? 'h-full w-auto object-contain object-bottom'
                     : 'w-full h-full object-cover object-top hero-radial-feather'
                 }
                 style={
-                  heroDef.assets.standing.includes('/assets/standing/')
+                  heroVisuals.standing.includes('/assets/standing/')
                     ? {
-                        filter: `drop-shadow(0 14px 24px rgba(4,6,16,0.9)) drop-shadow(0 0 16px ${heroDef.themeColor}44)`,
+                        filter: heroVisuals.isTranscendedVisual
+                          ? 'drop-shadow(0 16px 28px rgba(4,6,16,0.95)) drop-shadow(0 0 26px rgba(253,224,71,0.68)) drop-shadow(0 0 18px rgba(232,121,249,0.58))'
+                          : `drop-shadow(0 14px 24px rgba(4,6,16,0.9)) drop-shadow(0 0 16px ${heroDef.themeColor}44)`,
                       }
                     : undefined
                 }
               />
             </motion.div>
 
-            {/* Hero Name & Awakening Crest Overlay */}
+            {/* Hero Name & Awakening / Transcendence Crest Overlay */}
             <div
               className="absolute top-0 left-0 rpg-ornate-card px-3 py-2 backdrop-blur-md"
-              style={{ borderLeft: `3px solid ${heroDef.themeColor}` }}
+              style={{
+                borderLeft: `3px solid ${ownedHero.transcended ? '#fde047' : heroDef.themeColor}`,
+              }}
             >
-              <CornerFiligree color={heroDef.themeColor} size={7} opacity={0.65} />
-              <div className="flex items-center gap-1.5">
+              <CornerFiligree
+                color={ownedHero.transcended ? '#fde047' : heroDef.themeColor}
+                size={7}
+                opacity={0.75}
+              />
+              <div className="flex items-center flex-wrap gap-1.5">
                 <RarityCrest tier={heroDef.tier} size="sm" />
                 <RoleBadge role={heroDef.role} variant="pill" size="sm" />
+                {ownedHero.transcended && (
+                  <span className="px-1.5 py-0.5 rounded bg-gradient-to-r from-amber-300 to-fuchsia-300 text-slate-950 font-display font-black text-[8px] uppercase tracking-widest">
+                    ❖ TRANSCENDED
+                  </span>
+                )}
               </div>
               <h2 className="font-display text-xl sm:text-2xl font-black text-white text-glow-gold leading-tight mt-1">
                 {heroDef.name}
               </h2>
+              {ownedHero.transcended && (
+                <div className="text-[9px] font-serif-italic italic text-amber-200 leading-none mb-0.5">
+                  {heroVisuals.title}
+                </div>
+              )}
               <div className="flex items-center gap-0.5 mt-0.5">
                 {Array.from({ length: 6 }, (_, i) => (
                   <Star
                     key={i}
                     className={`w-3 h-3 ${
                       i < ownedHero.awakening
-                        ? 'text-fuchsia-400 fill-fuchsia-400 drop-shadow-[0_0_6px_rgba(232,121,249,0.8)]'
+                        ? ownedHero.transcended
+                          ? 'text-amber-300 fill-amber-300 drop-shadow-[0_0_8px_rgba(253,224,71,0.95)]'
+                          : 'text-fuchsia-400 fill-fuchsia-400 drop-shadow-[0_0_6px_rgba(232,121,249,0.8)]'
                         : 'text-slate-700'
                     }`}
                   />
@@ -473,8 +549,23 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
                   Lv.{ownedHero.level}/{levelCap}
                 </span>
               </div>
-              <div className="text-[11px] font-extrabold text-amber-300 mt-0.5">
-                PWR <AnimatedNumber value={computed.powerRating} className="text-sm font-bold text-amber-200" />
+              <div className="flex items-center gap-2 mt-0.5">
+                <div className="text-[11px] font-extrabold text-amber-300">
+                  PWR <AnimatedNumber value={computed.powerRating} className="text-sm font-bold text-amber-200" />
+                </div>
+                {ownedHero.transcended && heroDef.transcendence?.enabled && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      toggleHeroTranscendedVisual(heroDef.id);
+                      audioManager.playSfx('button');
+                    }}
+                    className="px-1.5 py-0.5 rounded bg-slate-900/90 border border-amber-300/60 text-[9px] font-display font-bold text-amber-200 hover:bg-amber-400/20 transition"
+                    title="Toggle Transcended Empyrean Visual vs Classic Skin"
+                  >
+                    {heroVisuals.isTranscendedVisual ? '❖ Empyrean' : 'Classic'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -553,21 +644,45 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
                   <span className="w-2 h-2 rounded-full bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.95)]" />
                 )}
               </RpgButton>
-              <RpgButton
-                variant="violet"
-                size="sm"
-                onClick={() => {
-                  audioManager.playSfx('button');
-                  setShowAwakenModal(true);
-                }}
-                className="relative font-display font-black uppercase tracking-wider"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>{awakenCost ? `Awaken ★${awakenCost.nextStar}` : 'MAX ★6'}</span>
-                {canAwakenReady && (
-                  <span className="w-2 h-2 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(253,224,71,0.95)] animate-pulse" />
-                )}
-              </RpgButton>
+              {showTranscendButton ? (
+                <RpgButton
+                  variant="gold"
+                  size="sm"
+                  onClick={() => {
+                    audioManager.playSfx('button');
+                    setShowTranscendModal(true);
+                  }}
+                  className="relative font-display font-black uppercase tracking-wider"
+                >
+                  <Crown className="w-3.5 h-3.5" />
+                  <span>
+                    {ownedHero.transcended
+                      ? '❖ Transcended'
+                      : heroDef.transcendence?.enabled
+                        ? '❖ Transcend'
+                        : 'Transcend Soon'}
+                  </span>
+                  {canTranscendReady && (
+                    <span className="w-2 h-2 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.95)] animate-pulse" />
+                  )}
+                </RpgButton>
+              ) : (
+                <RpgButton
+                  variant="violet"
+                  size="sm"
+                  onClick={() => {
+                    audioManager.playSfx('button');
+                    setShowAwakenModal(true);
+                  }}
+                  className="relative font-display font-black uppercase tracking-wider"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{awakenCost ? `Awaken ★${awakenCost.nextStar}` : 'MAX ★6'}</span>
+                  {canAwakenReady && (
+                    <span className="w-2 h-2 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(253,224,71,0.95)] animate-pulse" />
+                  )}
+                </RpgButton>
+              )}
               <RpgButton
                 variant="rose"
                 size="sm"
@@ -616,6 +731,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
               items={[
                 { key: 'GEAR', label: 'Forge', icon: 'forge' },
                 { key: 'RELIC', label: `Relics (${ownedRelics.length})`, icon: 'relic', accent: 'cyan' },
+                { key: 'PETS', label: `🐾 Pets (${ownedPetCount})`, accent: 'cyan' },
                 { key: 'SKILLS', label: 'Skills', icon: 'heroes' },
               ]}
             />
@@ -1041,6 +1157,155 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
             </div>
           )}
 
+          {rightTab === 'PETS' && (
+            <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
+              {ownedPetCount === 0 ? (
+                <div className="rpg-ornate-card p-5 text-center space-y-3 border-cyan-400/45">
+                  <CornerFiligree color="#38e8ff" size={8} opacity={0.65} />
+                  <div className="text-3xl">🐾</div>
+                  <div>
+                    <h3 className="font-display text-base font-black text-white">
+                      No Starlight Companion Pets Yet
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                      Summon <strong className="text-amber-300">Aetherion (SSR)</strong>,{' '}
+                      <strong className="text-orange-300">Cinderfang (SR)</strong>, or{' '}
+                      <strong className="text-cyan-300">Lumina (R)</strong> from the Pet Sanctuary!
+                      Equipped Pets grant squad-wide auras and cast auto-skills in combat.
+                    </p>
+                  </div>
+                  {onOpenGacha && (
+                    <div className="flex justify-center">
+                      <RpgButton
+                        variant="cyan"
+                        size="sm"
+                        onClick={() => {
+                          audioManager.playSfx('button');
+                          onOpenGacha();
+                        }}
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Open Pet Summon →
+                      </RpgButton>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                PETS.map((pet) => {
+                  const owned = petsMap[pet.id];
+                  if (!owned) return null;
+                  const isEquipped = activePetId === pet.id;
+                  const auraPills = formatPetAuraSummary(pet, owned);
+                  const lv1 = getPetLevelUpCost(owned.level, 1);
+                  const lv5 = getPetLevelUpCost(owned.level, 5);
+                  const canLv1 =
+                    owned.level < MAX_PET_LEVEL && expPotions >= lv1.potions && gold >= lv1.gold;
+                  const canLv5 =
+                    owned.level < MAX_PET_LEVEL && expPotions >= lv5.potions && gold >= lv5.gold;
+                  return (
+                    <div
+                      key={pet.id}
+                      className={`rounded-xl p-3 border flex flex-col gap-2 transition ${
+                        isEquipped
+                          ? 'bg-cyan-500/15 border-cyan-300 shadow-[0_0_20px_rgba(56,232,255,0.22)]'
+                          : 'bg-slate-950/80 border-slate-700/75 hover:border-cyan-400/45'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="relative w-16 h-16 rounded-xl border-2 shrink-0 flex items-center justify-center bg-slate-900/90 overflow-hidden p-1"
+                          style={{ borderColor: `${pet.themeColor}aa` }}
+                        >
+                          <ArtImage
+                            kind="PET"
+                            id={pet.id}
+                            src={pet.assets.sprite}
+                            alt={pet.name}
+                            className="w-full h-full object-contain"
+                          />
+                          <span className="absolute bottom-0 inset-x-0 bg-black/85 text-[8px] font-mono font-black text-center text-cyan-200">
+                            R{owned.rank}/{MAX_PET_RANK}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <RarityCrest tier={pet.tier} size="xs" />
+                            <span className="font-display font-black text-sm text-white truncate">
+                              {pet.name}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-cyan-300">
+                              Lv.{owned.level}/{MAX_PET_LEVEL}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {auraPills.map((pill) => (
+                              <span
+                                key={pill}
+                                className="px-1.5 py-0.5 rounded bg-amber-400/15 border border-amber-300/40 text-[9px] font-mono font-bold text-amber-200"
+                              >
+                                {pill}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                            <strong className="text-cyan-300">{pet.activeSkill.name}</strong> ({pet.activeSkill.cooldown}s):{' '}
+                            {pet.activeSkill.description}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-white/10">
+                        <div className="flex items-center gap-1.5">
+                          <RpgButton
+                            variant="emerald"
+                            size="xs"
+                            disabled={!canLv1}
+                            onClick={() => {
+                              const res = levelUpPet(pet.id, 1);
+                              showNotice(res.message, res.ok ? 'ok' : 'warn');
+                              audioManager.playSfx(res.ok ? 'forge' : 'button');
+                            }}
+                          >
+                            +1 Lv ({lv1.potions}🍼 {lv1.gold}g)
+                          </RpgButton>
+                          {owned.level <= MAX_PET_LEVEL - 2 && (
+                            <RpgButton
+                              variant="slate"
+                              size="xs"
+                              disabled={!canLv5}
+                              onClick={() => {
+                                const res = levelUpPet(pet.id, 5);
+                                showNotice(res.message, res.ok ? 'ok' : 'warn');
+                                audioManager.playSfx(res.ok ? 'forge' : 'button');
+                              }}
+                            >
+                              +5 Lv
+                            </RpgButton>
+                          )}
+                        </div>
+                        <RpgButton
+                          variant={isEquipped ? 'rose' : 'cyan'}
+                          size="xs"
+                          onClick={() => {
+                            equipPet(isEquipped ? null : pet.id);
+                            audioManager.playSfx('button');
+                            showNotice(
+                              isEquipped
+                                ? `${pet.name} unequipped from squad.`
+                                : `${pet.name} deployed as active Squad Companion!`,
+                              'ok',
+                            );
+                          }}
+                          className="uppercase font-display font-black"
+                        >
+                          {isEquipped ? 'Unequip Pet' : 'Deploy Pet'}
+                        </RpgButton>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
           {rightTab === 'SKILLS' && <SkillInspector hero={heroDef} owned={ownedHero} />}
         </section>
       </main>
@@ -1056,6 +1321,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
           triggerUpgradeFx(`AWAKENED ★${nextStar}!`, '#e879f9');
           showNotice(msg, 'ok');
         }}
+        onSwitchToTranscend={() => setShowTranscendModal(true)}
         onOpenShop={onOpenShop}
         onOpenDungeon={onOpenDungeon}
       />
@@ -1070,6 +1336,20 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, on
           showNotice(msg, 'ok');
         }}
         onSwitchToAwaken={() => setShowAwakenModal(true)}
+        onSwitchToTranscend={() => setShowTranscendModal(true)}
+        onOpenShop={onOpenShop}
+        onOpenDungeon={onOpenDungeon}
+      />
+
+      <TranscendModal
+        open={showTranscendModal}
+        hero={heroDef}
+        owned={ownedHero}
+        onClose={() => setShowTranscendModal(false)}
+        onTranscended={(msg) => {
+          triggerUpgradeFx('❖ TRANSCENDED! ❖', '#fde047');
+          showNotice(msg, 'ok');
+        }}
         onOpenShop={onOpenShop}
         onOpenDungeon={onOpenDungeon}
       />

@@ -7,6 +7,7 @@ import type {
   CombatLootSummary,
   HeroCombatSnapshot,
   LinkWindowState,
+  PetCombatSnapshot,
 } from '../types/game';
 
 export interface AimingState {
@@ -68,6 +69,7 @@ interface CombatStore {
   touchJoystick: TouchJoystickState | null;
   aiming: AimingState | null;
   heroes: HeroCombatSnapshot[];
+  activePet: PetCombatSnapshot | null;
   boss: BossCombatSnapshot | null;
   activeCutIn: ActiveCutInState | null;
   activeBanter: ActiveBossBanter | null;
@@ -129,6 +131,7 @@ export const useCombatStore = create<CombatStore>((set) => ({
   touchJoystick: null,
   aiming: null,
   heroes: [],
+  activePet: null,
   boss: null,
   activeCutIn: null,
   activeBanter: null,
@@ -164,6 +167,7 @@ export const useCombatStore = create<CombatStore>((set) => ({
       touchJoystick: null,
       aiming: null,
       heroes: [],
+      activePet: null,
       boss: null,
       activeCutIn: null,
       activeBanter: null,

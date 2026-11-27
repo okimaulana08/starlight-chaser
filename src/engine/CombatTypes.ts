@@ -3,7 +3,26 @@ import type { ActorVisualFilter } from './ActorVisualFilter';
 import type { ComputedHeroStats } from './CombatMath';
 import type { LiveMeshActor } from './LiveMeshActor';
 import type { HitImpactStyle, SpriteFxOptions } from './ObjectPool';
-import type { EnemyDef, HeroDef, SkillDef } from '../types/game';
+import type { EnemyDef, HeroDef, PetDef, SkillDef } from '../types/game';
+
+export interface PetUnit {
+  petId: string;
+  def: PetDef;
+  level: number;
+  rank: number;
+  skillPowerMult: number;
+  x: number;
+  y: number;
+  facing: number;
+  cd: number;
+  maxCd: number;
+  castFlashTimer: number;
+  animTime: number;
+  container: Container;
+  sprite: Sprite;
+  haloSprite: Sprite;
+  shadowGfx: Graphics;
+}
 
 export interface DashMotionState {
   startX: number;
@@ -29,6 +48,9 @@ export interface HeroUnit {
   def: HeroDef;
   stats: ComputedHeroStats;
   relicId: string | null;
+  transcended?: boolean;
+  useTranscendedVisual?: boolean;
+  resolvedCardAsset?: string;
   slotIndex: number;
   x: number;
   y: number;

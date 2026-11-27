@@ -70,6 +70,99 @@ export interface PartyPreset {
   id: string;
   name: string;
   heroIds: [string, string, string, string];
+  petId?: string | null;
+}
+
+export type PetRole = 'SUPPORT' | 'STRIKER' | 'CELESTIAL';
+
+export interface PetDef {
+  id: string;
+  name: string;
+  title: string;
+  tier: 'R' | 'SR' | 'SSR';
+  petRole: PetRole;
+  themeColor: string;
+  lore: string;
+  quote: string;
+  auraDesc: string;
+  auraBase: {
+    hpPct?: number;
+    atkPct?: number;
+    defPct?: number;
+    critRate?: number;
+    critDmg?: number;
+    spRegenBonus?: number;
+    breakDmgBonus?: number;
+    ultGaugeBonus?: number;
+  };
+  auraPerRank: {
+    hpPct?: number;
+    atkPct?: number;
+    defPct?: number;
+    critRate?: number;
+    critDmg?: number;
+    spRegenBonus?: number;
+    breakDmgBonus?: number;
+    ultGaugeBonus?: number;
+  };
+  activeSkill: {
+    id: string;
+    name: string;
+    description: string;
+    cooldown: number;
+    kind: 'HEAL_SP' | 'MAGMA_VOLLEY' | 'ASTRAL_DECREE';
+  };
+  assets: {
+    card: string;
+    sprite: string;
+  };
+}
+
+export interface OwnedPetState {
+  petId: string;
+  level: number; // 1 - 50
+  rank: number; // 1 - 5
+}
+
+export interface PetCombatSnapshot {
+  petId: string;
+  name: string;
+  tier: Tier;
+  themeColor: string;
+  cardAsset: string;
+  spriteAsset: string;
+  skillName: string;
+  cd: number;
+  maxCd: number;
+  rank: number;
+  level: number;
+}
+
+export interface HeroTranscendenceDef {
+  enabled: boolean;
+  formTitle: string;
+  quote: string;
+  summary: string;
+  maxLevelCap: number; // 100
+  statSurge: {
+    baseStatMultBonus: number;
+    critRateBonus: number;
+    critDmgBonus: number;
+  };
+  upgradedSovereignAura?: {
+    name: string;
+    description: string;
+    squadFinalDmgBonus: number;
+    squadCritDmgBonus: number;
+    linkBurstBonus: number;
+  };
+  assets: {
+    card: string;
+    standing: string;
+    sprite: string;
+    attackSprite: string;
+    attackScaleBoost?: number;
+  };
 }
 
 export type SkillEffectTag =
@@ -155,6 +248,7 @@ export interface HeroDef {
     cutIn?: string;
     cutInVideo?: string;
   };
+  transcendence?: HeroTranscendenceDef;
 }
 
 export interface RelicDef {
@@ -355,7 +449,7 @@ export interface DungeonDef {
 
 export interface BannerDef {
   id: string;
-  type: 'HERO' | 'RELIC';
+  type: 'HERO' | 'RELIC' | 'PET';
   name: string;
   subtitle: string;
   featuredIds: string[];
@@ -365,6 +459,8 @@ export interface BannerDef {
   poolR: string[];
   isLimitedEvent?: boolean;
   urBaseRate?: number;
+  ssrBaseRate?: number;
+  srBaseRate?: number;
   softPity: number;
   hardPity: number;
   singleCost: number;
@@ -375,7 +471,7 @@ export interface BannerDef {
 }
 
 export interface GachaPullResult {
-  kind: 'HERO' | 'RELIC';
+  kind: 'HERO' | 'RELIC' | 'PET';
   id: string;
   name: string;
   tier: Tier;
@@ -383,6 +479,7 @@ export interface GachaPullResult {
   isNew: boolean;
   shardsGained: number;
   starDustGained: number;
+  petNewRank?: number;
   assetCard: string;
   themeColor: string;
   quote?: string;
@@ -393,6 +490,8 @@ export interface OwnedHeroState {
   level: number;
   exp?: number; // current EXP progress toward next level
   awakening: number; // 0 - 6
+  transcended?: boolean;
+  useTranscendedVisual?: boolean;
   shards: number;
   bondLevel: number; // 1 - 10
   equippedRelicId: string | null;
@@ -417,15 +516,19 @@ export interface PlayerSaveState {
   pityCounterUR?: number;
   pityCounterHero: number;
   pityCounterRelic: number;
+  pityCounterPet?: number;
   guaranteedFeaturedUR?: boolean;
   guaranteedFeaturedHero: boolean;
   guaranteedFeaturedRelic: boolean;
+  guaranteedFeaturedPet?: boolean;
   squadIds: [string, string, string, string];
   partyPresets: [PartyPreset, PartyPreset, PartyPreset];
   activePresetIndex: 0 | 1 | 2;
   roster: Record<string, OwnedHeroState>;
   ownedRelics: string[];
   relicRanks: Record<string, number>; // 1 - 5 refinement rank
+  ownedPets?: Record<string, OwnedPetState>;
+  activePetId?: string | null;
   equipmentInventory: EquipmentInstance[];
   unlockedCodexIds: string[];
   claimedCodexMilestones: number[];
@@ -471,6 +574,8 @@ export interface HeroCombatSnapshot {
   stacksLabel?: string;
   stacksCount?: number;
   activeBuffs: string[];
+  transcended?: boolean;
+  cardAsset?: string;
 }
 
 export interface BossCombatSnapshot {
