@@ -1,8 +1,10 @@
 import { buildDefaultSaveState, usePlayerStore } from '../store/usePlayerStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import type { PlayerSaveState } from '../types/game';
 
 export const SAVE_STORAGE_KEY = 'starlight-chasers-save-v3';
 export const BACKUP_STORAGE_KEY = 'starlight-chasers-manual-backup-v3';
+export const SETTINGS_STORAGE_KEY = 'starlight-chasers-settings-v1';
 export const SAVE_FORMAT_TAG = 'starlight-chasers-save';
 export const SAVE_SCHEMA_VERSION = 3;
 const SAVE_CODE_PREFIX = 'SC3:';
@@ -329,6 +331,36 @@ export function applyImportedSave(data: PlayerSaveState): { ok: boolean; message
     return {
       ok: false,
       message: err instanceof Error ? `Import failed: ${err.message}` : 'Import failed.',
+    };
+  }
+}
+
+export function resetAccountCompletely(): { ok: boolean; message: string } {
+  try {
+    // 1. Wipe all persisted account save, manual backup, and settings keys
+    localStorage.removeItem(SAVE_STORAGE_KEY);
+    localStorage.removeItem(BACKUP_STORAGE_KEY);
+    localStorage.removeItem(SETTINGS_STORAGE_KEY);
+
+    // 2. Reset in-memory Zustand stores to clean starter state & defaults (Auto-Move/Auto-Skill ON)
+    usePlayerStore.getState().resetSave();
+    useSettingsStore.getState().resetSettings();
+
+    // 3. Persist the clean starter save immediately so storage reflects the reset state
+    const fresh = extractPlayerSaveState(usePlayerStore.getState());
+    localStorage.setItem(
+      SAVE_STORAGE_KEY,
+      JSON.stringify({ state: fresh, version: 0 }),
+    );
+
+    return {
+      ok: true,
+      message: 'Account permanently reset. Fresh starter profile initialized.',
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? `Reset failed: ${err.message}` : 'Unable to reset account data.',
     };
   }
 }

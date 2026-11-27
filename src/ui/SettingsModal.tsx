@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle,
@@ -11,9 +11,9 @@ import {
   RotateCcw,
   Save,
   Settings,
+  ShieldAlert,
   Sliders,
   Sparkles,
-  Swords,
   Trash2,
   Upload,
   User,
@@ -32,6 +32,7 @@ import {
   getBackupSnapshotInfo,
   manualSaveAndBackup,
   parseAndValidateImport,
+  resetAccountCompletely,
   restoreBackupSnapshot,
   type ImportValidationResult,
 } from '../systems/SaveManager';
@@ -75,10 +76,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [copiedCode, setCopiedCode] = useState(false);
   const [importText, setImportText] = useState('');
   const [importPreview, setImportPreview] = useState<ImportValidationResult | null>(null);
-  const [resetConfirmStep, setResetConfirmStep] = useState(false);
+  const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetKeyword, setResetKeyword] = useState('');
   const [backupTick, setBackupTick] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const RESET_CONFIRM_PHRASE = 'delete-account';
+  const isResetPhraseValid = resetKeyword.trim() === RESET_CONFIRM_PHRASE;
+
+  useEffect(() => {
+    setNameInput(player.commanderName);
+  }, [player.commanderName]);
+
+  useEffect(() => {
+    if (!open) {
+      setResetModalOpen(false);
+      setResetKeyword('');
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!resetModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setResetModalOpen(false);
+        setResetKeyword('');
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [resetModalOpen]);
 
   const backupInfo = useMemo(
     () => getBackupSnapshotInfo(),
@@ -179,19 +206,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     flashNotice(`Commander renamed to "${trimmed}"!`, 'ok');
   };
 
+  const handleOpenResetModal = () => {
+    audioManager.playSfx('button');
+    setResetKeyword('');
+    setResetModalOpen(true);
+  };
+
+  const handleCloseResetModal = () => {
+    audioManager.playSfx('button');
+    setResetModalOpen(false);
+    setResetKeyword('');
+  };
+
   const handleConfirmReset = () => {
-    if (resetKeyword.trim().toUpperCase() !== 'RESET') {
-      flashNotice('Type RESET to confirm wiping your save.', 'warn');
+    if (!isResetPhraseValid) {
+      flashNotice(`Type "${RESET_CONFIRM_PHRASE}" exactly to confirm account reset.`, 'warn');
       return;
     }
-    manualSaveAndBackup(); // Emergency backup before reset!
-    player.resetSave();
+    const res = resetAccountCompletely();
     setNameInput('Chaser Commander');
-    setResetConfirmStep(false);
+    setImportText('');
+    setImportPreview(null);
+    setResetModalOpen(false);
     setResetKeyword('');
     setBackupTick((t) => t + 1);
     audioManager.playSfx('button');
-    flashNotice('Save reset to fresh starter state (previous save backed up!).', 'warn');
+    flashNotice(res.message, res.ok ? 'warn' : 'err');
   };
 
   const tabItems: Array<{ key: SettingsTab; label: string; accent: 'gold' | 'cyan' }> = combatOnlyMode
@@ -472,76 +512,72 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     )}
                   </div>
 
-                  {/* Danger Zone: 2-Step Reset */}
-                  <div className="rounded-2xl bg-rose-950/20 border border-rose-500/35 p-3.5 space-y-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
+                  {/* Danger Zone: Reset Account */}
+                  <div className="rounded-2xl bg-rose-950/25 border border-rose-500/40 p-3.5 sm:p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
                         <div className="text-[10px] font-display font-black uppercase tracking-[0.2em] text-rose-300 flex items-center gap-1.5">
-                          <Trash2 className="w-3.5 h-3.5" /> Danger Zone
+                          <Trash2 className="w-3.5 h-3.5" /> Danger Zone • Reset Account
                         </div>
-                        <div className="text-xs text-slate-400">
-                          Start a fresh starter save (an emergency backup is saved first).
+                        <div className="text-xs text-slate-400 mt-0.5">
+                          Permanently wipe all heroes, relics, gear, stages, currencies, and local backups to start fresh.
                         </div>
                       </div>
-                      {!resetConfirmStep && (
-                        <button
-                          onClick={() => setResetConfirmStep(true)}
-                          className="px-3 py-1.5 rounded-lg bg-rose-500/15 border border-rose-500/60 text-rose-200 text-[11px] font-display font-black uppercase tracking-wider hover:bg-rose-500/25 transition shrink-0"
-                        >
-                          Reset Save
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={handleOpenResetModal}
+                        className="px-3.5 py-2 rounded-xl bg-rose-500/15 border border-rose-500/65 text-rose-200 text-[11px] font-display font-black uppercase tracking-wider hover:bg-rose-500/30 hover:border-rose-400 flex items-center gap-1.5 transition shrink-0 shadow-[0_0_16px_rgba(244,63,94,0.18)]"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Reset Account
+                      </button>
                     </div>
-                    {resetConfirmStep && (
-                      <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-rose-500/25">
-                        <input
-                          type="text"
-                          value={resetKeyword}
-                          onChange={(e) => setResetKeyword(e.target.value)}
-                          placeholder="Type RESET to confirm"
-                          className="flex-1 min-w-[160px] rounded-lg bg-slate-950 border border-rose-500/60 px-3 py-1.5 text-xs font-mono text-white focus:outline-none select-text"
-                        />
-                        <RpgButton variant="rose" size="sm" onClick={handleConfirmReset}>
-                          Confirm Reset
-                        </RpgButton>
-                        <RpgButton
-                          variant="slate"
-                          size="sm"
-                          onClick={() => {
-                            setResetConfirmStep(false);
-                            setResetKeyword('');
-                          }}
-                        >
-                          Cancel
-                        </RpgButton>
-                      </div>
-                    )}
                   </div>
                 </>
               )}
 
               {/* TAB 2: COMMANDER PROFILE */}
               {tab === 'PROFILE' && !combatOnlyMode && (
-                <div className="rpg-ornate-card p-4 space-y-4">
-                  <div className="text-[10px] font-display font-black uppercase tracking-[0.2em] text-amber-300 flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5" /> Commander Identity
-                  </div>
-                  <div className="space-y-2">
-                    <label className="block text-xs text-slate-300 font-semibold">
-                      Commander Name (shown in Lobby & Save Files)
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      <input
-                        type="text"
-                        value={nameInput}
-                        maxLength={24}
-                        onChange={(e) => setNameInput(e.target.value)}
-                        className="flex-1 min-w-[200px] rounded-xl bg-slate-950 border border-amber-400/40 focus:border-amber-300 focus:outline-none px-3.5 py-2 text-sm font-bold text-white select-text"
-                      />
-                      <RpgButton variant="gold" size="md" onClick={handleSaveCommanderName}>
-                        <Check className="w-4 h-4" /> Save Name
-                      </RpgButton>
+                <div className="space-y-4">
+                  <div className="rpg-ornate-card p-4 space-y-4">
+                    <div className="text-[10px] font-display font-black uppercase tracking-[0.2em] text-amber-300 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5" /> Commander Identity
                     </div>
+                    <div className="space-y-2">
+                      <label className="block text-xs text-slate-300 font-semibold">
+                        Commander Name (shown in Lobby & Save Files)
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        <input
+                          type="text"
+                          value={nameInput}
+                          maxLength={24}
+                          onChange={(e) => setNameInput(e.target.value)}
+                          className="flex-1 min-w-[200px] rounded-xl bg-slate-950 border border-amber-400/40 focus:border-amber-300 focus:outline-none px-3.5 py-2 text-sm font-bold text-white select-text"
+                        />
+                        <RpgButton variant="gold" size="md" onClick={handleSaveCommanderName}>
+                          <Check className="w-4 h-4" /> Save Name
+                        </RpgButton>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Account Management Danger Zone */}
+                  <div className="rounded-2xl bg-rose-950/25 border border-rose-500/40 p-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-display font-black uppercase tracking-[0.2em] text-rose-300 flex items-center gap-1.5">
+                        <ShieldAlert className="w-3.5 h-3.5" /> Account Management
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">
+                        Need a completely fresh playthrough? Reset this Commander account permanently.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOpenResetModal}
+                      className="px-3.5 py-2 rounded-xl bg-rose-500/15 border border-rose-500/65 text-rose-200 text-[11px] font-display font-black uppercase tracking-wider hover:bg-rose-500/30 hover:border-rose-400 flex items-center gap-1.5 transition shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Reset Account
+                    </button>
                   </div>
                 </div>
               )}
@@ -755,6 +791,169 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </RpgButton>
             </div>
           </motion.div>
+
+          {/* DEDICATED RESET ACCOUNT CONFIRMATION MODAL BOX */}
+          <AnimatePresence>
+            {resetModalOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCloseResetModal();
+                }}
+                className="fixed inset-0 z-[60] bg-[#02040c]/85 backdrop-blur-md flex items-center justify-center p-4"
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 18 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.92, y: 12 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                  onClick={(e) => e.stopPropagation()}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="reset-account-modal-title"
+                  className="relative rpg-panel w-full max-w-md overflow-hidden border-rose-500/70 bg-gradient-to-b from-[#170914] via-[#0c0a18] to-[#080a16] shadow-[0_28px_80px_rgba(0,0,0,0.96),0_0_40px_rgba(244,63,94,0.22)]"
+                >
+                  <CornerFiligree color="#fb7185" size={11} opacity={0.9} />
+
+                  {/* Modal Header */}
+                  <div className="px-5 pt-4 pb-3.5 border-b border-rose-500/30 bg-rose-950/35 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-400/70 flex items-center justify-center shrink-0 shadow-[0_0_16px_rgba(244,63,94,0.35)]">
+                        <AlertTriangle className="w-5 h-5 text-rose-300" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] font-display font-black uppercase tracking-[0.22em] text-rose-300">
+                          PERMANENT ACTION
+                        </div>
+                        <h3
+                          id="reset-account-modal-title"
+                          className="font-display text-lg font-black text-white leading-tight"
+                        >
+                          Reset Account?
+                        </h3>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCloseResetModal}
+                      className="p-1.5 rounded-lg bg-slate-900/90 border border-slate-700 text-slate-300 hover:text-rose-200 transition"
+                      aria-label="Close Reset Confirmation"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* Modal Body */}
+                  <div className="px-5 py-4 space-y-4">
+                    <div className="rounded-xl bg-rose-950/40 border border-rose-500/40 p-3 text-xs text-rose-100/90 leading-relaxed space-y-1.5">
+                      <p className="font-bold text-rose-200">
+                        This will permanently erase your account progress and cannot be undone:
+                      </p>
+                      <p className="text-[11px] text-rose-200/80">
+                        All recruited Heroes, Relics, Forged Gear, Cleared Stages, Rift Dungeons, Currencies, Codex records, and Local Backup snapshots will be deleted. Export a{' '}
+                        <span className="font-mono text-amber-200">.json</span> file first if you want a backup.
+                      </p>
+                    </div>
+
+                    {/* Account Snapshot Being Deleted */}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-xl bg-slate-950/85 border border-white/10 px-2 py-2">
+                        <div className="text-[9px] uppercase text-slate-400 font-bold">Commander</div>
+                        <div className="text-xs font-bold text-white truncate mt-0.5">
+                          {currentSummary.commanderName}
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-slate-950/85 border border-white/10 px-2 py-2">
+                        <div className="text-[9px] uppercase text-slate-400 font-bold">Stages</div>
+                        <div className="font-mono text-xs font-black text-cyan-300 mt-0.5">
+                          {currentSummary.clearedStagesCount} / 120
+                        </div>
+                      </div>
+                      <div className="rounded-xl bg-slate-950/85 border border-white/10 px-2 py-2">
+                        <div className="text-[9px] uppercase text-slate-400 font-bold">Heroes / Relics</div>
+                        <div className="font-mono text-xs font-black text-amber-300 mt-0.5">
+                          {currentSummary.heroCount}H • {currentSummary.relicCount}R
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Confirmation Phrase Input */}
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="reset-account-confirm-input"
+                        className="block text-xs text-slate-200 font-semibold"
+                      >
+                        To confirm, type{' '}
+                        <span className="px-1.5 py-0.5 rounded-md bg-rose-500/20 border border-rose-400/50 font-mono font-black text-rose-200 select-all">
+                          {RESET_CONFIRM_PHRASE}
+                        </span>{' '}
+                        below:
+                      </label>
+                      <input
+                        id="reset-account-confirm-input"
+                        type="text"
+                        autoFocus
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={resetKeyword}
+                        onChange={(e) => setResetKeyword(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && isResetPhraseValid) {
+                            e.preventDefault();
+                            handleConfirmReset();
+                          }
+                        }}
+                        placeholder={RESET_CONFIRM_PHRASE}
+                        className={`w-full rounded-xl bg-slate-950/95 border px-3.5 py-2.5 text-sm font-mono text-white placeholder:text-slate-600 focus:outline-none select-text transition ${
+                          isResetPhraseValid
+                            ? 'border-rose-400 ring-2 ring-rose-500/35'
+                            : 'border-slate-700 focus:border-rose-400/70'
+                        }`}
+                      />
+                      <div className="min-h-[16px] text-[11px] flex items-center gap-1.5">
+                        {isResetPhraseValid ? (
+                          <span className="text-rose-300 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-rose-400" />
+                            Confirmation phrase matched. Ready to reset account.
+                          </span>
+                        ) : resetKeyword.length > 0 ? (
+                          <span className="text-amber-300/90 font-medium">
+                            Must match &ldquo;{RESET_CONFIRM_PHRASE}&rdquo; exactly (lowercase).
+                          </span>
+                        ) : (
+                          <span className="text-slate-500">
+                            Confirm button unlocks once &ldquo;{RESET_CONFIRM_PHRASE}&rdquo; is entered.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Modal Footer */}
+                  <div className="px-5 py-3.5 border-t border-white/10 bg-slate-950/85 flex items-center justify-end gap-2.5">
+                    <RpgButton variant="slate" size="md" onClick={handleCloseResetModal}>
+                      Cancel
+                    </RpgButton>
+                    <button
+                      type="button"
+                      disabled={!isResetPhraseValid}
+                      onClick={handleConfirmReset}
+                      className={`px-4 py-2 rounded-xl border font-display text-xs font-black uppercase tracking-wider flex items-center gap-1.5 transition ${
+                        isResetPhraseValid
+                          ? 'bg-gradient-to-b from-rose-500 to-rose-700 border-rose-300/80 text-white shadow-[0_0_22px_rgba(244,63,94,0.5)] hover:from-rose-400 hover:to-rose-600 cursor-pointer'
+                          : 'bg-rose-950/40 border-rose-500/25 text-rose-300/40 cursor-not-allowed'
+                      }`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete &amp; Reset Account
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>
