@@ -339,13 +339,13 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                       label: 'EXP',
                       val: `×${result.expPotionsEarned}`,
                       color: '#34d399',
-                      icon: <GameIcon name="supply" className="w-7 h-7" />,
+                      icon: <MaterialIcon material="expPotions" className="w-7 h-7" />,
                     },
                     {
                       label: 'Stones',
                       val: `×${result.forgeStonesEarned}`,
                       color: '#a78bfa',
-                      icon: <GameIcon name="forge" className="w-7 h-7" />,
+                      icon: <MaterialIcon material="forgeStones" className="w-7 h-7" />,
                     },
                     ...(result.starIronIngotsEarned > 0
                       ? [

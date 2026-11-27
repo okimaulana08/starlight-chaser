@@ -37,6 +37,7 @@ import type { RegionDef } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { GameIcon, MaterialIcon } from './GameIcon';
 import { PartyManagerModal } from './PartyManagerModal';
+import { RegionChestModal } from './RegionChestModal';
 
 interface WorldMapOverlayProps {
   squadPower: number;
@@ -87,6 +88,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 }) => {
   const {
     clearedStages,
+    claimedRegionChests,
     selectedStageId,
     setSelectedStage,
     squadIds,
@@ -100,6 +102,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     favoriteHeroId,
   } = usePlayerStore();
   const [showPartyModal, setShowPartyModal] = useState(false);
+  const [showChestModal, setShowChestModal] = useState(false);
 
   const squadPower = useMemo(() => {
     const computed = squadIds.reduce((sum, id) => {
@@ -537,6 +540,15 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                         CH.{region.chapter}
                       </span>
 
+                      {allCleared && !(claimedRegionChests ?? []).includes(region.id) && (
+                        <span
+                          className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 border-2 border-white flex items-center justify-center shadow-[0_0_16px_rgba(253,224,71,0.95)] animate-bounce"
+                          title="Region Completion Reward Chest Ready!"
+                        >
+                          <GameIcon name="reward_chest" className="w-4 h-4" />
+                        </span>
+                      )}
+
                       {regionUnlocked && (
                         <span className="absolute -bottom-1.5 px-1.5 py-0.5 rounded-full bg-slate-950 border border-amber-400/80 text-[8px] sm:text-[9px] font-mono font-black text-amber-200 leading-none flex items-center gap-0.5 shadow-lg">
                           {allCleared ? (
@@ -703,7 +715,43 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 </div>
               </div>
 
-              <div className="shrink-0">
+              <div className="shrink-0 flex items-center gap-2">
+                {(() => {
+                  const focusedCleared = getRegionClearedCount(focusedRegion.id);
+                  const chestClaimed = (claimedRegionChests ?? []).includes(focusedRegion.id);
+                  const chestReady = focusedCleared >= focusedRegion.stageCount && !chestClaimed;
+                  return (
+                    <button
+                      onClick={() => {
+                        audioManager.playSfx('button');
+                        setShowChestModal(true);
+                      }}
+                      className={`relative px-3 py-2 rounded-xl border font-display font-black text-[10px] sm:text-xs uppercase tracking-wider flex items-center gap-1.5 transition shrink-0 ${
+                        chestReady
+                          ? 'bg-gradient-to-r from-amber-400/25 to-yellow-300/20 border-amber-300 text-amber-200 shadow-[0_0_18px_rgba(245,200,76,0.5)] animate-pulse'
+                          : chestClaimed
+                            ? 'bg-emerald-950/60 border-emerald-500/45 text-emerald-300'
+                            : 'bg-slate-950/85 border-amber-400/35 text-amber-200 hover:border-amber-300'
+                      }`}
+                      title="Region Completion Reward Chest"
+                    >
+                      <GameIcon name="reward_chest" className="w-5 h-5" />
+                      <span className="hidden md:inline">
+                        {chestReady
+                          ? 'Claim Chest!'
+                          : chestClaimed
+                            ? 'Claimed'
+                            : `${focusedCleared}/${focusedRegion.stageCount}`}
+                      </span>
+                      {chestReady && (
+                        <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                          !
+                        </span>
+                      )}
+                    </button>
+                  );
+                })()}
+
                 {focusedRegionUnlocked ? (
                   <button
                     onClick={() => enterRegion(focusedRegion)}
@@ -792,21 +840,56 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             </div>
 
             <div className="flex items-center gap-2 shrink-0">
-              <div className="hidden sm:flex items-center gap-2 rpg-panel-subtle px-2.5 py-1 text-xs">
-                <Sparkles className="w-3.5 h-3.5" style={{ color: focusedRegion.themeColor }} />
-                <div className="w-20 h-2 rounded-full bg-slate-900 overflow-hidden">
-                  <div
-                    className="h-full transition-all"
-                    style={{
-                      width: `${(getRegionClearedCount(focusedRegion.id) / focusedRegion.stageCount) * 100}%`,
-                      background: focusedRegion.themeColor,
+              {(() => {
+                const regCleared = getRegionClearedCount(focusedRegion.id);
+                const chestClaimed = (claimedRegionChests ?? []).includes(focusedRegion.id);
+                const chestReady = regCleared >= focusedRegion.stageCount && !chestClaimed;
+                return (
+                  <button
+                    onClick={() => {
+                      audioManager.playSfx('button');
+                      setShowChestModal(true);
                     }}
-                  />
-                </div>
-                <span className="font-mono font-black text-amber-300">
-                  {getRegionClearedCount(focusedRegion.id)}/{focusedRegion.stageCount}
-                </span>
-              </div>
+                    className={`relative flex items-center gap-2 rpg-panel-subtle px-2.5 py-1 text-xs transition ${
+                      chestReady
+                        ? 'border-amber-300 bg-amber-500/20 shadow-[0_0_18px_rgba(245,200,76,0.5)] animate-pulse'
+                        : chestClaimed
+                          ? 'border-emerald-400/50 bg-emerald-950/45'
+                          : 'hover:border-amber-300'
+                    }`}
+                    title="View / Claim Area Completion Reward Chest"
+                  >
+                    <GameIcon name="reward_chest" className="w-5 h-5" />
+                    <div className="hidden sm:flex items-center gap-2">
+                      <div className="w-16 h-2 rounded-full bg-slate-900 overflow-hidden">
+                        <div
+                          className="h-full transition-all"
+                          style={{
+                            width: `${(regCleared / focusedRegion.stageCount) * 100}%`,
+                            background: chestReady ? '#fde047' : focusedRegion.themeColor,
+                          }}
+                        />
+                      </div>
+                      <span
+                        className={`font-mono font-black ${
+                          chestClaimed ? 'text-emerald-300' : 'text-amber-300'
+                        }`}
+                      >
+                        {chestReady
+                          ? 'CLAIM!'
+                          : chestClaimed
+                            ? '✓ 12/12'
+                            : `${regCleared}/${focusedRegion.stageCount}`}
+                      </span>
+                    </div>
+                    {chestReady && (
+                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">
+                        !
+                      </span>
+                    )}
+                  </button>
+                );
+              })()}
               <button
                 onClick={() => {
                   audioManager.playSfx('button');
@@ -1322,6 +1405,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       )}
 
       <PartyManagerModal open={showPartyModal} onClose={() => setShowPartyModal(false)} />
+
+      <RegionChestModal
+        open={showChestModal}
+        region={focusedRegion}
+        clearedCount={getRegionClearedCount(focusedRegion.id)}
+        onClose={() => setShowChestModal(false)}
+      />
     </div>
   );
 };

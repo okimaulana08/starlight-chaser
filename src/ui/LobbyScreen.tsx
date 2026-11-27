@@ -13,7 +13,7 @@ import { FACTIONS } from '../data/factions';
 import { HEROES, HERO_MAP } from '../data/heroes';
 import { RELICS } from '../data/relics';
 import { REGION_MAP, REGIONS } from '../data/regions';
-import { getHighestUnlockedStage, isStageUnlocked, STAGE_MAP } from '../data/stages';
+import { getHighestUnlockedStage, getStagesByRegion, isStageUnlocked, STAGE_MAP } from '../data/stages';
 import { audioManager } from '../engine/AudioManager';
 import { computeHeroStats, getActiveFactionBonuses } from '../engine/CombatMath';
 import { usePwaInstall } from '../hooks/usePwaInstall';
@@ -46,6 +46,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
     equipmentInventory,
     unlockedCodexIds,
     claimedCodexMilestones,
+    claimedRegionChests,
     clearedStages,
     selectedStageId,
     lastDailySupplyAt,
@@ -91,6 +92,15 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
   const activeFactions = useMemo(() => getActiveFactionBonuses(squadIds), [squadIds]);
   const claimableCodex = CODEX_MILESTONES.some(
     (m) => unlockedCodexIds.length >= m.threshold && !claimedCodexMilestones.includes(m.threshold),
+  );
+  const hasClaimableRegionChest = useMemo(
+    () =>
+      REGIONS.some((r) => {
+        if ((claimedRegionChests ?? []).includes(r.id)) return false;
+        const stages = getStagesByRegion(r.id);
+        return stages.length > 0 && stages.every((s) => clearedStages.includes(s.id));
+      }),
+    [clearedStages, claimedRegionChests],
   );
 
   // Respect strict sequential progression: fallback to highest unlocked stage if saved stage is locked
@@ -509,8 +519,13 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
               audioManager.playSfx('button');
               setShowMap(true);
             }}
-            className="pointer-events-auto rpg-battle-cta w-full sm:w-auto px-5 sm:px-7 md:px-10 py-2.5 sm:py-2 md:py-3.5 text-slate-950 flex items-center justify-center gap-3 group sm:ml-auto"
+            className="relative pointer-events-auto rpg-battle-cta w-full sm:w-auto px-5 sm:px-7 md:px-10 py-2.5 sm:py-2 md:py-3.5 text-slate-950 flex items-center justify-center gap-3 group sm:ml-auto"
           >
+            {hasClaimableRegionChest && (
+              <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full bg-rose-600 border border-amber-200 text-white text-[9px] font-display font-black uppercase tracking-wider shadow-lg flex items-center gap-1 animate-bounce">
+                <GameIcon name="reward_chest" className="w-3.5 h-3.5" /> Chest Ready!
+              </span>
+            )}
             <div className="w-10 h-10 sm:w-9 sm:h-9 md:w-12 md:h-12 rounded-full bg-slate-950/90 border-2 border-amber-100/90 p-1 flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.65)]">
               <GameIcon
                 name="battle"

@@ -329,6 +329,7 @@ export interface PlayerSaveState {
   equipmentInventory: EquipmentInstance[];
   unlockedCodexIds: string[];
   claimedCodexMilestones: number[];
+  claimedRegionChests: string[];
   clearedStages: string[];
   selectedStageId: string;
   shopPurchases: Record<string, number>;

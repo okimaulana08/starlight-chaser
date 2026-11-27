@@ -3,11 +3,14 @@ import { persist } from 'zustand/middleware';
 import { createStarterEquipment, generateEquipment } from '../data/equipment';
 import { HERO_MAP } from '../data/heroes';
 import {
+  REGION_CHEST_REWARDS,
   SHOP_OFFERS,
   getAwakeningCost,
   getLevelUpCost,
+  type RegionChestRewardDef,
 } from '../data/materials';
 import { RELIC_MAP } from '../data/relics';
+import { getStagesByRegion } from '../data/stages';
 import { computeHeroStats } from '../engine/CombatMath';
 import {
   enhanceEquipmentItem,
@@ -141,6 +144,7 @@ function buildInitialSave(): PlayerSaveState {
     equipmentInventory: fixedGear,
     unlockedCodexIds: ['vaelen', 'garrick', 'clara', 'kael', 'nyx'],
     claimedCodexMilestones: [],
+    claimedRegionChests: [],
     clearedStages: [],
     selectedStageId: 'stage_1_1',
     shopPurchases: {},
@@ -174,6 +178,14 @@ interface PlayerStore extends PlayerSaveState {
   ) => { ok: boolean; error?: string; results: GachaPullResult[] };
   sparkExchange: (kind: 'HERO' | 'RELIC', id: string) => boolean;
   claimCodexMilestone: (threshold: number) => boolean;
+  claimRegionChest: (
+    regionId: string,
+  ) => {
+    ok: boolean;
+    message: string;
+    reward?: RegionChestRewardDef;
+    droppedGear?: EquipmentInstance;
+  };
   recordDefeatedEnemies: (enemyIds: string[]) => void;
   applyCombatRewards: (summary: CombatLootSummary) => void;
   claimDailySupply: () => { ok: boolean; message: string };
@@ -909,6 +921,54 @@ export const usePlayerStore = create<PlayerStore>()(
           claimedCodexMilestones: [...state.claimedCodexMilestones, threshold],
         });
         return true;
+      },
+
+      claimRegionChest: (regionId) => {
+        const state = get();
+        const reward = REGION_CHEST_REWARDS[regionId];
+        if (!reward) return { ok: false, message: 'Region chest not found.' };
+        const claimedList = state.claimedRegionChests ?? [];
+        if (claimedList.includes(regionId)) {
+          return { ok: false, message: 'Region Reward Chest already claimed!' };
+        }
+        const regionStages = getStagesByRegion(regionId);
+        const clearedCount = regionStages.filter((s) => state.clearedStages.includes(s.id)).length;
+        if (regionStages.length === 0 || clearedCount < regionStages.length) {
+          return {
+            ok: false,
+            message: `Clear all ${regionStages.length} stages in this region (${clearedCount}/${regionStages.length}) to unlock!`,
+          };
+        }
+
+        const droppedGear = generateEquipment({
+          rarity: reward.gearRarity,
+          setId: reward.gearSetId,
+        });
+
+        set({
+          starlightCrystals: state.starlightCrystals + reward.crystals,
+          gold: state.gold + reward.gold,
+          expPotions: state.expPotions + reward.expPotions,
+          forgeStones: state.forgeStones + reward.forgeStones,
+          starIronIngots: state.starIronIngots + reward.starIronIngots,
+          astralAnvilCores: state.astralAnvilCores + reward.astralAnvilCores,
+          starCores: state.starCores + reward.starCores,
+          relicFragments: state.relicFragments + reward.relicFragments,
+          factionEssences: {
+            ...state.factionEssences,
+            [reward.essenceFaction]:
+              (state.factionEssences[reward.essenceFaction] ?? 0) + reward.essenceQty,
+          },
+          equipmentInventory: [droppedGear, ...state.equipmentInventory],
+          claimedRegionChests: [...claimedList, regionId],
+        });
+
+        return {
+          ok: true,
+          message: `Claimed ${reward.title}!`,
+          reward,
+          droppedGear,
+        };
       },
 
       recordDefeatedEnemies: (enemyIds) => {

@@ -141,13 +141,22 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({ initialTab = 'GROWTH', o
 
         {/* Currencies + Restock */}
         <div className="flex items-center gap-1.5 text-[10px] sm:text-xs font-mono overflow-x-auto max-w-full">
-          <span className="rpg-panel-subtle px-2.5 py-1 text-amber-300 flex items-center gap-1.5 shrink-0 font-bold">
+          <span
+            className="rpg-panel-subtle px-2.5 py-1 text-amber-300 flex items-center gap-1.5 shrink-0 font-bold"
+            title="Gold"
+          >
             <GameIcon name="gold" className="w-4 h-4" /> {gold.toLocaleString()}
           </span>
-          <span className="rpg-panel-subtle px-2.5 py-1 text-fuchsia-300 shrink-0 font-bold" title="Star Dust (from Gacha dupes)">
-            Dust: {starDust}
+          <span
+            className="rpg-panel-subtle px-2.5 py-1 text-fuchsia-300 flex items-center gap-1.5 shrink-0 font-bold"
+            title="Starlight Dust (from Gacha dupes)"
+          >
+            <GameIcon name="star_dust" className="w-4 h-4" /> {starDust}
           </span>
-          <span className="rpg-panel-subtle px-2.5 py-1 text-cyan-300 flex items-center gap-1 shrink-0 font-bold" title="Relic Fragments (from Mini-Boss & Boss drops)">
+          <span
+            className="rpg-panel-subtle px-2.5 py-1 text-cyan-300 flex items-center gap-1.5 shrink-0 font-bold"
+            title="Relic Fragments (from Mini-Boss & Boss drops)"
+          >
             <GameIcon name="relic" className="w-4 h-4" /> {relicFragments}
           </span>
           <button
@@ -179,47 +188,47 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({ initialTab = 'GROWTH', o
           ]}
         />
 
-        {/* Contextual Stock Strip */}
+        {/* Contextual Stock Strip (Pure Icon + Count) */}
         <div className="flex items-center gap-2 text-[10px] font-mono overflow-x-auto max-w-full">
           {tab === 'GROWTH' && (
             <>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-emerald-400/35 text-emerald-300 flex items-center gap-1">
-                <MaterialIcon material="expPotions" className="w-3.5 h-3.5" /> EXP: {expPotions}
+              <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-emerald-400/35 text-emerald-300 font-bold flex items-center gap-1.5" title="Starlight EXP Elixirs">
+                <MaterialIcon material="expPotions" className="w-4 h-4" /> {expPotions}
               </span>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-rose-400/35 text-rose-300 flex items-center gap-1">
-                <MaterialIcon material="bondGifts" className="w-3.5 h-3.5" /> Bond: {bondGifts}
+              <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-rose-400/35 text-rose-300 font-bold flex items-center gap-1.5" title="Celestial Bond Keepsakes">
+                <MaterialIcon material="bondGifts" className="w-4 h-4" /> {bondGifts}
               </span>
             </>
           )}
           {tab === 'AWAKEN' && (
             <>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-amber-400/35 text-amber-300 flex items-center gap-1">
-                <MaterialIcon material="essence_SOLARIS" className="w-3.5 h-3.5" /> {factionEssences.SOLARIS}
+              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-amber-400/35 text-amber-300 font-bold flex items-center gap-1" title="Solaris Core">
+                <MaterialIcon material="essence_SOLARIS" className="w-4 h-4" /> {factionEssences.SOLARIS}
               </span>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-cyan-400/35 text-cyan-300 flex items-center gap-1">
-                <MaterialIcon material="essence_ASTRAL" className="w-3.5 h-3.5" /> {factionEssences.ASTRAL}
+              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-cyan-400/35 text-cyan-300 font-bold flex items-center gap-1" title="Astral Prism">
+                <MaterialIcon material="essence_ASTRAL" className="w-4 h-4" /> {factionEssences.ASTRAL}
               </span>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-emerald-400/35 text-emerald-300 flex items-center gap-1">
-                <MaterialIcon material="essence_VERDANT" className="w-3.5 h-3.5" /> {factionEssences.VERDANT}
+              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-emerald-400/35 text-emerald-300 font-bold flex items-center gap-1" title="Verdant Dew">
+                <MaterialIcon material="essence_VERDANT" className="w-4 h-4" /> {factionEssences.VERDANT}
               </span>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-orange-400/35 text-orange-300 flex items-center gap-1">
-                <MaterialIcon material="essence_ASHEN" className="w-3.5 h-3.5" /> {factionEssences.ASHEN}
+              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-orange-400/35 text-orange-300 font-bold flex items-center gap-1" title="Ashen Ember">
+                <MaterialIcon material="essence_ASHEN" className="w-4 h-4" /> {factionEssences.ASHEN}
               </span>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-fuchsia-400/45 text-fuchsia-300 flex items-center gap-1">
-                <MaterialIcon material="starCores" className="w-3.5 h-3.5" /> Core: {starCores}
+              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-fuchsia-400/45 text-fuchsia-300 font-bold flex items-center gap-1" title="Starlight Core">
+                <MaterialIcon material="starCores" className="w-4 h-4" /> {starCores}
               </span>
             </>
           )}
           {tab === 'FORGE' && (
             <>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-violet-400/35 text-violet-300 flex items-center gap-1">
-                <MaterialIcon material="forgeStones" className="w-3.5 h-3.5" /> Stones: {forgeStones}
+              <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-violet-400/35 text-violet-300 font-bold flex items-center gap-1.5" title="Forge Stones">
+                <MaterialIcon material="forgeStones" className="w-4 h-4" /> {forgeStones}
               </span>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-sky-400/35 text-sky-300 flex items-center gap-1">
-                <MaterialIcon material="starIronIngots" className="w-3.5 h-3.5" /> Iron: {starIronIngots}
+              <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-sky-400/35 text-sky-300 font-bold flex items-center gap-1.5" title="Star-Iron Ingots">
+                <MaterialIcon material="starIronIngots" className="w-4 h-4" /> {starIronIngots}
               </span>
-              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-amber-400/40 text-amber-200 flex items-center gap-1">
-                <MaterialIcon material="astralAnvilCores" className="w-3.5 h-3.5" /> Anvil: {astralAnvilCores}
+              <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-amber-400/40 text-amber-200 font-bold flex items-center gap-1.5" title="Astral Anvil Cores">
+                <MaterialIcon material="astralAnvilCores" className="w-4 h-4" /> {astralAnvilCores}
               </span>
             </>
           )}

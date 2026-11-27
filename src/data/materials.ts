@@ -18,7 +18,7 @@ export const MATERIAL_META: Record<MaterialKey, MaterialMeta> = {
     name: 'Starlight EXP Elixir',
     shortName: 'EXP Elixir',
     color: '#34d399',
-    iconAsset: '/assets/icons/icon_supply.webp',
+    iconAsset: '/assets/icons/mat_exp_elixir.webp',
     fallbackIcon: 'supply',
     category: 'GROWTH',
     description: 'Concentrated celestial tonic used to raise Chaser levels.',
@@ -29,7 +29,7 @@ export const MATERIAL_META: Record<MaterialKey, MaterialMeta> = {
     name: 'Celestial Keepsake',
     shortName: 'Bond Gift',
     color: '#fb7185',
-    iconAsset: '/assets/icons/icon_summon.webp',
+    iconAsset: '/assets/icons/mat_bond_gift.webp',
     fallbackIcon: 'summon',
     category: 'GROWTH',
     description: 'Deepens Chaser Bond (+1.5% All Base Stats per level, max Lv.10).',
@@ -40,7 +40,7 @@ export const MATERIAL_META: Record<MaterialKey, MaterialMeta> = {
     name: 'Forge Stone',
     shortName: 'Forge Stone',
     color: '#a78bfa',
-    iconAsset: '/assets/icons/icon_forge.webp',
+    iconAsset: '/assets/icons/mat_forge_stone.webp',
     fallbackIcon: 'forge',
     category: 'FORGE',
     description: 'Tier 1 blacksmith catalyst required for Equipment Enhancement (+1 to +15).',
@@ -668,3 +668,50 @@ export const SHOP_OFFERS: ShopOffer[] = [
     reward: { kind: 'RELIC', relicId: 'relic_falling_star_bow' },
   },
 ];
+
+export interface RegionChestRewardDef {
+  regionId: string;
+  chapter: number;
+  title: string;
+  crystals: number;
+  gold: number;
+  expPotions: number;
+  forgeStones: number;
+  starIronIngots: number;
+  astralAnvilCores: number;
+  starCores: number;
+  relicFragments: number;
+  essenceFaction: Faction;
+  essenceQty: number;
+  gearRarity: EquipmentRarity;
+  gearSetId: EquipmentSetId;
+}
+
+/**
+ * Grand Region Completion Reward Chests unlocked once all 12/12 stages of a Region are cleared!
+ */
+export const REGION_CHEST_REWARDS: Record<string, RegionChestRewardDef> = Object.fromEntries(
+  Array.from({ length: 10 }, (_, idx) => {
+    const ch = idx + 1;
+    const regionId = `region_${ch}`;
+    const biome = CHAPTER_BIOME_DROPS[ch] ?? CHAPTER_BIOME_DROPS[1];
+    const reward: RegionChestRewardDef = {
+      regionId,
+      chapter: ch,
+      title: `Chapter ${ch} Conqueror Chest`,
+      crystals: 800 + (ch - 1) * 100,
+      gold: 6000 + (ch - 1) * 3500,
+      expPotions: 12 + (ch - 1) * 5,
+      forgeStones: 12 + (ch - 1) * 4,
+      starIronIngots: 4 + (ch - 1) * 3,
+      astralAnvilCores: ch >= 3 ? Math.min(10, ch - 1) : 1,
+      starCores: 4 + Math.floor(ch * 0.9),
+      relicFragments: 12 + (ch - 1) * 3,
+      essenceFaction: biome.primaryEssence,
+      essenceQty: 12 + (ch - 1) * 3,
+      gearRarity: ch >= 3 ? 'LEGENDARY' : 'EPIC',
+      gearSetId: biome.targetSetIds[0] ?? 'VANGUARD',
+    };
+    return [regionId, reward];
+  }),
+);

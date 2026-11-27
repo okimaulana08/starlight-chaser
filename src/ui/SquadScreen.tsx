@@ -20,8 +20,6 @@ import {
 import { FACTIONS } from '../data/factions';
 import { HEROES, HERO_MAP } from '../data/heroes';
 import {
-  MATERIAL_META,
-  factionToEssenceKey,
   getAwakeningCost,
   getHeroLevelCap,
   getLevelUpCost,
@@ -34,6 +32,7 @@ import { getEnhanceCost, getSalvageYield } from '../systems/ForgeSystem';
 import type { EquipmentSlot } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
+import { AwakenModal, LevelUpModal } from './HeroGrowthModals';
 import { PartyManagerModal } from './PartyManagerModal';
 import {
   AnimatedNumber,
@@ -70,8 +69,6 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
     relicRanks,
     equipmentInventory,
     unlockedCodexIds,
-    levelUpHero,
-    awakenHero,
     giveBondGift,
     equipRelic,
     equipGear,
@@ -85,6 +82,8 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
   const [statusMessage, setStatusMessage] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
   const [upgradePulse, setUpgradePulse] = useState<{ id: number; label: string; color: string } | null>(null);
   const [showPartyModal, setShowPartyModal] = useState(false);
+  const [showAwakenModal, setShowAwakenModal] = useState(false);
+  const [showLevelUpModal, setShowLevelUpModal] = useState(false);
 
   const showNotice = (text: string, tone: 'ok' | 'warn' = 'ok') => {
     setStatusMessage({ text, tone });
@@ -127,11 +126,14 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
 
   const levelCap = getHeroLevelCap(ownedHero.awakening);
   const lv1Cost = getLevelUpCost(ownedHero.level, 1, ownedHero.awakening);
-  const lv5Cost = getLevelUpCost(ownedHero.level, 5, ownedHero.awakening);
   const awakenCost = getAwakeningCost(ownedHero.awakening, heroDef.tier);
-  const heroEssenceKey = factionToEssenceKey(heroDef.faction);
   const ownedHeroEssence = factionEssences[heroDef.faction] ?? 0;
 
+  const canLevelUpQuick =
+    ownedHero.level < 80 &&
+    !lv1Cost.atAwakenCap &&
+    expPotions >= lv1Cost.potions &&
+    gold >= lv1Cost.gold;
   const canAwakenWithMats = Boolean(
     awakenCost &&
       ownedHeroEssence >= awakenCost.essences &&
@@ -141,6 +143,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
   const canAwakenWithShards = Boolean(
     awakenCost && ownedHero.shards >= awakenCost.shardAltCost && gold >= awakenCost.shardAltGold,
   );
+  const canAwakenReady = canAwakenWithMats || canAwakenWithShards;
 
   const handleEnhance = (uid: string) => {
     const res = enhanceGear(uid);
@@ -232,20 +235,40 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
         </div>
 
         <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-mono overflow-x-auto max-w-full">
-          <span className="rpg-panel-subtle px-2 py-1 text-amber-300 flex items-center gap-1 shrink-0">
-            <GameIcon name="gold" className="w-4 h-4" /> {gold.toLocaleString()}
+          <span
+            className="rpg-panel-subtle px-2.5 py-1 text-amber-300 font-bold flex items-center gap-1.5 shrink-0"
+            title="Gold"
+          >
+            <GameIcon name="gold" className="w-4 h-4" />
+            <span>{gold.toLocaleString()}</span>
           </span>
-          <span className="rpg-panel-subtle px-2 py-1 text-emerald-300 shrink-0" title="EXP Elixirs">
-            EXP:{expPotions}
+          <span
+            className="rpg-panel-subtle px-2.5 py-1 text-emerald-300 font-bold flex items-center gap-1.5 shrink-0"
+            title="Starlight EXP Elixirs"
+          >
+            <MaterialIcon material="expPotions" className="w-4 h-4" />
+            <span>{expPotions}</span>
           </span>
-          <span className="rpg-panel-subtle px-2 py-1 text-violet-300 shrink-0" title="Forge Stones">
-            Stn:{forgeStones}
+          <span
+            className="rpg-panel-subtle px-2.5 py-1 text-violet-300 font-bold flex items-center gap-1.5 shrink-0"
+            title="Forge Stones (Tier 1)"
+          >
+            <MaterialIcon material="forgeStones" className="w-4 h-4" />
+            <span>{forgeStones}</span>
           </span>
-          <span className="rpg-panel-subtle px-2 py-1 text-sky-300 shrink-0" title="Star-Iron Ingots (+6..+15)">
-            Iron:{starIronIngots}
+          <span
+            className="rpg-panel-subtle px-2.5 py-1 text-sky-300 font-bold flex items-center gap-1.5 shrink-0"
+            title="Star-Iron Ingots (Tier 2, +6 to +15)"
+          >
+            <MaterialIcon material="starIronIngots" className="w-4 h-4" />
+            <span>{starIronIngots}</span>
           </span>
-          <span className="rpg-panel-subtle px-2 py-1 text-amber-200 shrink-0 hidden sm:inline-flex" title="Astral Anvil Cores (+11..+15)">
-            Anvil:{astralAnvilCores}
+          <span
+            className="rpg-panel-subtle px-2.5 py-1 text-amber-200 font-bold hidden sm:flex items-center gap-1.5 shrink-0"
+            title="Astral Anvil Cores (Tier 3, +11 to +15)"
+          >
+            <MaterialIcon material="astralAnvilCores" className="w-4 h-4" />
+            <span>{astralAnvilCores}</span>
           </span>
           <button
             onClick={() => {
@@ -480,121 +503,37 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
               </div>
             </div>
 
-            {/* Awakening Biome Material Readout Bar */}
-            {awakenCost && (
-              <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-950/75 border border-fuchsia-500/25 text-[10px]">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-display font-black uppercase text-fuchsia-300">
-                    ★{awakenCost.nextStar} Cost:
-                  </span>
-                  <span
-                    className={`inline-flex items-center gap-1 font-mono font-bold ${
-                      ownedHeroEssence >= awakenCost.essences ? 'text-emerald-300' : 'text-rose-300'
-                    }`}
-                    title={MATERIAL_META[heroEssenceKey].farmHint}
-                  >
-                    <MaterialIcon material={heroEssenceKey} className="w-4 h-4" />
-                    {ownedHeroEssence}/{awakenCost.essences}
-                  </span>
-                  <span
-                    className={`inline-flex items-center gap-1 font-mono font-bold ${
-                      starCores >= awakenCost.starCores ? 'text-emerald-300' : 'text-rose-300'
-                    }`}
-                    title={MATERIAL_META.starCores.farmHint}
-                  >
-                    <MaterialIcon material="starCores" className="w-4 h-4" />
-                    {starCores}/{awakenCost.starCores}
-                  </span>
-                  <span
-                    className={`font-mono font-bold ${
-                      gold >= awakenCost.gold ? 'text-amber-300' : 'text-rose-300'
-                    }`}
-                  >
-                    {awakenCost.gold.toLocaleString()}g
-                  </span>
-                  {ownedHero.shards > 0 && (
-                    <span className="text-cyan-300 font-mono font-bold">
-                      (or {ownedHero.shards}/{awakenCost.shardAltCost} Shards)
-                    </span>
-                  )}
-                </div>
-                {!canAwakenWithMats && !canAwakenWithShards && (
-                  <button
-                    onClick={() => {
-                      audioManager.playSfx('button');
-                      onOpenShop('AWAKEN');
-                    }}
-                    className="text-[9px] font-display font-black uppercase text-amber-300 hover:text-amber-200 underline"
-                  >
-                    Get in Shop →
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Growth Action Buttons */}
-            <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+            {/* Growth Action Buttons (Popup Modals for Level Up & Awakening!) */}
+            <div className="grid grid-cols-3 gap-2">
               <RpgButton
                 variant="emerald"
                 size="sm"
                 onClick={() => {
-                  const res = levelUpHero(heroDef.id, 1);
-                  if (res.ok) {
-                    audioManager.playSfx('forge');
-                    triggerUpgradeFx(`LEVEL ${ownedHero.level + 1}!`, '#34d399');
-                  } else if (res.message) {
-                    audioManager.playSfx('button');
-                    showNotice(res.message, 'warn');
-                  }
+                  audioManager.playSfx('button');
+                  setShowLevelUpModal(true);
                 }}
-                title={
-                  lv1Cost.atAwakenCap
-                    ? `At Lv.${levelCap} cap — Awaken to ★${ownedHero.awakening + 1}`
-                    : `Cost: ${lv1Cost.potions} EXP + ${lv1Cost.gold.toLocaleString()}g`
-                }
+                className="relative font-display font-black uppercase tracking-wider"
               >
                 <TrendingUp className="w-3.5 h-3.5" />
-                {lv1Cost.atAwakenCap ? `Cap ${levelCap}` : `Lv +1`}
-              </RpgButton>
-              <RpgButton
-                variant="cyan"
-                size="sm"
-                onClick={() => {
-                  const res = levelUpHero(heroDef.id, 5);
-                  if (res.ok) {
-                    audioManager.playSfx('forge');
-                    triggerUpgradeFx(`POWER SURGE!`, '#38e8ff');
-                  } else if (res.message) {
-                    audioManager.playSfx('button');
-                    showNotice(res.message, 'warn');
-                  }
-                }}
-                title={
-                  lv5Cost.atAwakenCap
-                    ? `Awaken ★${ownedHero.awakening + 1} first`
-                    : `Cost: ${lv5Cost.potions} EXP + ${lv5Cost.gold.toLocaleString()}g`
-                }
-              >
-                Lv +{Math.max(1, lv5Cost.actualLevels || 5)}
+                <span>{lv1Cost.atAwakenCap ? `Cap Lv.${levelCap}` : 'Level Up'}</span>
+                {canLevelUpQuick && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-300 shadow-[0_0_8px_rgba(52,211,153,0.95)]" />
+                )}
               </RpgButton>
               <RpgButton
                 variant="violet"
                 size="sm"
-                disabled={!awakenCost}
                 onClick={() => {
-                  const res = awakenHero(heroDef.id);
-                  if (res.ok) {
-                    audioManager.playSfx('ssr_reveal');
-                    triggerUpgradeFx(`AWAKENED ★${ownedHero.awakening + 1}!`, '#e879f9');
-                    if (res.message) showNotice(res.message, 'ok');
-                  } else if (res.message) {
-                    audioManager.playSfx('button');
-                    showNotice(res.message, 'warn');
-                  }
+                  audioManager.playSfx('button');
+                  setShowAwakenModal(true);
                 }}
+                className="relative font-display font-black uppercase tracking-wider"
               >
-                <Sparkles className="w-3 h-3" />
-                {awakenCost ? `Awaken ★${awakenCost.nextStar}` : 'MAX ★6'}
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{awakenCost ? `Awaken ★${awakenCost.nextStar}` : 'MAX ★6'}</span>
+                {canAwakenReady && (
+                  <span className="w-2 h-2 rounded-full bg-amber-300 shadow-[0_0_8px_rgba(253,224,71,0.95)] animate-pulse" />
+                )}
               </RpgButton>
               <RpgButton
                 variant="rose"
@@ -612,8 +551,9 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
                     );
                   }
                 }}
+                className="font-display font-black uppercase tracking-wider"
               >
-                <Heart className="w-3 h-3" /> Bond ({bondGifts})
+                <Heart className="w-3.5 h-3.5" /> Bond ({bondGifts})
               </RpgButton>
             </div>
 
@@ -960,6 +900,31 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
       </main>
 
       <PartyManagerModal open={showPartyModal} onClose={() => setShowPartyModal(false)} />
+
+      <AwakenModal
+        open={showAwakenModal}
+        hero={heroDef}
+        owned={ownedHero}
+        onClose={() => setShowAwakenModal(false)}
+        onAwakened={(nextStar, msg) => {
+          triggerUpgradeFx(`AWAKENED ★${nextStar}!`, '#e879f9');
+          showNotice(msg, 'ok');
+        }}
+        onOpenShop={onOpenShop}
+      />
+
+      <LevelUpModal
+        open={showLevelUpModal}
+        hero={heroDef}
+        owned={ownedHero}
+        onClose={() => setShowLevelUpModal(false)}
+        onLeveledUp={(newLevel, msg) => {
+          triggerUpgradeFx(`LEVEL ${newLevel}!`, '#34d399');
+          showNotice(msg, 'ok');
+        }}
+        onSwitchToAwaken={() => setShowAwakenModal(true)}
+        onOpenShop={onOpenShop}
+      />
     </div>
   );
 };
