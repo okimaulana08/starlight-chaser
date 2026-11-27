@@ -101,6 +101,11 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
     fps,
     comboCount,
     comboDecayRatio,
+    evadeCd,
+    evadeMaxCd,
+    inDangerZone,
+    perfectDodgeId,
+    perfectDodgeActive,
     bossWarning,
     waveBanner,
     touchJoystick,
@@ -139,6 +144,13 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
   const handleTriggerSkill = (heroId: string, slot: 1 | 2 | 'ULT') => {
     engineRef.current?.requestSkillAim(heroId, slot);
   };
+
+  const handleSquadEvade = () => {
+    engineRef.current?.triggerSquadEvade();
+  };
+
+  const evadeReady = evadeCd <= 0 && !combatResult;
+  const evadeCdPct = evadeMaxCd > 0 ? Math.min(100, (evadeCd / evadeMaxCd) * 100) : 0;
 
   return (
     <div className="relative w-full h-full overflow-hidden bg-[#060916]">
@@ -246,9 +258,14 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                       <Flame className="w-3 h-3" />×{boss.burnStacks}
                     </span>
                   )}
+                  {boss.defShredActive && (
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/25 border border-amber-400/60 text-amber-200 text-[9px] font-black uppercase shrink-0">
+                      DEF↓
+                    </span>
+                  )}
                   {boss.isBroken && (
-                    <span className="px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 text-[9px] font-black uppercase animate-pulse shrink-0">
-                      BROKEN ({boss.brokenTimer}s)
+                    <span className="px-1.5 py-0.5 rounded bg-cyan-300 text-slate-950 text-[9px] font-black uppercase animate-pulse shrink-0">
+                      BROKEN +50% ({boss.brokenTimer}s)
                     </span>
                   )}
                 </div>
@@ -268,6 +285,44 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                   ))}
                 </div>
               </div>
+
+              {/* Boss Stagger / Break Gauge Bar */}
+              {boss.maxBreakGauge > 0 && (
+                <div className="mt-1 flex items-center gap-2">
+                  <span
+                    className={`text-[9px] font-display font-black uppercase tracking-wider shrink-0 ${
+                      boss.isBroken ? 'text-cyan-300 animate-pulse' : 'text-amber-300'
+                    }`}
+                  >
+                    {boss.isBroken ? 'BROKEN' : 'BREAK'}
+                  </span>
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-950 overflow-hidden border border-amber-400/50">
+                    <div
+                      className={`h-full transition-all duration-100 ${
+                        boss.isBroken
+                          ? 'bg-gradient-to-r from-cyan-300 via-sky-400 to-amber-200'
+                          : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-200'
+                      }`}
+                      style={{
+                        width: `${
+                          boss.isBroken
+                            ? Math.max(0, (boss.brokenTimer / Math.max(0.1, boss.brokenMaxTimer)) * 100)
+                            : Math.max(0, (boss.breakGauge / boss.maxBreakGauge) * 100)
+                        }%`,
+                      }}
+                    />
+                  </div>
+                  <span
+                    className={`text-[9px] font-mono font-black shrink-0 ${
+                      boss.isBroken ? 'text-cyan-200' : 'text-amber-200'
+                    }`}
+                  >
+                    {boss.isBroken
+                      ? `+50% DMG`
+                      : `${Math.round((boss.breakGauge / boss.maxBreakGauge) * 100)}%`}
+                  </span>
+                </div>
+              )}
 
               {boss.hitShield > 0 && (
                 <div className="mt-1 flex items-center gap-2">
@@ -574,6 +629,71 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
           </div>
         </div>
       </div>
+
+      {/* TACTILE SQUAD EVADE / PERFECT DODGE ACTION ORB (Right Edge Above Hero Dock) */}
+      {!combatResult && !paused && (
+        <div className="fixed right-3 sm:right-5 bottom-[126px] sm:bottom-[104px] z-30 flex flex-col items-center gap-1">
+          <button
+            disabled={!evadeReady}
+            onClick={handleSquadEvade}
+            title="Squad Evade (Shift): Coordinated blink-dodge. Trigger inside enemy red telegraphs for PERFECT DODGE Bullet-Time (+1.5 SP, +8 Ult, +25% Crit)!"
+            className={`relative gc-skill-orb w-12 h-12 sm:w-14 sm:h-14 flex flex-col items-center justify-center border-2 transition-all ${
+              evadeReady && inDangerZone
+                ? 'bg-gradient-to-br from-cyan-300 via-sky-400 to-amber-300 border-white text-slate-950 scale-110 shadow-[0_0_28px_rgba(56,232,255,0.95)]'
+                : evadeReady
+                  ? 'bg-gradient-to-br from-slate-900/95 via-cyan-950/90 to-slate-950 border-cyan-300/85 text-cyan-200 shadow-[0_0_18px_rgba(56,232,255,0.45)] hover:border-amber-300'
+                  : 'bg-slate-950/90 border-slate-700/80 text-slate-500 cursor-not-allowed'
+            }`}
+          >
+            {evadeReady && inDangerZone && (
+              <span className="pointer-events-none absolute -inset-1.5 rounded-full border-2 border-cyan-300 animate-ping opacity-80" />
+            )}
+            <Wind className={`w-4 h-4 sm:w-5 sm:h-5 ${evadeReady && inDangerZone ? 'text-slate-950' : ''}`} />
+            <span className="font-display font-black text-[8px] sm:text-[9px] uppercase tracking-wider leading-none mt-0.5">
+              {evadeReady && inDangerZone ? 'DODGE!' : 'EVADE'}
+            </span>
+            {!evadeReady && (
+              <div
+                className="absolute inset-0 rounded-full flex items-center justify-center"
+                style={{
+                  background: `conic-gradient(rgba(3, 7, 18, 0.88) ${evadeCdPct}%, rgba(3, 7, 18, 0.25) 0)`,
+                }}
+              >
+                <span className="font-mono text-xs font-black text-cyan-300 drop-shadow-[0_1px_4px_rgba(0,0,0,1)]">
+                  {evadeCd}
+                </span>
+              </div>
+            )}
+            <span className="hidden sm:flex ls-hide absolute -top-1.5 -left-1.5 px-1.5 py-0.5 rounded-full bg-slate-950 border border-cyan-400/60 text-[7px] font-mono font-bold text-cyan-200 leading-none">
+              SHIFT
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* STARLIGHT REFLEX — PERFECT DODGE CINEMATIC CALLOUT & EDGE FLASH */}
+      {perfectDodgeActive && !combatResult && (
+        <div
+          key={perfectDodgeId}
+          className="pointer-events-none fixed inset-0 z-40 flex items-start justify-center pt-[16%] sm:pt-[14%]"
+        >
+          <div
+            className="absolute inset-0 animate-pulse"
+            style={{
+              background:
+                'radial-gradient(circle at 50% 50%, transparent 45%, rgba(56,232,255,0.28) 85%, rgba(253,224,71,0.34) 100%)',
+            }}
+          />
+          <div className="relative animate-wave-slash px-6 py-2 rounded-full bg-slate-950/90 border-2 border-cyan-300 shadow-[0_0_36px_rgba(56,232,255,0.85)] text-center">
+            <div className="font-display font-black text-base sm:text-2xl uppercase tracking-[0.26em] text-cyan-200 drop-shadow-[0_0_16px_rgba(56,232,255,0.95)]">
+              ✦ STARLIGHT REFLEX — PERFECT DODGE! ✦
+            </div>
+            <div className="text-[10px] sm:text-xs font-mono font-black uppercase tracking-[0.2em] text-amber-300 mt-0.5">
+              +1.5 SP • +8 ULT GAUGE • +25% CRIT RATE
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* DYNAMIC ANIME HIT COMBO COUNTER (Top-Right Floating) */}
       {comboCount >= 2 && !combatResult && (

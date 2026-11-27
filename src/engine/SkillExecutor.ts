@@ -695,24 +695,10 @@ export class SkillExecutor {
     // Cancel Cast / STUN_CANCEL check!
     if (applyCC && skill.effects.includes('STUN_CANCEL')) {
       if (enemy.isCasting && enemy.castCancelable) {
-        enemy.isCasting = false;
-        enemy.castAction = null;
-        enemy.isBroken = true;
-        enemy.brokenTimer = 2.5;
-        ctx.telegraphs = ctx.telegraphs.filter((tg) => {
-          if (tg.enemyUid === enemy.uid) {
-            tg.gfx.destroy();
-            return false;
-          }
-          return true;
-        });
-        ctx.triggerShake(11);
-        audioManager.playSfx('cancel_cast');
-        ctx.spawnRingWave(enemy.x, enemy.y, 160, 0xfacc15, 0.5);
-        ctx.spawnDamageText(enemy.x, enemy.y - 72, 'CAST BROKEN! +25% DMG', 0xfacc15, true);
-        ctx.notifyBanner(`CANCEL CAST! ${enemy.def.name} is BROKEN for 2.5s!`);
+        ctx.triggerEnemyBreak(enemy, 4.0, '⚡ CAST INTERRUPTED! +50% DMG');
+        ctx.notifyBanner(`CANCEL CAST! ${enemy.def.name} is BROKEN for 4.0s (+50% DMG)!`);
       } else if (!enemy.def.isBoss) {
-        enemy.stunTimer = Math.max(enemy.stunTimer, 1.0);
+        enemy.stunTimer = Math.max(enemy.stunTimer, 1.15);
       }
     }
 
@@ -753,6 +739,15 @@ export class SkillExecutor {
               ? 1.4
               : 0;
 
+    const hasHeavyBreakCC =
+      skill.effects.includes('STUN_CANCEL') ||
+      skill.effects.includes('FREEZE') ||
+      skill.effects.includes('GATHER') ||
+      skill.effects.includes('PULL') ||
+      skill.effects.includes('PROVOKE');
+    const breakDamage =
+      (isUlt ? 34 : hasHeavyBreakCC ? 24 : 14) * Math.min(1, Math.max(0.25, scaleFactor));
+
     const res = ctx.damageEnemy(hero, enemy, {
       multiplier: skill.multiplier * scaleFactor,
       scalesWithDef: skill.scalesWithDef,
@@ -762,6 +757,7 @@ export class SkillExecutor {
       bonusCritRate: skill.id === 'kael_s1' ? 0.25 : skill.id === 'zephyrion_s2' ? 0.2 : 0,
       bonusDmgMult: bonusDmg,
       hitShieldHits: 1,
+      breakDamage,
       canTriggerMark: applyCC,
     });
     if (hero.heroId === 'zephyrion' && res.isCrit) {

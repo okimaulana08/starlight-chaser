@@ -56,6 +56,7 @@ interface PooledSpriteFx {
 
 interface PooledProjectile {
   active: boolean;
+  fromHero: boolean;
   container: Container;
   tailSprite: Sprite;
   coreSprite: Sprite;
@@ -89,6 +90,20 @@ interface PooledGhost {
   startAlpha: number;
 }
 
+interface PooledLootOrb {
+  active: boolean;
+  sprite: Sprite;
+  x: number;
+  y: number;
+  z: number;
+  vx: number;
+  vy: number;
+  vz: number;
+  age: number;
+  color: number;
+  baseScale: number;
+}
+
 /**
  * Procedural Soft-Texture Anime VFX ObjectPool (Zero-GC, 60 FPS).
  * Eliminates all blocky .rect() / .arc() / .lineTo() primitives in favor of
@@ -104,6 +119,7 @@ export class ObjectPool {
   private projectiles: PooledProjectile[] = [];
   private texts: PooledText[] = [];
   private ghosts: PooledGhost[] = [];
+  private lootOrbs: PooledLootOrb[] = [];
   private atlas = VfxTextureAtlas.get();
 
   private normalStyle = new TextStyle({
@@ -183,6 +199,7 @@ export class ObjectPool {
 
       this.projectiles.push({
         active: false,
+        fromHero: true,
         container,
         tailSprite,
         coreSprite,
@@ -228,6 +245,28 @@ export class ObjectPool {
         life: 0,
         maxLife: 0.24,
         startAlpha: 0.55,
+      });
+    }
+
+    // 48 physical bouncy loot-magnet orbs (Gold / Starlight / EXP motes that vacuum into squad!)
+    for (let i = 0; i < 48; i++) {
+      const sprite = new Sprite(this.atlas.softGlow);
+      sprite.anchor.set(0.5);
+      sprite.blendMode = 'add';
+      sprite.visible = false;
+      this.vfxLayer.addChild(sprite);
+      this.lootOrbs.push({
+        active: false,
+        sprite,
+        x: 0,
+        y: 0,
+        z: 0,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        age: 0,
+        color: 0xfde047,
+        baseScale: 0.22,
       });
     }
   }
@@ -303,6 +342,7 @@ export class ObjectPool {
     speed: number;
     color: number;
     radius: number;
+    fromHero?: boolean;
     onHit: (x: number, y: number) => void;
   }): void {
     const p = this.projectiles.find((item) => !item.active);
@@ -311,6 +351,7 @@ export class ObjectPool {
       return;
     }
     p.active = true;
+    p.fromHero = opts.fromHero ?? true;
     p.x = opts.x;
     p.y = opts.y;
     p.tx = opts.tx;
@@ -889,7 +930,59 @@ export class ObjectPool {
     g.sprite.visible = true;
   }
 
-  public update(dt: number): void {
+  /**
+   * Emits physical bouncy Gold / Starlight / EXP loot orbs from defeated enemies
+   * that arc onto the floor and magnetically vacuum into the nearest alive Hero!
+   */
+  public spawnLootOrbs(x: number, y: number, count: number, isBoss = false): void {
+    const palette = [0xfde047, 0x38e8ff, 0x34d399, 0xf59e0b];
+    for (let i = 0; i < count; i++) {
+      const orb = this.lootOrbs.find((o) => !o.active);
+      if (!orb) break;
+      const ang = (i / Math.max(1, count)) * Math.PI * 2 + (Math.random() - 0.5) * 0.7;
+      const spd = (isBoss ? 120 : 68) + Math.random() * 88;
+      orb.active = true;
+      orb.x = x + (Math.random() - 0.5) * 14;
+      orb.y = y + (Math.random() - 0.5) * 10;
+      orb.z = 16 + Math.random() * 14;
+      orb.vx = Math.cos(ang) * spd;
+      orb.vy = Math.sin(ang) * spd * 0.65;
+      orb.vz = (isBoss ? 225 : 165) + Math.random() * 95;
+      orb.age = 0;
+      orb.color = palette[i % palette.length];
+      orb.baseScale = isBoss ? 0.28 : 0.21;
+
+      orb.sprite.texture = i % 3 === 1 ? this.atlas.impactFlare : this.atlas.softGlow;
+      orb.sprite.tint = orb.color;
+      orb.sprite.scale.set(orb.baseScale);
+      orb.sprite.alpha = 0.95;
+      orb.sprite.position.set(orb.x, orb.y - orb.z);
+      orb.sprite.visible = true;
+    }
+  }
+
+  /**
+   * Checks if any live enemy projectile is currently threatening an alive hero (for Perfect Dodge window).
+   */
+  public hasEnemyProjectileNear(
+    heroes: Array<{ x: number; y: number; alive: boolean }>,
+    radius: number,
+  ): boolean {
+    for (const p of this.projectiles) {
+      if (!p.active || p.fromHero) continue;
+      for (const h of heroes) {
+        if (h.alive && Math.hypot(p.x - h.x, p.y - h.y) <= radius) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  public update(
+    dt: number,
+    collectors?: Array<{ x: number; y: number; alive: boolean }>,
+  ): void {
     // 1. Update soft-texture pooled Sprites
     for (const f of this.fxPool) {
       if (!f.active) continue;
@@ -1004,6 +1097,78 @@ export class ObjectPool {
       const ratio = g.life / g.maxLife;
       g.sprite.alpha = g.startAlpha * ratio * ratio;
     }
+
+    // 5. Update physical bouncy loot-magnet orbs
+    for (const orb of this.lootOrbs) {
+      if (!orb.active) continue;
+      orb.age += dt;
+      if (orb.age < 0.62) {
+        // Pop + parabolic arc + crisp floor bounce
+        orb.x += orb.vx * dt;
+        orb.y += orb.vy * dt;
+        orb.vx *= Math.pow(0.92, dt * 60);
+        orb.vy *= Math.pow(0.92, dt * 60);
+        orb.vz -= 690 * dt;
+        orb.z += orb.vz * dt;
+        if (orb.z <= 0) {
+          orb.z = 0;
+          if (Math.abs(orb.vz) > 55) {
+            orb.vz = -orb.vz * 0.42;
+          } else {
+            orb.vz = 0;
+          }
+        }
+      } else {
+        // Magnetic vacuum acceleration straight into nearest alive Hero!
+        let targetX = orb.x;
+        let targetY = orb.y - 34;
+        let bestDist = Infinity;
+        if (collectors) {
+          for (const h of collectors) {
+            if (!h.alive) continue;
+            const d = Math.hypot(h.x - orb.x, h.y - 34 - (orb.y - orb.z));
+            if (d < bestDist) {
+              bestDist = d;
+              targetX = h.x;
+              targetY = h.y - 34;
+            }
+          }
+        }
+        if (bestDist === Infinity || orb.age > 2.4) {
+          orb.active = false;
+          orb.sprite.visible = false;
+          continue;
+        }
+        const curScreenY = orb.y - orb.z;
+        const dx = targetX - orb.x;
+        const dy = targetY - curScreenY;
+        const d = Math.max(1, Math.hypot(dx, dy));
+        const pullSpeed = Math.min(960, 290 + (orb.age - 0.62) * 1050);
+        if (d <= pullSpeed * dt + 18) {
+          orb.active = false;
+          orb.sprite.visible = false;
+          this.spawnSpriteFx({
+            tex: 'impactFlare',
+            x: targetX,
+            y: targetY,
+            scaleX: 0.14,
+            endScaleX: 0.3,
+            tint: orb.color,
+            alpha: 0.72,
+            life: 0.16,
+          });
+          continue;
+        }
+        orb.x += (dx / d) * pullSpeed * dt;
+        orb.y += (dy / d) * pullSpeed * dt;
+        orb.z *= Math.max(0, 1 - dt * 6);
+      }
+
+      const pulse = 0.86 + Math.sin(orb.age * 14) * 0.2;
+      orb.sprite.position.set(orb.x, orb.y - orb.z);
+      orb.sprite.scale.set(orb.baseScale * pulse);
+      orb.sprite.rotation += dt * 3.5;
+    }
   }
 
   public clearAll(): void {
@@ -1023,6 +1188,10 @@ export class ObjectPool {
     for (const g of this.ghosts) {
       g.active = false;
       g.sprite.visible = false;
+    }
+    for (const o of this.lootOrbs) {
+      o.active = false;
+      o.sprite.visible = false;
     }
   }
 

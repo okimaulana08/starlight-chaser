@@ -170,9 +170,14 @@ export interface EnemyUnit {
   phase2Triggered: boolean;
   isBroken: boolean;
   brokenTimer: number;
+  brokenMaxTimer: number;
+  breakGauge: number;
+  maxBreakGauge: number;
   hitShield: number;
   maxHitShield: number;
   hitFlashTimer: number;
+  dissolveTimer: number;
+  dissolveDuration: number;
   animTime: number;
   attackSwingTimer: number;
   attackSwingDuration: number;
@@ -262,6 +267,8 @@ export interface CombatContext {
     alpha?: number,
     life?: number,
   ) => void;
+  spawnLootOrbs: (x: number, y: number, count: number, isBoss?: boolean) => void;
+  triggerEnemyBreak: (enemy: EnemyUnit, duration?: number, reasonLabel?: string) => void;
   triggerArenaDim: (color: number, duration: number, peakAlpha?: number) => void;
   triggerSkillCallout: (hero: HeroUnit, skillName: string, slot: 1 | 2 | 'ULT') => void;
   spawnProjectile: (opts: {
@@ -288,6 +295,7 @@ export interface CombatContext {
       bonusCritRate?: number;
       bonusDmgMult?: number;
       hitShieldHits?: number;
+      breakDamage?: number;
       canTriggerMark?: boolean;
     },
   ) => { damage: number; isCrit: boolean };

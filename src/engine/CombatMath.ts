@@ -305,7 +305,7 @@ export function calculateCombatDamage(p: DamageRollParams): {
 
   const isCrit = !p.isTrueDamage && Math.random() < p.critRate;
   const critMult = isCrit ? p.critDmg : 1.0;
-  const brokenBonus = p.isBroken ? 0.25 : 0;
+  const brokenBonus = p.isBroken ? 0.5 : 0;
   const variance = 0.96 + Math.random() * 0.08;
 
   const finalDamage = Math.max(

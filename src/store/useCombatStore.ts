@@ -54,6 +54,11 @@ interface CombatStore {
   fps: number;
   comboCount: number;
   comboDecayRatio: number;
+  evadeCd: number;
+  evadeMaxCd: number;
+  inDangerZone: boolean;
+  perfectDodgeId: number;
+  perfectDodgeActive: boolean;
   bossWarning: BossWarningState | null;
   waveBanner: string | null;
   touchJoystick: TouchJoystickState | null;
@@ -79,6 +84,7 @@ interface CombatStore {
   setWaveBanner: (label: string | null) => void;
   setTouchJoystick: (joy: TouchJoystickState | null) => void;
   setImpactFlash: (on: boolean) => void;
+  setPerfectDodge: (active: boolean) => void;
   showBannerToast: (msg: string | null) => void;
   setCombatResult: (res: CombatLootSummary | null) => void;
 }
@@ -102,6 +108,11 @@ export const useCombatStore = create<CombatStore>((set) => ({
   fps: 60,
   comboCount: 0,
   comboDecayRatio: 0,
+  evadeCd: 0,
+  evadeMaxCd: 5,
+  inDangerZone: false,
+  perfectDodgeId: 0,
+  perfectDodgeActive: false,
   bossWarning: null,
   waveBanner: null,
   touchJoystick: null,
@@ -128,6 +139,10 @@ export const useCombatStore = create<CombatStore>((set) => ({
       ultGauge: 16,
       comboCount: 0,
       comboDecayRatio: 0,
+      evadeCd: 0,
+      evadeMaxCd: 5,
+      inDangerZone: false,
+      perfectDodgeActive: false,
       bossWarning: null,
       waveBanner: null,
       touchJoystick: null,
@@ -153,6 +168,11 @@ export const useCombatStore = create<CombatStore>((set) => ({
   setWaveBanner: (waveBanner) => set({ waveBanner }),
   setTouchJoystick: (touchJoystick) => set({ touchJoystick }),
   setImpactFlash: (impactFlash) => set({ impactFlash }),
+  setPerfectDodge: (active) =>
+    set((s) => ({
+      perfectDodgeActive: active,
+      perfectDodgeId: active ? s.perfectDodgeId + 1 : s.perfectDodgeId,
+    })),
   showBannerToast: (bannerToast) => set({ bannerToast }),
   setCombatResult: (combatResult) => set({ combatResult }),
 }));

@@ -32,6 +32,7 @@ import {
   tryLoadPixiTexture,
 } from './AssetManager';
 import { audioManager } from './AudioManager';
+import { BiomeWeatherSystem } from './BiomeWeatherSystem';
 import {
   calculateCombatDamage,
   computeHeroStats,
@@ -82,8 +83,7 @@ export class CombatEngine {
   private dimPeakAlpha = 0.42;
   private dimColor = 0x0b1026;
   private moveMarkerGfx = new Graphics();
-  private clouds: Array<{ gfx: Graphics; speed: number }> = [];
-  private ambientMotes: Array<{ gfx: Graphics; vx: number; vy: number; phase: number }> = [];
+  private weatherSystem: BiomeWeatherSystem | null = null;
 
   private pool = new ObjectPool();
   private squadCtrl = new SquadController();
@@ -104,6 +104,11 @@ export class CombatEngine {
   private comboCount = 0;
   private comboTimer = 0;
   private hitstopTimer = 0;
+  private evadeCooldown = 0;
+  private readonly evadeMaxCooldown = 5.0;
+  private perfectDodgeSlowTimer = 0;
+  private breakZoomTimer = 0;
+  private perfectDodgeClearHandle: number | null = null;
   private joystickVec: { x: number; y: number } | null = null;
   private battleEnded = false;
   private destroyed = false;
@@ -220,27 +225,14 @@ export class CombatEngine {
       this.floorLayer.addChild(g);
     }
 
-    // 2. Subtle floating ambient Starlight Motes themed to the active Region biome
-    for (let i = 0; i < 36; i++) {
-      const m = new Graphics();
-      const isPrimary = i % 2 === 0;
-      m.circle(0, 0, 2.2 + Math.random() * 2.6).fill({
-        color: isPrimary ? moteColorA : moteColorB,
-        alpha: 0.72,
-      });
-      m.blendMode = 'add';
-      m.position.set(
-        BOUNDS.minX + Math.random() * (BOUNDS.maxX - BOUNDS.minX),
-        BOUNDS.minY + Math.random() * (BOUNDS.maxY - BOUNDS.minY),
-      );
-      this.ambientLayer.addChild(m);
-      this.ambientMotes.push({
-        gfx: m,
-        vx: (Math.random() - 0.5) * 18,
-        vy: -(12 + Math.random() * 22),
-        phase: Math.random() * Math.PI * 2,
-      });
-    }
+    // 2. 10-Chapter Dynamic Biome Weather & Atmospheric Lighting System (Zero-GC PixiJS v8)
+    this.weatherSystem = new BiomeWeatherSystem(
+      this.ambientLayer,
+      stage.chapter,
+      BOUNDS,
+      stage.dungeonId,
+      [moteColorA, moteColorB],
+    );
   }
 
   private setupCombatContext(): void {
@@ -315,6 +307,12 @@ export class CombatEngine {
       },
       spawnGhostAfterimage: (texture, x, y, scaleX, scaleY, tint, alpha, life) => {
         this.pool.spawnGhostAfterimage(texture, x, y, scaleX, scaleY, tint, alpha, life);
+      },
+      spawnLootOrbs: (x, y, count, isBoss) => {
+        this.pool.spawnLootOrbs(x, y, count, isBoss);
+      },
+      triggerEnemyBreak: (enemy, duration = 4.0, reasonLabel) => {
+        this.triggerEnemyBreak(enemy, duration, reasonLabel);
       },
       triggerArenaDim: (color, duration, peakAlpha = 0.44) => {
         this.dimColor = color;
@@ -633,9 +631,22 @@ export class CombatEngine {
           phase2Triggered: false,
           isBroken: false,
           brokenTimer: 0,
+          brokenMaxTimer: 4.0,
+          breakGauge: def.isBoss
+            ? 155 + (stage.chapter ?? 1) * 12
+            : def.isMiniBoss
+              ? 95
+              : 0,
+          maxBreakGauge: def.isBoss
+            ? 155 + (stage.chapter ?? 1) * 12
+            : def.isMiniBoss
+              ? 95
+              : 0,
           hitShield: 0,
           maxHitShield: 0,
           hitFlashTimer: 0,
+          dissolveTimer: 0,
+          dissolveDuration: 0.44,
           animTime: Math.random() * 4,
           attackSwingTimer: 0,
           attackSwingDuration: 0.28,
@@ -756,13 +767,20 @@ export class CombatEngine {
       enemy.hitShield = Math.max(0, enemy.hitShield - (opts.hitShieldHits ?? 1));
       finalDmg = Math.max(1, Math.round(finalDmg * 0.32));
       if (enemy.hitShield === 0) {
-        enemy.isBroken = true;
-        enemy.brokenTimer = 2.5;
-        this.ctx.triggerShake(12);
-        audioManager.playSfx('cancel_cast');
-        this.pool.spawnRingWave(enemy.x, enemy.y, 180, 0x38e8ff, 0.5);
-        this.pool.spawnFloatingText(enemy.x, enemy.y - 78, 'SHIELD SHATTERED!', 0x38e8ff, true);
-        this.ctx.notifyBanner('HIT-COUNT SHIELD SHATTERED! Boss is BROKEN!');
+        this.triggerEnemyBreak(enemy, 4.0, 'SHIELD SHATTERED! +50% DMG');
+        this.ctx.notifyBanner('HIT-COUNT SHIELD SHATTERED! Boss is BROKEN (+50% DMG)!');
+      }
+    }
+
+    // Stagger / Break Gauge depletion for Bosses & Mini-Bosses
+    if (enemy.maxBreakGauge > 0 && !enemy.isBroken && enemy.hp > 0) {
+      const brkDmg = opts.breakDamage ?? (opts.isUlt ? 32 : opts.isSkill ? 14 : 2.6);
+      enemy.breakGauge = Math.max(0, enemy.breakGauge - brkDmg);
+      if (enemy.breakGauge <= 0) {
+        this.triggerEnemyBreak(enemy, 4.0, '★ BROKEN! +50% DMG ★');
+        if (enemy.def.isBoss) {
+          this.ctx.notifyBanner(`STAGGER BREAK! ${enemy.def.name} takes +50% DMG for 4.0s!`);
+        }
       }
     }
 
@@ -1110,10 +1128,23 @@ export class CombatEngine {
     const store = useCombatStore.getState();
     if (store.paused || this.battleEnded) return;
 
-    // 1. Update Ultimate Choreography & Micro-Hitstop on REAL time
+    // 1. Update Ultimate Choreography, Perfect Dodge Bullet-Time & Micro-Hitstop on REAL time
     let speedMult = 1.0;
+    if (this.evadeCooldown > 0) {
+      this.evadeCooldown = Math.max(0, this.evadeCooldown - realDt);
+    }
+    if (this.breakZoomTimer > 0) {
+      this.breakZoomTimer = Math.max(0, this.breakZoomTimer - realDt);
+      if (!this.ultDirector.isRunning()) {
+        this.ctx.cameraZoomTarget = this.breakZoomTimer > 0 ? 1.08 : 1.0;
+      }
+    }
     if (this.ultDirector.isRunning()) {
       this.ultDirector.update(this.ctx, realDt);
+    } else if (this.perfectDodgeSlowTimer > 0) {
+      // Starlight Reflex Bullet-Time Slow-Mo (0.22×)
+      this.perfectDodgeSlowTimer = Math.max(0, this.perfectDodgeSlowTimer - realDt);
+      this.ctx.timeScale = 0.22;
     } else if (this.victoryLingerTimer > 0) {
       // Dramatic Anime Finisher Slow-Mo so Ultimate Skyfall Pillars & final explosion shine before Victory!
       this.ctx.timeScale = 0.36;
@@ -1171,7 +1202,7 @@ export class CombatEngine {
     this.skillExec.updateAutoSkill(this.ctx, dt, store.autoSkill);
     this.enemyAI.update(this.ctx, dt, this.telegraphLayer);
     this.updateZones(dt);
-    this.pool.update(dt);
+    this.pool.update(dt, this.ctx.heroes);
 
     // 5. Aiming telegraph, Ambient Atmosphere, Dynamic Arena Dim & Move marker visuals
     if (this.dimTimer > 0) {
@@ -1207,19 +1238,232 @@ export class CombatEngine {
   }
 
   private updateAmbientAtmosphere(realDt: number): void {
-    for (const c of this.clouds) {
-      c.gfx.x += c.speed * realDt;
-      if (c.gfx.x > ARENA_W + 320) c.gfx.x = -320;
-    }
-    for (const m of this.ambientMotes) {
-      m.gfx.x += (m.vx + Math.sin(this.elapsedSec * 1.4 + m.phase) * 10) * realDt;
-      m.gfx.y += m.vy * realDt;
-      m.gfx.alpha = 0.25 + 0.55 * Math.abs(Math.sin(this.elapsedSec * 2.2 + m.phase));
-      if (m.gfx.y < BOUNDS.minY - 40) {
-        m.gfx.y = BOUNDS.maxY + 20;
-        m.gfx.x = BOUNDS.minX + Math.random() * (BOUNDS.maxX - BOUNDS.minX);
+    this.weatherSystem?.update(realDt);
+  }
+
+  private triggerEnemyBreak(
+    enemy: EnemyUnit,
+    duration = 4.0,
+    reasonLabel = '★ BROKEN! +50% DMG ★',
+  ): void {
+    if (!enemy.alive) return;
+    enemy.isCasting = false;
+    enemy.castAction = null;
+    enemy.isBroken = true;
+    enemy.brokenMaxTimer = duration;
+    enemy.brokenTimer = duration;
+    enemy.breakGauge = 0;
+    enemy.squashX = 1.24;
+    enemy.squashY = 0.78;
+    enemy.springLeanVel -= 14;
+
+    this.ctx.telegraphs = this.ctx.telegraphs.filter((tg) => {
+      if (tg.enemyUid === enemy.uid) {
+        tg.gfx.destroy();
+        return false;
+      }
+      return true;
+    });
+
+    this.hitstopTimer = Math.max(this.hitstopTimer, 0.065);
+    this.breakZoomTimer = Math.max(this.breakZoomTimer, 0.55);
+    this.ctx.triggerShake(enemy.def.isBoss ? 15 : 10);
+    this.ctx.triggerArenaDim(0x0ea5e9, 0.45, 0.28);
+    audioManager.playSfx('cancel_cast');
+
+    this.pool.spawnRingWave(enemy.x, enemy.y, enemy.def.isBoss ? 225 : 140, 0x38e8ff, 0.52);
+    this.pool.spawnRingWave(enemy.x, enemy.y, enemy.def.isBoss ? 165 : 105, 0xfde047, 0.42);
+    this.pool.spawnBurst(enemy.x, enemy.y - 36, 0x38e8ff, enemy.def.isBoss ? 28 : 16, 48);
+    this.pool.spawnFloatingText(
+      enemy.x,
+      enemy.y - (enemy.def.isBoss ? 92 : 68),
+      reasonLabel,
+      0x38e8ff,
+      true,
+    );
+  }
+
+  private checkPointInTelegraph(
+    x: number,
+    y: number,
+  ): { inDanger: boolean; imminent: boolean; escapeX: number; escapeY: number } {
+    let inDanger = false;
+    let imminent = false;
+    let escapeX = 0;
+    let escapeY = 0;
+
+    for (const tg of this.ctx.telegraphs) {
+      const dx = x - tg.x;
+      const dy = y - tg.y;
+      const dist = Math.hypot(dx, dy);
+      const progress = tg.elapsed / Math.max(0.1, tg.duration);
+      if (tg.shape === 'CIRCLE' && dist <= tg.radius + 28) {
+        inDanger = true;
+        if (progress >= 0.22) imminent = true;
+        const len = Math.max(1, dist);
+        escapeX += dx / len;
+        escapeY += dy / len;
+      } else if (tg.shape === 'CONE' && dist <= tg.radius + 26) {
+        const ang = Math.atan2(dy, dx);
+        let diff = ang - tg.angle;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        if (Math.abs(diff) <= tg.arcSpan * 0.62) {
+          inDanger = true;
+          if (progress >= 0.22) imminent = true;
+          const perp = diff >= 0 ? tg.angle + Math.PI / 2 : tg.angle - Math.PI / 2;
+          escapeX += Math.cos(perp);
+          escapeY += Math.sin(perp);
+        }
       }
     }
+
+    return { inDanger, imminent, escapeX, escapeY };
+  }
+
+  private isSquadInDangerZone(): boolean {
+    if (!this.ctx || this.ctx.telegraphs.length === 0) return false;
+    for (const h of this.ctx.heroes) {
+      if (h.alive && this.checkPointInTelegraph(h.x, h.y).inDanger) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Active Tactical Squad Evade + Perfect Dodge ("Starlight Reflex" Bullet-Time!).
+   */
+  public triggerSquadEvade(): boolean {
+    if (this.battleEnded || !this.ctx || this.evadeCooldown > 0 || this.ultDirector.isRunning()) {
+      return false;
+    }
+    const store = useCombatStore.getState();
+    if (store.paused) return false;
+
+    const aliveHeroes = this.ctx.heroes.filter((h) => h.alive);
+    if (aliveHeroes.length === 0) return false;
+
+    // 1. Detect danger & Perfect Dodge eligibility
+    let anyDanger = false;
+    let isPerfect = false;
+    let escX = 0;
+    let escY = 0;
+
+    for (const h of aliveHeroes) {
+      const check = this.checkPointInTelegraph(h.x, h.y);
+      if (check.inDanger) {
+        anyDanger = true;
+        if (check.imminent) isPerfect = true;
+        escX += check.escapeX;
+        escY += check.escapeY;
+      }
+    }
+    if (!isPerfect && this.pool.hasEnemyProjectileNear(aliveHeroes, 128)) {
+      isPerfect = true;
+    }
+
+    // 2. Choose crisp dodge vector (Out of Telegraph -> Manual Move -> Backstep from nearest foe)
+    let dirX = 0;
+    let dirY = 0;
+    const manual = this.squadCtrl.getManualMoveVector();
+    if (anyDanger && Math.hypot(escX, escY) > 0.05) {
+      const len = Math.hypot(escX, escY);
+      dirX = escX / len;
+      dirY = escY / len;
+    } else if (this.joystickVec && Math.hypot(this.joystickVec.x, this.joystickVec.y) > 0.1) {
+      dirX = this.joystickVec.x;
+      dirY = this.joystickVec.y;
+    } else if (manual.x !== 0 || manual.y !== 0) {
+      dirX = manual.x;
+      dirY = manual.y;
+    } else {
+      const foe = this.ctx.enemies.find((e) => e.alive && e.def.isBoss) ?? this.ctx.enemies.find((e) => e.alive);
+      if (foe) {
+        const dx = this.ctx.squadAnchor.x - foe.x;
+        const dy = this.ctx.squadAnchor.y - foe.y;
+        const d = Math.max(1, Math.hypot(dx, dy));
+        dirX = dx / d;
+        dirY = dy / d;
+      } else {
+        dirX = -1;
+        dirY = 0;
+      }
+    }
+
+    const dashDist = isPerfect ? 205 : 175;
+    this.evadeCooldown = this.evadeMaxCooldown;
+    this.ctx.moveTarget = null;
+
+    // Move squad anchor cleanly to new safe zone
+    this.ctx.squadAnchor.x = Math.max(
+      BOUNDS.minX + 80,
+      Math.min(BOUNDS.maxX - 80, this.ctx.squadAnchor.x + dirX * dashDist),
+    );
+    this.ctx.squadAnchor.y = Math.max(
+      BOUNDS.minY + 70,
+      Math.min(BOUNDS.maxY - 70, this.ctx.squadAnchor.y + dirY * dashDist),
+    );
+
+    // Launch coordinated blink-dash across ALL alive heroes!
+    for (const h of aliveHeroes) {
+      const endX = Math.max(BOUNDS.minX + 42, Math.min(BOUNDS.maxX - 42, h.x + dirX * dashDist));
+      const endY = Math.max(BOUNDS.minY + 42, Math.min(BOUNDS.maxY - 42, h.y + dirY * dashDist));
+      h.dashState = {
+        startX: h.x,
+        startY: h.y,
+        endX,
+        endY,
+        elapsed: 0,
+        duration: 0.17,
+        color: isPerfect ? 0xfde047 : 0x38e8ff,
+        ghostTimer: 0,
+        arcHeight: 16,
+      };
+      h.invincibleTimer = Math.max(h.invincibleTimer, isPerfect ? 0.9 : 0.45);
+      if (isPerfect) {
+        h.critBuffTimer = Math.max(h.critBuffTimer, 4.5);
+        h.critBuffValue = Math.max(h.critBuffValue, 0.25);
+        this.pool.spawnRingWave(h.x, h.y, 92, 0xfde047, 0.36);
+      } else {
+        this.pool.spawnFootstepDust(h.x, h.y, dirX * 140, dirY * 140, 1.2, 0xbae6fd);
+      }
+    }
+
+    if (isPerfect) {
+      // ★ STARLIGHT REFLEX — PERFECT DODGE BULLET-TIME! ★
+      this.perfectDodgeSlowTimer = 0.44;
+      this.breakZoomTimer = Math.max(this.breakZoomTimer, 0.5);
+      this.ctx.addSp(1.5);
+      this.ctx.addUltGauge(8.0);
+      this.ctx.triggerArenaDim(0x0284c7, 0.55, 0.36);
+      this.ctx.triggerShake(8);
+      audioManager.playSfx('ult_chime', 0.03);
+      this.pool.spawnFloatingText(
+        this.ctx.squadAnchor.x,
+        this.ctx.squadAnchor.y - 76,
+        '★ PERFECT DODGE! +1.5 SP ★',
+        0x38e8ff,
+        true,
+      );
+      useCombatStore.getState().setPerfectDodge(true);
+      if (this.perfectDodgeClearHandle) window.clearTimeout(this.perfectDodgeClearHandle);
+      this.perfectDodgeClearHandle = window.setTimeout(() => {
+        useCombatStore.getState().setPerfectDodge(false);
+      }, 950);
+    } else {
+      audioManager.playSfx('slash', 0.08);
+      this.pool.spawnFloatingText(
+        this.ctx.squadAnchor.x,
+        this.ctx.squadAnchor.y - 54,
+        'EVADE',
+        0x7dd3fc,
+        false,
+      );
+    }
+
+    this.syncHudSnapshot(true);
+    return true;
   }
 
   private renderMoveMarker(): void {
@@ -1370,9 +1614,45 @@ export class CombatEngine {
       }
     }
 
-    // 2. ENEMIES & BOSSES — Cast Wind-Up Coil, Attack Lunge, Spring Knockback, Dynamic Shadow & Live2D-Lite Mesh!
+    // 2. ENEMIES & BOSSES — Death Dissolve, Cast Wind-Up Coil, Attack Lunge, Spring Knockback & Status VFX!
     for (const e of this.ctx.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive) {
+        // Luminous Starlight Death Dissolve animation!
+        if (e.dissolveTimer > 0) {
+          e.dissolveTimer = Math.max(0, e.dissolveTimer - safeDt);
+          const dur = Math.max(0.1, e.dissolveDuration || 0.44);
+          const p = 1 - e.dissolveTimer / dur;
+          const baseSc = e.baseScaleY ?? 1;
+          const mesh = e.liveMesh.mesh;
+          mesh.tint = p < 0.28 ? 0xffffff : 0xc084fc;
+          mesh.alpha = Math.max(0, 1 - p * p);
+          mesh.position.set(0, -p * 34);
+          mesh.scale.set(
+            baseSc * (e.facing >= 0 ? -1 : 1) * (1 - p * 0.44),
+            baseSc * (1 + p * 0.36),
+          );
+          e.shadowGfx.alpha = Math.max(0, 0.44 * (1 - p));
+          e.shadowGfx.scale.set(Math.max(0.2, 1 - p * 0.7));
+          if (Math.random() < 0.48) {
+            this.pool.spawnSpriteFx({
+              tex: 'softGlow',
+              x: e.x + (Math.random() - 0.5) * 48,
+              y: e.y - 20 - Math.random() * 68,
+              vx: (Math.random() - 0.5) * 32,
+              vy: -(65 + Math.random() * 85),
+              scaleX: 0.14,
+              endScaleX: 0.02,
+              tint: Math.random() < 0.5 ? 0xfde047 : 0xc084fc,
+              alpha: 0.82,
+              life: 0.34,
+            });
+          }
+          if (e.dissolveTimer <= 0) {
+            e.container.visible = false;
+          }
+        }
+        continue;
+      }
       e.container.position.set(e.x, e.y);
       e.container.zIndex = e.y;
 
@@ -1473,33 +1753,118 @@ export class CombatEngine {
       e.shadowGfx.scale.set(shScaleX, Math.max(0.62, 1 - elevation * 0.006));
       e.shadowGfx.alpha = Math.max(0.28, 1 - elevation * 0.012);
 
-      // Overhead bar (skip big bar for boss since boss has top HUD bar)
+      // Overhead HP Bar + Mini-Boss Break Gauge Bar (skip big bar for boss since boss has top HUD bar)
       e.hpBarGfx.clear();
       if (!e.def.isBoss) {
-        const w = e.def.isMiniBoss ? 78 : 50;
-        const topY = (e.def.isMiniBoss ? -168 : -118) + totalLiftY * 0.55;
-        e.hpBarGfx.rect(-w / 2 - 1, topY, w + 2, 6).fill({ color: 0x050814, alpha: 0.85 });
+        const w = e.def.isMiniBoss ? 82 : 52;
+        const topY = (e.def.isMiniBoss ? -172 : -120) + totalLiftY * 0.55;
+        e.hpBarGfx.rect(-w / 2 - 1, topY, w + 2, 6).fill({ color: 0x050814, alpha: 0.88 });
         e.hpBarGfx
           .rect(-w / 2, topY + 1, w * Math.max(0, e.hp / e.maxHp), 4)
           .fill({ color: 0xef4444 });
+
+        // Slim Amber/Cyan Stagger Break Bar under Mini-Boss HP bar!
+        if (e.maxBreakGauge > 0) {
+          const brkY = topY + 7;
+          const brkRatio = e.isBroken
+            ? Math.max(0, e.brokenTimer / Math.max(0.1, e.brokenMaxTimer))
+            : Math.max(0, e.breakGauge / e.maxBreakGauge);
+          e.hpBarGfx.rect(-w / 2 - 1, brkY, w + 2, 4).fill({ color: 0x050814, alpha: 0.88 });
+          e.hpBarGfx
+            .rect(-w / 2, brkY + 0.5, w * brkRatio, 3)
+            .fill({ color: e.isBroken ? 0x38e8ff : 0xf59e0b });
+        }
       }
 
-      // Status badges (Starfall Mark, Burn, Stun, Hit Shield ring)
+      // Rich Tactical Status Badges & World-Space CC Indicators!
       e.statusGfx.clear();
-      if (e.starfallMarkTimer > 0) {
-        e.statusGfx.circle(0, -45 + totalLiftY * 0.5, 22).stroke({ color: 0xf5c84c, width: 2.5, alpha: 0.9 });
+      const bodyMidY = (e.def.isBoss ? -96 : e.def.isMiniBoss ? -68 : -48) + totalLiftY * 0.5;
+      const headY = (e.def.isBoss ? -215 : e.def.isMiniBoss ? -184 : -132) + totalLiftY * 0.55;
+
+      // 1. Frozen crystalline prism casing
+      if (e.freezeTimer > 0) {
+        const rx = e.def.isMiniBoss ? 52 : 34;
+        const ry = e.def.isMiniBoss ? 68 : 48;
+        e.statusGfx
+          .poly([0, bodyMidY - ry, rx, bodyMidY - ry * 0.3, rx * 0.8, bodyMidY + ry * 0.75, -rx * 0.8, bodyMidY + ry * 0.75, -rx, bodyMidY - ry * 0.3])
+          .fill({ color: 0x7dd3fc, alpha: 0.22 })
+          .stroke({ color: 0xe0f2fe, width: 2.2, alpha: 0.88 });
       }
+
+      // 2. Stunned orbiting golden stars above head
+      if (e.stunTimer > 0) {
+        for (let s = 0; s < 3; s++) {
+          const ang = this.elapsedSec * 5.2 + (s * Math.PI * 2) / 3;
+          const sx = Math.cos(ang) * 24;
+          const sy = headY - 6 + Math.sin(ang) * 7;
+          e.statusGfx
+            .poly([sx, sy - 5, sx + 4, sy, sx, sy + 5, sx - 4, sy])
+            .fill({ color: 0xfde047, alpha: 0.96 });
+        }
+      }
+
+      // 3. Broken shatter halo around Boss / Mini-Boss
+      if (e.isBroken) {
+        const pulse = 0.72 + Math.sin(this.elapsedSec * 16) * 0.28;
+        const r = e.def.isBoss ? 102 : 60;
+        e.statusGfx
+          .ellipse(0, 4, r, r * 0.32)
+          .stroke({ color: 0x38e8ff, width: 3.5, alpha: pulse });
+        e.statusGfx
+          .ellipse(0, 4, r * 0.82, r * 0.24)
+          .stroke({ color: 0xfde047, width: 2, alpha: pulse * 0.85 });
+      }
+
+      // 4. Vaelen Starfall Mark (rotating solar crosshair)
+      if (e.starfallMarkTimer > 0) {
+        const r = 24;
+        e.statusGfx.circle(0, bodyMidY, r).stroke({ color: 0xf5c84c, width: 2.4, alpha: 0.9 });
+        e.statusGfx
+          .moveTo(-r - 6, bodyMidY)
+          .lineTo(-r + 5, bodyMidY)
+          .moveTo(r - 5, bodyMidY)
+          .lineTo(r + 6, bodyMidY)
+          .moveTo(0, bodyMidY - r - 6)
+          .lineTo(0, bodyMidY - r + 5)
+          .moveTo(0, bodyMidY + r - 5)
+          .lineTo(0, bodyMidY + r + 6)
+          .stroke({ color: 0xfef08a, width: 2.2, alpha: 0.95 });
+      }
+
+      // 5. Elara Lunar Trace emerald diamond reticle
+      if (e.lunarTraceTimer > 0) {
+        const r = 20;
+        e.statusGfx
+          .poly([0, bodyMidY - r, r, bodyMidY, 0, bodyMidY + r, -r, bodyMidY])
+          .stroke({ color: 0x34d399, width: 2.2, alpha: 0.9 });
+      }
+
+      // 6. Boss Phase 2 Hit-Count Shield Ring
       if (e.hitShield > 0) {
         e.statusGfx
           .ellipse(0, -80 + totalLiftY * 0.5, 96, 108)
           .stroke({ color: 0xe879f9, width: 4, alpha: 0.82 });
       }
-      if (e.burnStacks > 0) {
-        for (let b = 0; b < e.burnStacks; b++) {
+
+      // 7. Compact Color-Coded Debuff Chips arrayed neatly above HP bar!
+      const chips: Array<{ color: number; border: number }> = [];
+      for (let b = 0; b < e.burnStacks; b++) {
+        chips.push({ color: 0xf97316, border: 0xfef08a }); // Burn stack
+      }
+      if (e.defShredTimer > 0) chips.push({ color: 0xf59e0b, border: 0xffffff }); // DEF Shred
+      if (e.atkDownTimer > 0) chips.push({ color: 0x60a5fa, border: 0xe0f2fe }); // ATK Down
+      if (e.provokeTimer > 0) chips.push({ color: 0xf43f5e, border: 0xfecdd3 }); // Provoked
+
+      if (chips.length > 0) {
+        const step = 11;
+        const startX = -((chips.length - 1) * step) / 2;
+        chips.forEach((chip, ci) => {
+          const cx = startX + ci * step;
           e.statusGfx
-            .circle(-16 + b * 8, (e.def.isBoss ? -195 : -98) + totalLiftY * 0.5, 3.5)
-            .fill({ color: 0xf97316 });
-        }
+            .poly([cx, headY - 4.5, cx + 4.5, headY, cx, headY + 4.5, cx - 4.5, headY])
+            .fill({ color: chip.color, alpha: 0.95 })
+            .stroke({ color: chip.border, width: 1.2, alpha: 0.9 });
+        });
       }
     }
   }
@@ -1686,6 +2051,12 @@ export class CombatEngine {
       r: [2, 1],
       f: [3, 1],
     };
+
+    if (e.key === 'Shift') {
+      e.preventDefault();
+      this.triggerSquadEvade();
+      return;
+    }
 
     if (k === ' ') {
       e.preventDefault();
@@ -2037,6 +2408,9 @@ export class CombatEngine {
         castCancelable: bossUnit.castCancelable,
         isBroken: bossUnit.isBroken,
         brokenTimer: Number(bossUnit.brokenTimer.toFixed(1)),
+        brokenMaxTimer: bossUnit.brokenMaxTimer,
+        breakGauge: Math.round(bossUnit.breakGauge),
+        maxBreakGauge: bossUnit.maxBreakGauge,
         hitShield: bossUnit.hitShield,
         maxHitShield: bossUnit.maxHitShield,
         burnStacks: bossUnit.burnStacks,
@@ -2051,6 +2425,9 @@ export class CombatEngine {
       fps: Math.round(this.fpsSamples),
       comboCount: this.comboCount,
       comboDecayRatio: this.comboCount > 0 ? Math.max(0, Math.min(1, this.comboTimer / 2.6)) : 0,
+      evadeCd: Number(this.evadeCooldown.toFixed(1)),
+      evadeMaxCd: this.evadeMaxCooldown,
+      inDangerZone: this.isSquadInDangerZone(),
       heroes: heroesSnap,
       boss: bossSnap,
     });
@@ -2062,7 +2439,11 @@ export class CombatEngine {
     if (this.calloutClearHandle) window.clearTimeout(this.calloutClearHandle);
     if (this.bossWarnClearHandle) window.clearTimeout(this.bossWarnClearHandle);
     if (this.waveBannerClearHandle) window.clearTimeout(this.waveBannerClearHandle);
+    if (this.perfectDodgeClearHandle) window.clearTimeout(this.perfectDodgeClearHandle);
+    this.weatherSystem?.destroy();
+    this.weatherSystem = null;
     useCombatStore.getState().setTouchJoystick(null);
+    useCombatStore.getState().setPerfectDodge(false);
     useCombatStore.getState().setBossWarning(null);
     useCombatStore.getState().setWaveBanner(null);
     window.removeEventListener('keydown', this.boundKeyDown);

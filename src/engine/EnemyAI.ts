@@ -121,12 +121,16 @@ export class EnemyAI {
       enemy.atkDownTimer = Math.max(0, enemy.atkDownTimer - dt);
       if (enemy.atkDownTimer <= 0) enemy.atkDownValue = 0;
 
-      // Broken timer (from Cancel Cast)
+      // Broken timer (from Break Gauge depletion or Cancel Cast)
       if (enemy.isBroken) {
         enemy.brokenTimer -= dt;
+        const brake = Math.exp(-10 * dt);
+        enemy.vx *= brake;
+        enemy.vy *= brake;
         if (enemy.brokenTimer <= 0) {
           enemy.isBroken = false;
           enemy.brokenTimer = 0;
+          enemy.breakGauge = enemy.maxBreakGauge;
         }
         continue; // Staggered during Broken
       }
@@ -907,7 +911,12 @@ export class EnemyAI {
 
   public handleEnemyDeath(ctx: CombatContext, enemy: EnemyUnit): void {
     enemy.alive = false;
-    enemy.container.visible = false;
+    enemy.isCasting = false;
+    enemy.castAction = null;
+    enemy.dissolveDuration = enemy.def.isBoss ? 0.65 : 0.44;
+    enemy.dissolveTimer = enemy.dissolveDuration;
+    enemy.hpBarGfx.clear();
+    enemy.statusGfx.clear();
     ctx.defeatedEnemyIds.add(enemy.def.id);
     ctx.telegraphs = ctx.telegraphs.filter((t) => {
       if (t.enemyUid === enemy.uid) {
@@ -918,6 +927,12 @@ export class EnemyAI {
     });
     ctx.spawnBurst(enemy.x, enemy.y - 24, 0xc084fc, enemy.def.isBoss ? 44 : 16, 45);
     ctx.spawnRingWave(enemy.x, enemy.y, enemy.def.isBoss ? 220 : 85, 0xf5c84c, 0.45);
+    ctx.spawnLootOrbs(
+      enemy.x,
+      enemy.y,
+      enemy.def.isBoss ? 9 : enemy.def.isMiniBoss ? 5 : 3,
+      enemy.def.isBoss,
+    );
     if (enemy.def.isBoss) {
       ctx.triggerShake(16);
       audioManager.playSfx('victory');

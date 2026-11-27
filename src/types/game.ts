@@ -432,6 +432,9 @@ export interface BossCombatSnapshot {
   castCancelable: boolean;
   isBroken: boolean;
   brokenTimer: number;
+  brokenMaxTimer: number;
+  breakGauge: number;
+  maxBreakGauge: number;
   hitShield: number;
   maxHitShield: number;
   burnStacks: number;
