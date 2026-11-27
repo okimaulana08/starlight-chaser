@@ -7,6 +7,7 @@ import {
   ShoppingBag,
   Sparkles,
   Star,
+  Swords,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -23,7 +24,7 @@ import {
 import { audioManager } from '../engine/AudioManager';
 import { computeHeroStats } from '../engine/CombatMath';
 import { usePlayerStore } from '../store/usePlayerStore';
-import type { HeroDef, OwnedHeroState } from '../types/game';
+import type { DungeonId, Faction, HeroDef, OwnedHeroState } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { GameIcon, MaterialIcon } from './GameIcon';
 import { CornerFiligree, RpgButton } from './RpgKit';
@@ -91,6 +92,7 @@ interface AwakenModalProps {
   onClose: () => void;
   onAwakened: (nextStar: number, message: string) => void;
   onOpenShop: (tab: ShopCategory) => void;
+  onOpenDungeon?: (dungeonId: DungeonId, faction?: Faction) => void;
 }
 
 export const AwakenModal: React.FC<AwakenModalProps> = ({
@@ -100,6 +102,7 @@ export const AwakenModal: React.FC<AwakenModalProps> = ({
   onClose,
   onAwakened,
   onOpenShop,
+  onOpenDungeon,
 }) => {
   const {
     gold,
@@ -411,22 +414,36 @@ export const AwakenModal: React.FC<AwakenModalProps> = ({
                   )}
                 </div>
 
-                {/* Shop Shortcut when Missing Materials */}
+                {/* Dungeon & Shop Shortcut when Missing Materials */}
                 {!canAwakenNow && (
-                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-950/35 border border-amber-400/35 text-[11px]">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-950/35 border border-amber-400/35 text-[11px]">
                     <span className="text-amber-200/90">
-                      Missing materials? Farm {essenceMeta.shortName} stages or visit the Shop.
+                      Missing materials? Farm {essenceMeta.shortName} in Sanctum Dungeon or visit Shop.
                     </span>
-                    <button
-                      onClick={() => {
-                        audioManager.playSfx('button');
-                        onClose();
-                        onOpenShop('AWAKEN');
-                      }}
-                      className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-300/60 text-amber-200 font-display font-black uppercase text-[10px] flex items-center gap-1 hover:bg-amber-400/30 transition"
-                    >
-                      <ShoppingBag className="w-3 h-3" /> Shop
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {onOpenDungeon && (
+                        <button
+                          onClick={() => {
+                            audioManager.playSfx('button');
+                            onClose();
+                            onOpenDungeon('AWAKEN_SANCTUM', hero.faction);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-fuchsia-500/20 border border-fuchsia-400/60 text-fuchsia-200 font-display font-black uppercase text-[10px] flex items-center gap-1 hover:bg-fuchsia-500/30 transition"
+                        >
+                          <Swords className="w-3 h-3" /> Dungeon
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          audioManager.playSfx('button');
+                          onClose();
+                          onOpenShop('AWAKEN');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-300/60 text-amber-200 font-display font-black uppercase text-[10px] flex items-center gap-1 hover:bg-amber-400/30 transition"
+                      >
+                        <ShoppingBag className="w-3 h-3" /> Shop
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -462,6 +479,7 @@ interface LevelUpModalProps {
   onLeveledUp: (newLevel: number, message: string) => void;
   onSwitchToAwaken: () => void;
   onOpenShop: (tab: ShopCategory) => void;
+  onOpenDungeon?: (dungeonId: DungeonId, faction?: Faction) => void;
 }
 
 export const LevelUpModal: React.FC<LevelUpModalProps> = ({
@@ -472,6 +490,7 @@ export const LevelUpModal: React.FC<LevelUpModalProps> = ({
   onLeveledUp,
   onSwitchToAwaken,
   onOpenShop,
+  onOpenDungeon,
 }) => {
   const {
     gold,
@@ -755,20 +774,34 @@ export const LevelUpModal: React.FC<LevelUpModalProps> = ({
                 </div>
 
                 {!canLevelNow && (
-                  <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-950/35 border border-amber-400/35 text-[11px]">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-950/35 border border-amber-400/35 text-[11px]">
                     <span className="text-amber-200/90">
-                      Need more EXP Elixirs or Gold? Visit the Starlight Shop!
+                      Need more EXP Elixirs or Gold? Raid Rift Dungeons or visit Shop!
                     </span>
-                    <button
-                      onClick={() => {
-                        audioManager.playSfx('button');
-                        onClose();
-                        onOpenShop('GROWTH');
-                      }}
-                      className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-300/60 text-amber-200 font-display font-black uppercase text-[10px] flex items-center gap-1 hover:bg-amber-400/30 transition"
-                    >
-                      <ShoppingBag className="w-3 h-3" /> Shop
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {onOpenDungeon && (
+                        <button
+                          onClick={() => {
+                            audioManager.playSfx('button');
+                            onClose();
+                            onOpenDungeon(expPotions < cost.potions ? 'EXP_CRUCIBLE' : 'GOLD_VAULT');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/60 text-emerald-200 font-display font-black uppercase text-[10px] flex items-center gap-1 hover:bg-emerald-500/30 transition"
+                        >
+                          <Swords className="w-3 h-3" /> Dungeon
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          audioManager.playSfx('button');
+                          onClose();
+                          onOpenShop('GROWTH');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-300/60 text-amber-200 font-display font-black uppercase text-[10px] flex items-center gap-1 hover:bg-amber-400/30 transition"
+                      >
+                        <ShoppingBag className="w-3 h-3" /> Shop
+                      </button>
+                    </div>
                   </div>
                 )}
 

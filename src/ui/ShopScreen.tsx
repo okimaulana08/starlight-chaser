@@ -46,6 +46,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({ initialTab = 'GROWTH', o
     astralAnvilCores,
     starCores,
     factionEssences,
+    dungeonTickets,
     roster,
     ownedRelics,
     relicRanks,
@@ -197,6 +198,9 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({ initialTab = 'GROWTH', o
               </span>
               <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-rose-400/35 text-rose-300 font-bold flex items-center gap-1.5" title="Celestial Bond Keepsakes">
                 <MaterialIcon material="bondGifts" className="w-4 h-4" /> {bondGifts}
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 border border-fuchsia-400/35 text-fuchsia-200 font-bold flex items-center gap-1.5" title="Rift Dungeon Tickets">
+                <GameIcon name="dungeon_ticket" className="w-4 h-4" /> {dungeonTickets ?? 0}
               </span>
             </>
           )}

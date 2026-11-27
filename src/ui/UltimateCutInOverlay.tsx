@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { HERO_MAP } from '../data/heroes';
 import { getFallbackCardSvg } from '../engine/AssetManager';
 import { useCombatStore } from '../store/useCombatStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { RarityCrest } from './RoleBadge';
 
 export const UltimateCutInOverlay: React.FC = () => {
@@ -10,6 +11,7 @@ export const UltimateCutInOverlay: React.FC = () => {
   const impactFlash = useCombatStore((s) => s.impactFlash);
   const speedMultiplier = useCombatStore((s) => s.speedMultiplier);
   const heroes = useCombatStore((s) => s.heroes);
+  const enableUltVideo = useSettingsStore((s) => s.enableUltVideo);
 
   const [cutInFallback, setCutInFallback] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
@@ -49,7 +51,7 @@ export const UltimateCutInOverlay: React.FC = () => {
         ? getFallbackCardSvg('HERO', activeCutIn.heroId)
         : '';
 
-  const showVideo = Boolean(activeCutIn?.cutInVideo && !videoFailed);
+  const showVideo = Boolean(enableUltVideo && activeCutIn?.cutInVideo && !videoFailed);
 
   return (
     <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">

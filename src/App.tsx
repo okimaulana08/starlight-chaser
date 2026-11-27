@@ -3,9 +3,10 @@ import { AnimatePresence, motion } from 'framer-motion';
 import type { ShopCategory } from './data/materials';
 import { audioManager } from './engine/AudioManager';
 import { usePlayerStore } from './store/usePlayerStore';
-import type { ScreenId } from './types/game';
+import type { DungeonId, Faction, ScreenId } from './types/game';
 import { CodexScreen } from './ui/CodexScreen';
 import { CombatHUD } from './ui/CombatHUD';
+import { DungeonScreen } from './ui/DungeonScreen';
 import { GachaScreen } from './ui/GachaScreen';
 import { LobbyScreen } from './ui/LobbyScreen';
 import { ShopScreen } from './ui/ShopScreen';
@@ -16,7 +17,12 @@ export const App: React.FC = () => {
   const [entered, setEntered] = useState(false);
   const [screen, setScreen] = useState<ScreenId>('LOBBY');
   const [activeStageId, setActiveStageId] = useState<string>('stage_1_1');
+  const [combatReturnScreen, setCombatReturnScreen] = useState<'LOBBY' | 'DUNGEON'>('LOBBY');
   const [shopTab, setShopTab] = useState<ShopCategory>('GROWTH');
+  const [dungeonFocus, setDungeonFocus] = useState<{
+    dungeonId: DungeonId;
+    faction?: Faction;
+  }>({ dungeonId: 'GOLD_VAULT' });
 
   useEffect(() => {
     if (entered && screen !== 'COMBAT') {
@@ -24,8 +30,11 @@ export const App: React.FC = () => {
     }
   }, [entered, screen]);
 
-  const handleStartCombat = (stageId: string) => {
-    usePlayerStore.getState().setSelectedStage(stageId);
+  const handleStartCombat = (stageId: string, returnTo: 'LOBBY' | 'DUNGEON' = 'LOBBY') => {
+    if (!stageId.startsWith('dungeon__')) {
+      usePlayerStore.getState().setSelectedStage(stageId);
+    }
+    setCombatReturnScreen(returnTo);
     setActiveStageId(stageId);
     setScreen('COMBAT');
   };
@@ -33,6 +42,11 @@ export const App: React.FC = () => {
   const handleOpenShop = (initialTab: ShopCategory = 'GROWTH') => {
     setShopTab(initialTab);
     setScreen('SHOP');
+  };
+
+  const handleOpenDungeon = (dungeonId: DungeonId = 'GOLD_VAULT', faction?: Faction) => {
+    setDungeonFocus({ dungeonId, faction });
+    setScreen('DUNGEON');
   };
 
   return (
@@ -59,19 +73,33 @@ export const App: React.FC = () => {
             className="w-full h-full"
           >
             {screen === 'LOBBY' && (
-              <LobbyScreen onNavigate={setScreen} onStartCombat={handleStartCombat} />
+              <LobbyScreen
+                onNavigate={setScreen}
+                onStartCombat={(stageId) => handleStartCombat(stageId, 'LOBBY')}
+                onOpenDungeon={handleOpenDungeon}
+              />
             )}
             {screen === 'COMBAT' && (
               <CombatHUD
                 stageId={activeStageId}
-                onSelectStage={handleStartCombat}
-                onExit={() => setScreen('LOBBY')}
+                onSelectStage={(stageId) => handleStartCombat(stageId, combatReturnScreen)}
+                onExit={() => setScreen(combatReturnScreen)}
+              />
+            )}
+            {screen === 'DUNGEON' && (
+              <DungeonScreen
+                initialDungeonId={dungeonFocus.dungeonId}
+                initialFaction={dungeonFocus.faction}
+                onBack={() => setScreen('LOBBY')}
+                onDeployDungeon={(stageId) => handleStartCombat(stageId, 'DUNGEON')}
+                onOpenShop={handleOpenShop}
               />
             )}
             {screen === 'SQUAD' && (
               <SquadScreen
                 onBack={() => setScreen('LOBBY')}
                 onOpenShop={handleOpenShop}
+                onOpenDungeon={handleOpenDungeon}
               />
             )}
             {screen === 'SHOP' && (

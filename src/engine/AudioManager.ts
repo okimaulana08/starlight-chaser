@@ -52,6 +52,48 @@ class AudioManager {
     return this.muted;
   }
 
+  public getVolumes(): { bgmVolume: number; sfxVolume: number; muted: boolean } {
+    return {
+      bgmVolume: this.bgmVolume,
+      sfxVolume: this.sfxVolume,
+      muted: this.muted,
+    };
+  }
+
+  public applySettings(opts: { bgmVolume: number; sfxVolume: number; muted: boolean }): void {
+    this.bgmVolume = Math.max(0, Math.min(1, opts.bgmVolume));
+    this.sfxVolume = Math.max(0, Math.min(1, opts.sfxVolume));
+    this.muted = opts.muted;
+    Howler.mute(this.muted);
+    if (this.currentBgmKey) {
+      const cur = this.bgmMap.get(this.currentBgmKey);
+      if (cur && cur.playing()) {
+        cur.volume(this.bgmVolume);
+      }
+    }
+    this.sfxMap.forEach((howl) => howl.volume(this.sfxVolume));
+  }
+
+  public setBgmVolume(volume: number): void {
+    this.bgmVolume = Math.max(0, Math.min(1, volume));
+    if (this.currentBgmKey) {
+      const cur = this.bgmMap.get(this.currentBgmKey);
+      if (cur && cur.playing()) {
+        cur.volume(this.bgmVolume);
+      }
+    }
+  }
+
+  public setSfxVolume(volume: number): void {
+    this.sfxVolume = Math.max(0, Math.min(1, volume));
+    this.sfxMap.forEach((howl) => howl.volume(this.sfxVolume));
+  }
+
+  public setMuted(muted: boolean): void {
+    this.muted = muted;
+    Howler.mute(this.muted);
+  }
+
   public toggleMute(): boolean {
     this.muted = !this.muted;
     Howler.mute(this.muted);

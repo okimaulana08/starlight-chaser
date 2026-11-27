@@ -15,7 +15,8 @@ export type GameIconName =
   | 'supply'
   | 'shop'
   | 'reward_chest'
-  | 'star_dust';
+  | 'star_dust'
+  | 'dungeon_ticket';
 
 interface GameIconProps {
   name: GameIconName;
@@ -36,9 +37,11 @@ export const GameIcon: React.FC<GameIconProps> = ({ name, className = 'w-6 h-6',
   const src =
     failed && (name === 'shop' || name === 'reward_chest')
       ? '/assets/icons/icon_supply.webp'
-      : failed && name === 'star_dust'
-        ? '/assets/icons/icon_crystal.webp'
-        : primarySrc;
+      : failed && name === 'dungeon_ticket'
+        ? '/assets/icons/icon_battle.webp'
+        : failed && name === 'star_dust'
+          ? '/assets/icons/icon_crystal.webp'
+          : primarySrc;
   return (
     <img
       src={src}

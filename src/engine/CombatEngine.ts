@@ -1,4 +1,5 @@
 import { Application, Container, Graphics, Sprite } from 'pixi.js';
+import { resolveAnyStageDef } from '../data/dungeons';
 import { ENEMY_MAP } from '../data/enemies';
 import { generateEquipment } from '../data/equipment';
 import { FACTIONS } from '../data/factions';
@@ -8,9 +9,9 @@ import {
   getHeroLevelCap,
   getStageCombatHeroExp,
 } from '../data/materials';
-import { STAGE_MAP } from '../data/stages';
 import { useCombatStore } from '../store/useCombatStore';
 import { usePlayerStore, MAX_RELIC_RANK } from '../store/usePlayerStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import type {
   BossCombatSnapshot,
   CombatLootSummary,
@@ -188,7 +189,7 @@ export class CombatEngine {
   }
 
   private async buildAureliaArena(): Promise<void> {
-    const stage = STAGE_MAP[this.stageId] ?? STAGE_MAP.stage_1_1;
+    const stage = resolveAnyStageDef(this.stageId);
     const arenaTint = stage.arenaTintHex ?? 0xffffff;
     const arenaAssetUrl = stage.arenaAsset ?? '/assets/environments/env_aurelia_floor.webp';
     const [moteColorA, moteColorB] = stage.ambientMoteColors ?? [0xfde047, 0x7dd3fc];
@@ -242,8 +243,14 @@ export class CombatEngine {
   }
 
   private setupCombatContext(): void {
-    const stage = STAGE_MAP[this.stageId] ?? STAGE_MAP.stage_1_1;
+    const stage = resolveAnyStageDef(this.stageId);
+    const settings = useSettingsStore.getState();
     useCombatStore.getState().resetForStage(stage.id, `${stage.code} ${stage.name}`, stage.waves.length);
+    useCombatStore.getState().setSnapshot({
+      speedMultiplier: settings.defaultBattleSpeed,
+      autoSkill: settings.defaultAutoSkill,
+      autoMove: settings.defaultAutoMove,
+    });
 
     this.ctx = {
       arenaWidth: ARENA_W,
@@ -274,9 +281,11 @@ export class CombatEngine {
         this.ctx.ultGauge = Math.min(this.ctx.maxUltGauge, this.ctx.ultGauge + amount * bonusMult);
       },
       triggerShake: (amount) => {
+        if (!useSettingsStore.getState().enableScreenShake) return;
         this.ctx.cameraShake = Math.max(this.ctx.cameraShake, amount);
       },
       spawnDamageText: (x, y, text, color, isCrit) => {
+        if (!useSettingsStore.getState().enableDamageNumbers) return;
         this.pool.spawnFloatingText(x, y, text, color, isCrit);
       },
       spawnBurst: (x, y, color, count, radius) => {
@@ -490,7 +499,7 @@ export class CombatEngine {
   }
 
   private spawnWave(index: number): void {
-    const stage = STAGE_MAP[this.stageId] ?? STAGE_MAP.stage_1_1;
+    const stage = resolveAnyStageDef(this.stageId);
     const wave = stage.waves[index];
     if (!wave) return;
 
@@ -1546,7 +1555,7 @@ export class CombatEngine {
 
     const aliveEnemies = this.ctx.enemies.filter((e) => e.alive);
     if (aliveEnemies.length === 0) {
-      const stage = STAGE_MAP[this.stageId] ?? STAGE_MAP.stage_1_1;
+      const stage = resolveAnyStageDef(this.stageId);
       if (this.waveIndex + 1 < stage.waves.length) {
         this.waveTransitionTimer += dt;
         if (this.waveTransitionTimer >= 1.1) {
@@ -1575,8 +1584,10 @@ export class CombatEngine {
     const player = usePlayerStore.getState();
     player.recordDefeatedEnemies(Array.from(this.ctx.defeatedEnemyIds));
 
-    const stage = STAGE_MAP[this.stageId] ?? STAGE_MAP.stage_1_1;
-    const isFirstClear = victory && !player.clearedStages.includes(stage.id);
+    const stage = resolveAnyStageDef(this.stageId);
+    const isFirstClear = victory && !stage.isDungeon && !player.clearedStages.includes(stage.id);
+    const aliveHeroCount = this.ctx.heroes.filter((h) => h.alive).length;
+    const starsEarned = !victory ? 0 : aliveHeroCount >= 4 ? 3 : aliveHeroCount >= 3 ? 2 : 1;
     const randBetween = ([a, b]: [number, number]) =>
       Math.round(a + Math.random() * (b - a));
 
@@ -1601,10 +1612,12 @@ export class CombatEngine {
 
       // Biome Primary Faction Essence + Bonus Secondary Essence (prevents early-game soft-lock!)
       const primaryQty = randBetween(stage.rewards.primaryEssenceQty);
-      essencesEarned[stage.rewards.primaryEssence] =
-        (essencesEarned[stage.rewards.primaryEssence] ?? 0) + primaryQty;
+      if (primaryQty > 0) {
+        essencesEarned[stage.rewards.primaryEssence] =
+          (essencesEarned[stage.rewards.primaryEssence] ?? 0) + primaryQty;
+      }
 
-      if (Math.random() < (stage.rewards.bonusRandomEssenceChance ?? 0.25)) {
+      if ((stage.rewards.bonusRandomEssenceChance ?? 0) > 0 && Math.random() < (stage.rewards.bonusRandomEssenceChance ?? 0)) {
         const allFactions: Faction[] = ['SOLARIS', 'ASTRAL', 'VERDANT', 'ASHEN'];
         const otherFactions = allFactions.filter((f) => f !== stage.rewards.primaryEssence);
         const bonusFac = otherFactions[Math.floor(Math.random() * otherFactions.length)];
@@ -1669,7 +1682,14 @@ export class CombatEngine {
     // Calculate per-hero Combat EXP & automatic Level Ups (respecting Awakening Level Cap!)
     const heroExpResults: Record<string, HeroBattleExpResult> = {};
     const baseStageHeroExp = victory
-      ? getStageCombatHeroExp(stage.chapter, stage.stageNumber, stage.isMiniBoss, stage.isBossStage)
+      ? Math.round(
+          getStageCombatHeroExp(
+            stage.chapter,
+            stage.stageNumber,
+            stage.isMiniBoss,
+            stage.isBossStage,
+          ) * (stage.combatExpMultiplier ?? 1.0),
+        )
       : 0;
 
     for (const h of this.ctx.heroes) {
@@ -1720,7 +1740,13 @@ export class CombatEngine {
       healingByHero,
       heroExpResults,
       goldEarned: victory ? randBetween(stage.rewards.gold) : 0,
-      crystalsEarned: isFirstClear ? stage.firstClearCrystals : victory ? 40 : 0,
+      crystalsEarned: stage.isDungeon
+        ? 0
+        : isFirstClear
+          ? stage.firstClearCrystals
+          : victory
+            ? 40
+            : 0,
       expPotionsEarned: victory ? randBetween(stage.rewards.expPotions) : 0,
       forgeStonesEarned: victory ? randBetween(stage.rewards.forgeStones) : 0,
       starIronIngotsEarned,
@@ -1729,13 +1755,21 @@ export class CombatEngine {
       relicFragmentsEarned,
       essencesEarned,
       bondGiftsEarned: victory
-        ? stage.isBossStage
-          ? 2
-          : stage.isMiniBoss || Math.random() < 0.35
-            ? 1
-            : 0
+        ? stage.rewards.bondGiftsRange
+          ? randBetween(stage.rewards.bondGiftsRange)
+          : stage.isDungeon
+            ? 0
+            : stage.isBossStage
+              ? 2
+              : stage.isMiniBoss || Math.random() < 0.35
+                ? 1
+                : 0
         : 0,
       isFirstClear,
+      isDungeon: stage.isDungeon,
+      dungeonId: stage.dungeonId,
+      dungeonTier: stage.dungeonTier,
+      starsEarned,
       droppedEquipment,
       droppedRelics,
     };
@@ -1793,7 +1827,7 @@ export class CombatEngine {
       };
     });
 
-    const activeStage = STAGE_MAP[this.stageId] ?? STAGE_MAP.stage_1_1;
+    const activeStage = resolveAnyStageDef(this.stageId);
     const bossUnit = this.ctx.enemies.find((e) => e.def.isBoss && e.alive);
     let bossSnap: BossCombatSnapshot | null = null;
     if (bossUnit) {

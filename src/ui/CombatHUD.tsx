@@ -7,6 +7,7 @@ import {
   LogOut,
   Pause,
   Play,
+  Settings,
   Shield,
   Sparkles,
   Swords,
@@ -15,6 +16,7 @@ import {
   Wind,
   Zap,
 } from 'lucide-react';
+import { parseDungeonStageId } from '../data/dungeons';
 import { HERO_MAP } from '../data/heroes';
 import { getNextStageId, isStageUnlocked, STAGE_MAP } from '../data/stages';
 import { getFallbackCardSvg } from '../engine/AssetManager';
@@ -22,9 +24,11 @@ import { audioManager } from '../engine/AudioManager';
 import { CombatEngine } from '../engine/CombatEngine';
 import { useCombatStore } from '../store/useCombatStore';
 import { usePlayerStore } from '../store/usePlayerStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import type { SkillDef } from '../types/game';
 import { GameIcon } from './GameIcon';
 import { ROLE_META } from './RoleBadge';
+import { SettingsModal } from './SettingsModal';
 import { UltimateCutInOverlay } from './UltimateCutInOverlay';
 import { VictoryOverlay } from './VictoryOverlay';
 
@@ -67,9 +71,16 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
   const hostRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<CombatEngine | null>(null);
   const [runSeed, setRunSeed] = useState(0);
-  const [muted, setMuted] = useState(audioManager.isMuted());
+  const [showCombatSettings, setShowCombatSettings] = useState(false);
+  const { muted, toggleMuted } = useSettingsStore();
   const clearedStages = usePlayerStore((s) => s.clearedStages);
-  const nextStageId = getNextStageId(stageId);
+  const getDungeonEntriesLeft = usePlayerStore((s) => s.getDungeonEntriesLeft);
+  const parsedDungeon = parseDungeonStageId(stageId);
+  const isDungeonStage = Boolean(parsedDungeon);
+  const dungeonCanReplay = parsedDungeon
+    ? getDungeonEntriesLeft(parsedDungeon.dungeonId).canEnter
+    : true;
+  const nextStageId = isDungeonStage ? null : getNextStageId(stageId);
   const candidateNext = nextStageId ? STAGE_MAP[nextStageId] : null;
   const nextStage =
     candidateNext && isStageUnlocked(candidateNext, clearedStages) ? candidateNext : null;
@@ -196,7 +207,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                 <span className="hidden sm:inline">AUTO SKILL {autoSkill ? 'ON' : 'OFF'}</span>
               </button>
               <button
-                onClick={() => setMuted(audioManager.toggleMute())}
+                onClick={() => toggleMuted()}
                 className="rounded-full bg-slate-950/90 border border-slate-700 p-1.5 text-slate-200 hover:text-white"
                 title="Toggle Sound"
               >
@@ -687,6 +698,15 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                 Resume Battle
               </button>
               <button
+                onClick={() => {
+                  audioManager.playSfx('button');
+                  setShowCombatSettings(true);
+                }}
+                className="rpg-blade w-full py-2.5 text-amber-200 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5"
+              >
+                <Settings className="w-3.5 h-3.5" /> Audio & Combat Settings
+              </button>
+              <button
                 onClick={() => setRunSeed((s) => s + 1)}
                 className="rpg-blade w-full py-2.5 text-white font-bold text-xs uppercase tracking-wider"
               >
@@ -696,12 +716,18 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                 onClick={onExit}
                 className="w-full py-2.5 rounded-xl bg-rose-950/75 border border-rose-500/50 text-rose-200 font-bold text-xs uppercase tracking-wider hover:bg-rose-900/75"
               >
-                Retreat to Command Deck
+                {isDungeonStage ? 'Return to Rift Dungeons' : 'Retreat to Command Deck'}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      <SettingsModal
+        open={showCombatSettings}
+        combatOnlyMode
+        onClose={() => setShowCombatSettings(false)}
+      />
 
       {/* CINEMATIC FULL-SCREEN MVP VICTORY / DEFEAT STAGE */}
       {combatResult && (
@@ -710,6 +736,8 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
           heroesSnapshot={heroes}
           nextStageCode={nextStage?.code}
           onNextStage={nextStage ? () => onSelectStage(nextStage.id) : undefined}
+          canReplay={dungeonCanReplay}
+          exitLabel={isDungeonStage ? 'Dungeons' : 'Lobby'}
           onReplay={() => setRunSeed((s) => s + 1)}
           onExit={onExit}
         />

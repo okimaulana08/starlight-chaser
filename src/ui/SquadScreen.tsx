@@ -29,7 +29,7 @@ import { audioManager } from '../engine/AudioManager';
 import { computeHeroStats, getActiveFactionBonuses } from '../engine/CombatMath';
 import { MAX_RELIC_RANK, usePlayerStore } from '../store/usePlayerStore';
 import { getEnhanceCost, getSalvageYield } from '../systems/ForgeSystem';
-import type { EquipmentSlot } from '../types/game';
+import type { DungeonId, EquipmentSlot, Faction } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
 import { AwakenModal, LevelUpModal } from './HeroGrowthModals';
@@ -49,9 +49,10 @@ import { StarlightBackdrop } from './StarlightBackdrop';
 interface SquadScreenProps {
   onBack: () => void;
   onOpenShop: (initialTab?: 'GROWTH' | 'AWAKEN' | 'FORGE' | 'RELIC') => void;
+  onOpenDungeon?: (dungeonId: DungeonId, faction?: Faction) => void;
 }
 
-export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) => {
+export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop, onOpenDungeon }) => {
   const {
     gold,
     expPotions,
@@ -911,6 +912,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
           showNotice(msg, 'ok');
         }}
         onOpenShop={onOpenShop}
+        onOpenDungeon={onOpenDungeon}
       />
 
       <LevelUpModal
@@ -924,6 +926,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) 
         }}
         onSwitchToAwaken={() => setShowAwakenModal(true)}
         onOpenShop={onOpenShop}
+        onOpenDungeon={onOpenDungeon}
       />
     </div>
   );

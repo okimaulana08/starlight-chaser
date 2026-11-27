@@ -1,12 +1,20 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import {
+  DAILY_DUNGEON_FREE_ENTRIES,
+  buildDungeonStageDef,
+  getDungeonTierStarKey,
+} from '../data/dungeons';
 import { createStarterEquipment, generateEquipment } from '../data/equipment';
 import { HERO_MAP } from '../data/heroes';
 import {
   REGION_CHEST_REWARDS,
   SHOP_OFFERS,
   getAwakeningCost,
+  getExpToNextLevel,
+  getHeroLevelCap,
   getLevelUpCost,
+  getStageCombatHeroExp,
   type RegionChestRewardDef,
 } from '../data/materials';
 import { RELIC_MAP } from '../data/relics';
@@ -21,10 +29,15 @@ import { executeGachaPulls } from '../systems/GachaSystem';
 import type {
   BannerDef,
   CombatLootSummary,
+  DroppedRelicSummary,
+  DungeonId,
   EquipmentInstance,
+  EquipmentRarity,
+  EquipmentSetId,
   EquipmentSlot,
   Faction,
   GachaPullResult,
+  HeroBattleExpResult,
   OwnedHeroState,
   PartyPreset,
   PlayerSaveState,
@@ -72,7 +85,7 @@ function createOwnedHero(heroId: string, level = 1): OwnedHeroState {
   };
 }
 
-function buildInitialSave(): PlayerSaveState {
+export function buildDefaultSaveState(): PlayerSaveState {
   const starterGear = createStarterEquipment();
 
   // Balanced clean starter state: 5 starter Chasers (Lv.8 ★0), ZERO free SSR Relics!
@@ -151,12 +164,28 @@ function buildInitialSave(): PlayerSaveState {
     shopPurchases: {},
     shopResetDay: getTodayKey(),
     lastDailySupplyAt: 0,
+    dungeonTickets: 2,
+    dungeonEntriesUsed: {},
+    dungeonResetDay: getTodayKey(),
+    dungeonBestStars: {},
+    lastManualSaveAt: 0,
   };
 }
 
 interface PlayerStore extends PlayerSaveState {
+  setCommanderName: (name: string) => void;
   setFavoriteHero: (heroId: string) => void;
   setSelectedStage: (stageId: string) => void;
+  getDungeonEntriesLeft: (dungeonId: DungeonId) => {
+    freeLeft: number;
+    tickets: number;
+    canEnter: boolean;
+  };
+  sweepDungeonTier: (
+    dungeonId: DungeonId,
+    tier: 1 | 2 | 3 | 4 | 5,
+    opts?: { faction?: Faction; setId?: EquipmentSetId },
+  ) => { ok: boolean; message: string; summary?: CombatLootSummary };
   selectPreset: (presetIndex: 0 | 1 | 2) => void;
   renamePreset: (presetIndex: 0 | 1 | 2, name: string) => void;
   setSquadSlot: (slotIndex: number, heroId: string) => void;
@@ -252,7 +281,12 @@ function addRelicToState(
 export const usePlayerStore = create<PlayerStore>()(
   persist(
     (set, get) => ({
-      ...buildInitialSave(),
+      ...buildDefaultSaveState(),
+
+      setCommanderName: (name) => {
+        const trimmed = name.trim().slice(0, 24);
+        if (trimmed) set({ commanderName: trimmed });
+      },
 
       setFavoriteHero: (heroId) => {
         if (get().roster[heroId]) {
@@ -261,6 +295,174 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       setSelectedStage: (stageId) => set({ selectedStageId: stageId }),
+
+      getDungeonEntriesLeft: (dungeonId) => {
+        const state = get();
+        const today = getTodayKey();
+        const usedMap = state.dungeonResetDay === today ? (state.dungeonEntriesUsed ?? {}) : {};
+        const used = usedMap[dungeonId] ?? 0;
+        const freeLeft = Math.max(0, DAILY_DUNGEON_FREE_ENTRIES - used);
+        const tickets = state.dungeonTickets ?? 0;
+        return {
+          freeLeft,
+          tickets,
+          canEnter: freeLeft > 0 || tickets > 0,
+        };
+      },
+
+      sweepDungeonTier: (dungeonId, tier, opts) => {
+        const state = get();
+        const starKey = getDungeonTierStarKey(dungeonId, tier);
+        const bestStars = state.dungeonBestStars?.[starKey] ?? 0;
+        if (bestStars < 3) {
+          return {
+            ok: false,
+            message: 'Clear this Tier with 3 Stars (0 hero deaths) first to unlock Quick Sweep!',
+          };
+        }
+        const entryInfo = get().getDungeonEntriesLeft(dungeonId);
+        if (!entryInfo.canEnter) {
+          return {
+            ok: false,
+            message: 'No daily entries or Rift Tickets left! Visit Shop or wait for daily reset.',
+          };
+        }
+
+        const stage = buildDungeonStageDef(dungeonId, tier, opts);
+        const randBetween = ([a, b]: [number, number]) =>
+          Math.round(a + Math.random() * (b - a));
+        const rollWeightedRarity = (weights: Record<EquipmentRarity, number>): EquipmentRarity => {
+          const entries = Object.entries(weights) as Array<[EquipmentRarity, number]>;
+          const total = entries.reduce((sum, [, w]) => sum + w, 0);
+          let r = Math.random() * total;
+          for (const [rarity, w] of entries) {
+            r -= w;
+            if (r <= 0) return rarity;
+          }
+          return 'RARE';
+        };
+
+        const droppedEquipment: EquipmentInstance[] = [];
+        for (let i = 0; i < stage.rewards.equipmentDrops; i++) {
+          const rarity = rollWeightedRarity(stage.rewards.rarityWeights);
+          const setId = stage.rewards.targetSetIds[0];
+          droppedEquipment.push(generateEquipment({ rarity, setId }));
+        }
+
+        const essencesEarned: Partial<Record<Faction, number>> = {};
+        const primaryQty = randBetween(stage.rewards.primaryEssenceQty);
+        if (primaryQty > 0) {
+          essencesEarned[stage.rewards.primaryEssence] = primaryQty;
+        }
+
+        const droppedRelics: DroppedRelicSummary[] = [];
+        if (
+          stage.rewards.relicDropPool &&
+          stage.rewards.relicDropPool.length > 0 &&
+          Math.random() < (stage.rewards.relicDropChance ?? 0)
+        ) {
+          const picked =
+            stage.rewards.relicDropPool[
+              Math.floor(Math.random() * stage.rewards.relicDropPool.length)
+            ];
+          if (picked) {
+            const alreadyOwned = state.ownedRelics.includes(picked);
+            const curRank = state.relicRanks[picked] ?? 0;
+            const nextRank = alreadyOwned ? Math.min(MAX_RELIC_RANK, curRank + 1) : 1;
+            const isMaxed = alreadyOwned && curRank >= MAX_RELIC_RANK;
+            droppedRelics.push({
+              relicId: picked,
+              isNew: !alreadyOwned,
+              newRank: nextRank,
+              bonusFragments: isMaxed ? 15 : undefined,
+            });
+          }
+        }
+
+        const baseHeroExp = Math.round(
+          getStageCombatHeroExp(
+            stage.chapter,
+            stage.stageNumber,
+            stage.isMiniBoss,
+            stage.isBossStage,
+          ) * (stage.combatExpMultiplier ?? 1.0),
+        );
+        const heroExpResults: Record<string, HeroBattleExpResult> = {};
+        const damageByHero: Record<string, number> = {};
+        const healingByHero: Record<string, number> = {};
+
+        state.squadIds.forEach((hid, idx) => {
+          const own = state.roster[hid];
+          if (!own) return;
+          const levelCap = getHeroLevelCap(own.awakening);
+          const prevLevel = own.level;
+          const prevExp = own.exp ?? 0;
+          const expGained = Math.round(baseHeroExp * (idx === 1 ? 1.15 : 1.0));
+          let curLevel = prevLevel;
+          let curExp = prevExp + expGained;
+          let expToNext = getExpToNextLevel(curLevel);
+          while (curLevel < levelCap && curExp >= expToNext) {
+            curExp -= expToNext;
+            curLevel += 1;
+            expToNext = getExpToNextLevel(curLevel);
+          }
+          const atLevelCap = curLevel >= levelCap;
+          if (atLevelCap) curExp = Math.min(curExp, expToNext);
+
+          heroExpResults[hid] = {
+            heroId: hid,
+            expGained,
+            prevLevel,
+            newLevel: curLevel,
+            levelsGained: curLevel - prevLevel,
+            prevExp,
+            newExp: curExp,
+            expToNext,
+            atLevelCap,
+            levelCap,
+          };
+          damageByHero[hid] = 0;
+          healingByHero[hid] = 0;
+        });
+
+        const summary: CombatLootSummary = {
+          victory: true,
+          stageId: stage.id,
+          stageName: `${stage.code} ${stage.name}`,
+          durationSec: 0,
+          damageByHero,
+          healingByHero,
+          heroExpResults,
+          goldEarned: randBetween(stage.rewards.gold),
+          crystalsEarned: 0,
+          expPotionsEarned: randBetween(stage.rewards.expPotions),
+          forgeStonesEarned: randBetween(stage.rewards.forgeStones),
+          starIronIngotsEarned: stage.rewards.starIronIngots
+            ? randBetween(stage.rewards.starIronIngots)
+            : 0,
+          astralAnvilCoresEarned: stage.rewards.astralAnvilCores
+            ? randBetween(stage.rewards.astralAnvilCores)
+            : 0,
+          starCoresEarned: stage.rewards.starCores ? randBetween(stage.rewards.starCores) : 0,
+          relicFragmentsEarned: stage.rewards.relicFragments
+            ? randBetween(stage.rewards.relicFragments)
+            : 0,
+          essencesEarned,
+          bondGiftsEarned: stage.rewards.bondGiftsRange
+            ? randBetween(stage.rewards.bondGiftsRange)
+            : 0,
+          isFirstClear: false,
+          isDungeon: true,
+          dungeonId,
+          dungeonTier: tier,
+          starsEarned: 3,
+          droppedEquipment,
+          droppedRelics,
+        };
+
+        get().applyCombatRewards(summary);
+        return { ok: true, message: `Swept ${stage.name}!`, summary };
+      },
 
       selectPreset: (presetIndex) => {
         const state = get();
@@ -722,6 +924,8 @@ export const usePlayerStore = create<PlayerStore>()(
             patch.starCores = state.starCores + amount;
           } else if (material === 'relicFragments') {
             patch.relicFragments = (patch.relicFragments ?? state.relicFragments) + amount;
+          } else if (material === 'dungeonTickets') {
+            patch.dungeonTickets = (state.dungeonTickets ?? 0) + amount;
           }
         } else if (offer.reward.kind === 'OMNI_ESSENCE') {
           const amt = offer.reward.amountEach;
@@ -994,9 +1198,32 @@ export const usePlayerStore = create<PlayerStore>()(
       applyCombatRewards: (summary) => {
         if (!summary.victory) return;
         const state = get();
-        const cleared = state.clearedStages.includes(summary.stageId)
+        const cleared = summary.isDungeon
           ? state.clearedStages
-          : [...state.clearedStages, summary.stageId];
+          : state.clearedStages.includes(summary.stageId)
+            ? state.clearedStages
+            : [...state.clearedStages, summary.stageId];
+
+        const today = getTodayKey();
+        let nextDungeonEntriesUsed =
+          state.dungeonResetDay === today ? { ...(state.dungeonEntriesUsed ?? {}) } : {};
+        let nextDungeonResetDay = state.dungeonResetDay === today ? state.dungeonResetDay : today;
+        let nextDungeonTickets = state.dungeonTickets ?? 0;
+        let nextDungeonBestStars = { ...(state.dungeonBestStars ?? {}) };
+
+        if (summary.isDungeon && summary.dungeonId) {
+          const usedToday = nextDungeonEntriesUsed[summary.dungeonId] ?? 0;
+          if (usedToday < DAILY_DUNGEON_FREE_ENTRIES) {
+            nextDungeonEntriesUsed[summary.dungeonId] = usedToday + 1;
+          } else if (nextDungeonTickets > 0) {
+            nextDungeonTickets -= 1;
+          }
+          if (summary.dungeonTier) {
+            const starKey = getDungeonTierStarKey(summary.dungeonId, summary.dungeonTier);
+            const earned = summary.starsEarned ?? 3;
+            nextDungeonBestStars[starKey] = Math.max(nextDungeonBestStars[starKey] ?? 0, earned);
+          }
+        }
 
         const nextEssences: Record<Faction, number> = { ...state.factionEssences };
         for (const [fac, qty] of Object.entries(summary.essencesEarned) as Array<[Faction, number]>) {
@@ -1052,6 +1279,10 @@ export const usePlayerStore = create<PlayerStore>()(
           relicRanks: nextRelicRanks,
           unlockedCodexIds: nextCodex,
           clearedStages: cleared,
+          dungeonTickets: nextDungeonTickets,
+          dungeonEntriesUsed: nextDungeonEntriesUsed,
+          dungeonResetDay: nextDungeonResetDay,
+          dungeonBestStars: nextDungeonBestStars,
         });
       },
 
@@ -1074,6 +1305,7 @@ export const usePlayerStore = create<PlayerStore>()(
           expPotions: state.expPotions + 4,
           forgeStones: state.forgeStones + 5,
           starCores: state.starCores + 1,
+          dungeonTickets: (state.dungeonTickets ?? 0) + 1,
           factionEssences: {
             SOLARIS: state.factionEssences.SOLARIS + 1,
             ASTRAL: state.factionEssences.ASTRAL + 1,
@@ -1084,11 +1316,11 @@ export const usePlayerStore = create<PlayerStore>()(
         });
         return {
           ok: true,
-          message: 'Claimed Supply! +1,800g • +160 Crystals • +4 EXP • +5 Stones • +1 Core & Essences',
+          message: 'Claimed Supply! +1,800g • +160 Crystals • +4 EXP • +5 Stones • +1 Core • +1 Rift Ticket',
         };
       },
 
-      resetSave: () => set(buildInitialSave()),
+      resetSave: () => set(buildDefaultSaveState()),
     }),
     {
       name: 'starlight-chasers-save-v3',

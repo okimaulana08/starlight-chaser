@@ -2,7 +2,26 @@ export type Tier = 'R' | 'SR' | 'SSR';
 export type Role = 'TANK' | 'ASSAULT' | 'RANGER' | 'MAGE' | 'HEALER';
 export type Faction = 'SOLARIS' | 'ASTRAL' | 'VERDANT' | 'ASHEN';
 export type AimType = 'CIRCLE' | 'CONE' | 'LINE' | 'DASH' | 'SELF';
-export type ScreenId = 'LOBBY' | 'COMBAT' | 'SQUAD' | 'GACHA' | 'CODEX' | 'SHOP';
+export type ScreenId = 'LOBBY' | 'COMBAT' | 'SQUAD' | 'GACHA' | 'CODEX' | 'SHOP' | 'DUNGEON';
+
+export type DungeonId =
+  | 'GOLD_VAULT'
+  | 'EXP_CRUCIBLE'
+  | 'AWAKEN_SANCTUM'
+  | 'FORGE_FOUNDRY'
+  | 'RELIC_ABYSS';
+
+export interface GameSettings {
+  bgmVolume: number; // 0..1
+  sfxVolume: number; // 0..1
+  muted: boolean;
+  enableUltVideo: boolean;
+  enableScreenShake: boolean;
+  enableDamageNumbers: boolean;
+  defaultBattleSpeed: 1 | 2;
+  defaultAutoSkill: boolean;
+  defaultAutoMove: boolean;
+}
 
 export type EquipmentSlot = 'WEAPON' | 'ARMOR' | 'ACCESSORY' | 'EMBLEM';
 export type EquipmentRarity = 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
@@ -25,7 +44,8 @@ export type MaterialKey =
   | 'essence_SOLARIS'
   | 'essence_ASTRAL'
   | 'essence_VERDANT'
-  | 'essence_ASHEN';
+  | 'essence_ASHEN'
+  | 'dungeonTickets';
 
 export interface PartyPreset {
   id: string;
@@ -240,6 +260,10 @@ export interface StageDef {
   ambientMoteColors?: [number, number];
   waves: StageWave[];
   firstClearCrystals: number;
+  isDungeon?: boolean;
+  dungeonId?: DungeonId;
+  dungeonTier?: number;
+  combatExpMultiplier?: number;
   rewards: {
     gold: [number, number];
     expPotions: [number, number];
@@ -248,6 +272,7 @@ export interface StageDef {
     astralAnvilCores?: [number, number];
     starCores?: [number, number];
     relicFragments?: [number, number];
+    bondGiftsRange?: [number, number];
     primaryEssence: Faction;
     primaryEssenceQty: [number, number];
     bonusRandomEssenceChance?: number;
@@ -258,6 +283,35 @@ export interface StageDef {
     equipmentDrops: number;
     rarityWeights: Record<EquipmentRarity, number>;
   };
+}
+
+export interface DungeonTierDef {
+  tier: 1 | 2 | 3 | 4 | 5;
+  roman: 'I' | 'II' | 'III' | 'IV' | 'V';
+  title: string;
+  unlockStageId: string;
+  unlockLabel: string;
+  recommendedPower: number;
+  enemyScale: number;
+  chapterEquivalent: number;
+}
+
+export interface DungeonDef {
+  id: DungeonId;
+  name: string;
+  subtitle: string;
+  badge: string;
+  accentColor: string;
+  artBanner: string;
+  fallbackBanner: string;
+  arenaAsset: string;
+  arenaTintHex: number;
+  ambientMoteColors: [number, number];
+  description: string;
+  supportsFactionSelect?: boolean;
+  supportsSetSelect?: boolean;
+  primaryRewardLabel: string;
+  tiers: DungeonTierDef[];
 }
 
 export interface BannerDef {
@@ -336,6 +390,11 @@ export interface PlayerSaveState {
   shopPurchases: Record<string, number>;
   shopResetDay: string;
   lastDailySupplyAt: number;
+  dungeonTickets: number;
+  dungeonEntriesUsed: Record<string, number>;
+  dungeonResetDay: string;
+  dungeonBestStars: Record<string, number>;
+  lastManualSaveAt: number;
 }
 
 export interface HeroCombatSnapshot {
@@ -431,6 +490,10 @@ export interface CombatLootSummary {
   essencesEarned: Partial<Record<Faction, number>>;
   bondGiftsEarned: number;
   isFirstClear: boolean;
+  isDungeon?: boolean;
+  dungeonId?: DungeonId;
+  dungeonTier?: number;
+  starsEarned?: number;
   droppedEquipment: EquipmentInstance[];
   droppedRelics: DroppedRelicSummary[];
 }

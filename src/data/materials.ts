@@ -6,7 +6,7 @@ export interface MaterialMeta {
   shortName: string;
   color: string;
   iconAsset: string;
-  fallbackIcon: 'supply' | 'forge' | 'crystal' | 'gold' | 'relic' | 'summon';
+  fallbackIcon: 'supply' | 'forge' | 'crystal' | 'gold' | 'relic' | 'summon' | 'battle';
   category: 'GROWTH' | 'AWAKEN' | 'FORGE' | 'RELIC';
   description: string;
   farmHint: string;
@@ -132,7 +132,18 @@ export const MATERIAL_META: Record<MaterialKey, MaterialMeta> = {
     fallbackIcon: 'forge',
     category: 'AWAKEN',
     description: 'Volcanic forge ember used to Awaken Ashen Legion Chasers.',
-    farmHint: 'Primary Drop: Ch.4 Ferrum Caldera, Ch.9 Obsidian, Ch.10 Zenith & Shop.',
+    farmHint: 'Primary Drop: Ch.4 Ferrum Caldera, Ch.9 Obsidian, Ch.10 Zenith & Sanctum Dungeon.',
+  },
+  dungeonTickets: {
+    key: 'dungeonTickets',
+    name: 'Rift Trial Ticket',
+    shortName: 'Rift Ticket',
+    color: '#c084fc',
+    iconAsset: '/assets/icons/icon_dungeon_ticket.webp',
+    fallbackIcon: 'battle',
+    category: 'GROWTH',
+    description: 'Grants +1 extra entry into any Rift Dungeon once its 3 free daily runs are used.',
+    farmHint: 'Earned from 4h Daily Supply & Starlight Emporium Shop.',
   },
 };
 
@@ -430,6 +441,18 @@ export const SHOP_OFFERS: ShopOffer[] = [
     dailyLimit: 3,
     accentColor: '#fb7185',
     reward: { kind: 'MATERIAL', material: 'bondGifts', amount: 3 },
+  },
+  {
+    id: 'shop_dungeon_ticket_2',
+    category: 'GROWTH',
+    name: 'Rift Trial Tickets ×2',
+    subtitle: 'Extra entries for any Farming Dungeon after 3/3 daily runs',
+    currency: 'GOLD',
+    price: 2800,
+    dailyLimit: 2,
+    badge: 'DUNGEON',
+    accentColor: '#c084fc',
+    reward: { kind: 'MATERIAL', material: 'dungeonTickets', amount: 2 },
   },
 
   // AWAKEN TAB

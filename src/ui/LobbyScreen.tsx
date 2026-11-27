@@ -4,10 +4,12 @@ import {
   Download,
   MessageSquare,
   RefreshCw,
+  Settings,
   Users,
   Volume2,
   VolumeX,
 } from 'lucide-react';
+import { DAILY_DUNGEON_FREE_ENTRIES, DUNGEONS } from '../data/dungeons';
 import { ENEMIES } from '../data/enemies';
 import { FACTIONS } from '../data/factions';
 import { HEROES, HERO_MAP } from '../data/heroes';
@@ -18,20 +20,46 @@ import { audioManager } from '../engine/AudioManager';
 import { computeHeroStats, getActiveFactionBonuses } from '../engine/CombatMath';
 import { usePwaInstall } from '../hooks/usePwaInstall';
 import { CODEX_MILESTONES, DAILY_SUPPLY_COOLDOWN_MS, usePlayerStore } from '../store/usePlayerStore';
-import type { ScreenId } from '../types/game';
+import { useSettingsStore } from '../store/useSettingsStore';
+import type { DungeonId, Faction, ScreenId } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { GameIcon } from './GameIcon';
 import { PartyManagerModal } from './PartyManagerModal';
 import { RarityCrest, RoleBadge } from './RoleBadge';
+import { SettingsModal } from './SettingsModal';
 import { StarlightBackdrop } from './StarlightBackdrop';
 import { WorldMapOverlay } from './WorldMapOverlay';
 
 interface LobbyScreenProps {
   onNavigate: (screen: ScreenId) => void;
   onStartCombat: (stageId: string) => void;
+  onOpenDungeon: (dungeonId?: DungeonId, faction?: Faction) => void;
 }
 
-export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCombat }) => {
+const ModeArtBanner: React.FC<{ primarySrc: string; fallbackSrc: string; alt: string }> = ({
+  primarySrc,
+  fallbackSrc,
+  alt,
+}) => {
+  const [fallback, setFallback] = useState(false);
+  return (
+    <img
+      src={fallback ? fallbackSrc : primarySrc}
+      alt={alt}
+      onError={() => {
+        if (!fallback) setFallback(true);
+      }}
+      className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-105 transition duration-500"
+      draggable={false}
+    />
+  );
+};
+
+export const LobbyScreen: React.FC<LobbyScreenProps> = ({
+  onNavigate,
+  onStartCombat,
+  onOpenDungeon,
+}) => {
   const {
     commanderName,
     favoriteHeroId,
@@ -50,16 +78,28 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
     clearedStages,
     selectedStageId,
     lastDailySupplyAt,
+    dungeonTickets,
+    dungeonEntriesUsed,
+    dungeonResetDay,
+    getDungeonEntriesLeft,
     claimDailySupply,
   } = usePlayerStore();
 
+  const { muted, toggleMuted } = useSettingsStore();
   const { canInstall, promptInstall } = usePwaInstall();
-  const [muted, setMuted] = useState(audioManager.isMuted());
   const [showMap, setShowMap] = useState(false);
   const [showPartyModal, setShowPartyModal] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showDialogue, setShowDialogue] = useState(true);
   const [supplyToast, setSupplyToast] = useState<string | null>(null);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
+
+  const totalDungeonFreeLeft = useMemo(
+    () => DUNGEONS.reduce((sum, d) => sum + getDungeonEntriesLeft(d.id).freeLeft, 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dungeonEntriesUsed, dungeonResetDay, getDungeonEntriesLeft],
+  );
+  const totalDungeonDailyMax = DUNGEONS.length * DAILY_DUNGEON_FREE_ENTRIES;
 
   const ownedHeroIds = Object.keys(roster);
   const displayHeroId = roster[favoriteHeroId] ? favoriteHeroId : squadIds[0];
@@ -281,11 +321,22 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
               )}
             </button>
             <button
-              onClick={() => setMuted(audioManager.toggleMute())}
+              onClick={() => toggleMuted()}
               className="rpg-panel-subtle p-1.5 sm:p-2 text-slate-200 hover:text-amber-300 transition"
               title="Toggle Music & SFX"
             >
               {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => {
+                audioManager.playSfx('button');
+                setShowSettings(true);
+              }}
+              className="rpg-panel-subtle p-1.5 sm:p-2 text-slate-200 hover:text-amber-300 hover:border-amber-400/70 transition"
+              title="Game Settings, Manual Save, Export & Import"
+              aria-label="Open Settings"
+            >
+              <Settings className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -513,40 +564,105 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
             </div>
           </button>
 
-          {/* Royal Sculpted Gold BATTLE Crest CTA */}
-          <button
-            onClick={() => {
-              audioManager.playSfx('button');
-              setShowMap(true);
-            }}
-            className="relative pointer-events-auto rpg-battle-cta w-full sm:w-auto px-5 sm:px-7 md:px-10 py-2.5 sm:py-2 md:py-3.5 text-slate-950 flex items-center justify-center gap-3 group sm:ml-auto"
-          >
-            {hasClaimableRegionChest && (
-              <span className="absolute -top-2.5 right-3 px-2 py-0.5 rounded-full bg-rose-600 border border-amber-200 text-white text-[9px] font-display font-black uppercase tracking-wider shadow-lg flex items-center gap-1 animate-bounce">
-                <GameIcon name="reward_chest" className="w-3.5 h-3.5" /> Chest Ready!
-              </span>
-            )}
-            <div className="w-10 h-10 sm:w-9 sm:h-9 md:w-12 md:h-12 rounded-full bg-slate-950/90 border-2 border-amber-100/90 p-1 flex items-center justify-center shrink-0 shadow-[0_4px_14px_rgba(0,0,0,0.65)]">
-              <GameIcon
-                name="battle"
-                className="w-full h-full group-hover:scale-110 transition"
+          {/* Illustrated Art-Style Mode Cards: RIFT DUNGEONS + CAMPAIGN */}
+          <div className="pointer-events-auto grid grid-cols-2 sm:flex items-stretch gap-2 sm:gap-2.5 w-full sm:w-auto sm:ml-auto">
+            {/* Art Card 1: Dedicated Farming Dungeons Button */}
+            <button
+              onClick={() => {
+                audioManager.playSfx('button');
+                onOpenDungeon('GOLD_VAULT');
+              }}
+              className="relative h-[68px] sm:h-[74px] md:h-[86px] sm:w-[196px] md:w-[235px] rounded-2xl overflow-hidden border-2 border-fuchsia-400/75 hover:border-cyan-300 shadow-[0_10px_28px_rgba(0,0,0,0.75),0_0_22px_rgba(192,132,252,0.3)] text-left group transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
+            >
+              <ModeArtBanner
+                primarySrc="/assets/ui/card_rift_dungeons.webp"
+                fallbackSrc="/assets/environments/env_region_9.webp"
+                alt="Rift Dungeons"
               />
-            </div>
-            <div className="text-left">
-              <div className="text-[9px] font-black uppercase tracking-[0.18em] text-amber-950/85 flex items-center gap-1 leading-none">
-                <GameIcon name="worldmap" className="w-3.5 h-3.5" />
-                <span>
-                  CH.{selectedRegion.chapter} {selectedRegion.name.toUpperCase()}
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    'linear-gradient(100deg, rgba(8,6,24,0.92) 0%, rgba(15,10,38,0.68) 54%, rgba(16,12,42,0.18) 100%)',
+                }}
+              />
+              <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-fuchsia-400 via-cyan-300 to-transparent opacity-90" />
+
+              <div className="relative z-10 h-full px-3 sm:px-3.5 py-2 flex flex-col justify-between">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[8px] sm:text-[9px] font-display font-black uppercase tracking-[0.18em] text-fuchsia-300 leading-none truncate">
+                    FARMING TRIALS
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-slate-950/85 border border-fuchsia-400/60 font-mono text-[9px] font-black text-cyan-200 leading-none shrink-0">
+                    {totalDungeonFreeLeft}/{totalDungeonDailyMax}
+                    {(dungeonTickets ?? 0) > 0 && ` +${dungeonTickets}`}
+                  </span>
+                </div>
+                <div>
+                  <div className="font-display text-sm sm:text-lg md:text-xl font-black tracking-[0.12em] text-white drop-shadow-[0_2px_10px_rgba(192,132,252,0.85)] leading-none group-hover:text-cyan-200 transition">
+                    DUNGEONS
+                  </div>
+                  <div className="ls-hide text-[9px] md:text-[10px] font-bold text-fuchsia-100/85 mt-0.5 truncate">
+                    Gold • EXP • Awaken • Forge • Relic
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            {/* Art Card 2: Dedicated Campaign Battle Button */}
+            <button
+              onClick={() => {
+                audioManager.playSfx('button');
+                setShowMap(true);
+              }}
+              className="relative h-[68px] sm:h-[74px] md:h-[86px] sm:w-[228px] md:w-[275px] rounded-2xl overflow-hidden border-2 border-amber-300/90 hover:border-yellow-200 shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_26px_rgba(245,200,76,0.4)] text-left group transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
+            >
+              <ModeArtBanner
+                primarySrc="/assets/ui/card_campaign_battle.webp"
+                fallbackSrc="/assets/environments/env_aurelia_floor.webp"
+                alt="Campaign Battle"
+              />
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    'linear-gradient(100deg, rgba(12,9,24,0.92) 0%, rgba(18,14,32,0.62) 55%, rgba(28,18,12,0.12) 100%)',
+                }}
+              />
+              <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-amber-300 via-yellow-200 to-transparent opacity-95" />
+
+              {hasClaimableRegionChest && (
+                <span className="absolute top-1.5 right-2 z-20 px-2 py-0.5 rounded-full bg-rose-600 border border-amber-200 text-white text-[8px] sm:text-[9px] font-display font-black uppercase tracking-wider shadow-lg flex items-center gap-1 animate-bounce">
+                  <GameIcon name="reward_chest" className="w-3 h-3" /> Chest!
                 </span>
+              )}
+
+              <div className="relative z-10 h-full px-3 sm:px-4 py-2 flex flex-col justify-between">
+                <div className="text-[8px] sm:text-[9px] font-display font-black uppercase tracking-[0.18em] text-amber-300 flex items-center gap-1 leading-none truncate pr-14">
+                  <GameIcon name="worldmap" className="w-3.5 h-3.5" />
+                  <span className="truncate">
+                    CH.{selectedRegion.chapter} {selectedRegion.name.toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex items-end justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-display text-base sm:text-xl md:text-2xl font-black tracking-[0.14em] text-white text-glow-gold leading-none group-hover:text-amber-200 transition">
+                      CAMPAIGN
+                    </div>
+                    <div className="ls-hide text-[9px] md:text-[10px] font-bold text-amber-100/90 mt-0.5 truncate">
+                      {selectedStage.code} {selectedStage.name}
+                    </div>
+                  </div>
+                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-950/85 border-2 border-amber-300/90 p-1 flex items-center justify-center shrink-0 shadow-[0_0_16px_rgba(245,200,76,0.55)]">
+                    <GameIcon
+                      name="battle"
+                      className="w-full h-full group-hover:scale-110 transition"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="font-display text-lg sm:text-xl md:text-3xl font-black tracking-[0.14em] leading-none mt-0.5">
-                BATTLE
-              </div>
-              <div className="ls-hide text-[10px] md:text-[11px] font-extrabold text-amber-950/80 mt-0.5 truncate max-w-[210px]">
-                {selectedStage.code} {selectedStage.name}
-              </div>
-            </div>
-          </button>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -557,6 +673,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
       )}
 
       <PartyManagerModal open={showPartyModal} onClose={() => setShowPartyModal(false)} />
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
 
       {showMap && (
         <WorldMapOverlay

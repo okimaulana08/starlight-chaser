@@ -68,6 +68,8 @@ interface VictoryOverlayProps {
   heroesSnapshot: HeroCombatSnapshot[];
   nextStageCode?: string;
   onNextStage?: () => void;
+  canReplay?: boolean;
+  exitLabel?: string;
   onReplay: () => void;
   onExit: () => void;
 }
@@ -84,6 +86,8 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
   heroesSnapshot,
   nextStageCode,
   onNextStage,
+  canReplay = true,
+  exitLabel = 'Lobby',
   onReplay,
   onExit,
 }) => {
@@ -447,24 +451,46 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                       color: '#f5c84c',
                       icon: <GameIcon name="gold" className="w-7 h-7" />,
                     },
-                    {
-                      label: 'Crystals',
-                      val: `+${result.crystalsEarned}`,
-                      color: '#38e8ff',
-                      icon: <GameIcon name="crystal" className="w-7 h-7" />,
-                    },
-                    {
-                      label: 'EXP',
-                      val: `×${result.expPotionsEarned}`,
-                      color: '#34d399',
-                      icon: <MaterialIcon material="expPotions" className="w-7 h-7" />,
-                    },
-                    {
-                      label: 'Stones',
-                      val: `×${result.forgeStonesEarned}`,
-                      color: '#a78bfa',
-                      icon: <MaterialIcon material="forgeStones" className="w-7 h-7" />,
-                    },
+                    ...(result.crystalsEarned > 0
+                      ? [
+                          {
+                            label: 'Crystals',
+                            val: `+${result.crystalsEarned}`,
+                            color: '#38e8ff',
+                            icon: <GameIcon name="crystal" className="w-7 h-7" />,
+                          },
+                        ]
+                      : []),
+                    ...(result.expPotionsEarned > 0
+                      ? [
+                          {
+                            label: 'EXP',
+                            val: `×${result.expPotionsEarned}`,
+                            color: '#34d399',
+                            icon: <MaterialIcon material="expPotions" className="w-7 h-7" />,
+                          },
+                        ]
+                      : []),
+                    ...(result.bondGiftsEarned > 0
+                      ? [
+                          {
+                            label: 'Bond',
+                            val: `×${result.bondGiftsEarned}`,
+                            color: '#fb7185',
+                            icon: <MaterialIcon material="bondGifts" className="w-7 h-7" />,
+                          },
+                        ]
+                      : []),
+                    ...(result.forgeStonesEarned > 0
+                      ? [
+                          {
+                            label: 'Stones',
+                            val: `×${result.forgeStonesEarned}`,
+                            color: '#a78bfa',
+                            icon: <MaterialIcon material="forgeStones" className="w-7 h-7" />,
+                          },
+                        ]
+                      : []),
                     ...(result.starIronIngotsEarned > 0
                       ? [
                           {
@@ -713,13 +739,18 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
         {/* 3. PINNED BOTTOM HEROIC ACTION BAR (Zero Overlap Guaranteed!) */}
         <div className="ls-victory-footer shrink-0 flex flex-wrap items-center justify-end gap-2 sm:gap-3 px-4 sm:px-6 py-2.5 sm:py-3.5 bg-slate-950/90 backdrop-blur-md border-t border-amber-400/25 safe-bottom">
           <button
+            disabled={!canReplay}
             onClick={() => {
+              if (!canReplay) return;
               audioManager.playSfx('button');
               onReplay();
             }}
-            className="rpg-blade px-4 sm:px-5 py-2 sm:py-2.5 text-white font-display font-extrabold text-xs sm:text-sm uppercase tracking-[0.14em] flex items-center gap-1.5"
+            className={`rpg-blade px-4 sm:px-5 py-2 sm:py-2.5 font-display font-extrabold text-xs sm:text-sm uppercase tracking-[0.14em] flex items-center gap-1.5 ${
+              canReplay ? 'text-white' : 'text-slate-500 opacity-50 cursor-not-allowed'
+            }`}
           >
-            <RotateCcw className="w-4 h-4 text-cyan-300" /> Replay
+            <RotateCcw className="w-4 h-4 text-cyan-300" />
+            {canReplay ? 'Replay' : 'No Entries Left'}
           </button>
           {result.victory && onNextStage && nextStageCode ? (
             <>
@@ -730,7 +761,7 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                 }}
                 className="rpg-blade px-4 sm:px-5 py-2 sm:py-2.5 text-slate-200 font-display font-extrabold text-xs sm:text-sm uppercase tracking-[0.14em]"
               >
-                Lobby
+                {exitLabel}
               </button>
               <button
                 onClick={() => {
@@ -752,7 +783,8 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
               }}
               className="rpg-battle-cta px-7 sm:px-10 py-2 sm:py-2.5 text-slate-950 font-display font-black text-xs sm:text-sm uppercase tracking-[0.18em] flex items-center gap-2"
             >
-              Continue <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+              {result.isDungeon ? `Back to ${exitLabel}` : 'Continue'}{' '}
+              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           )}
         </div>
