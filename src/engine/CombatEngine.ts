@@ -5,12 +5,14 @@ import { FACTIONS } from '../data/factions';
 import { HERO_MAP } from '../data/heroes';
 import { STAGE_MAP } from '../data/stages';
 import { useCombatStore } from '../store/useCombatStore';
-import { usePlayerStore } from '../store/usePlayerStore';
+import { usePlayerStore, MAX_RELIC_RANK } from '../store/usePlayerStore';
 import type {
   BossCombatSnapshot,
   CombatLootSummary,
+  DroppedRelicSummary,
   EquipmentInstance,
   EquipmentRarity,
+  Faction,
   HeroCombatSnapshot,
   SkillDef,
 } from '../types/game';
@@ -361,6 +363,7 @@ export class CombatEngine {
         player.equipmentInventory,
         squadIds,
         player.unlockedCodexIds.length,
+        player.relicRanks,
       );
       totalStartingGauge += stats.startingGauge;
 
@@ -606,10 +609,10 @@ export class CombatEngine {
             const targetSize = def.isBoss
               ? 285
               : def.isMiniBoss
-                ? 182
-                : def.id === 'rift_acolyte'
-                  ? 134
-                  : 124;
+                ? 186
+                : def.attackRange > 100
+                  ? 136
+                  : 126;
             const sc = targetSize / Math.max(1, loaded.height);
             sprite.scale.set(sc);
             sprite.anchor.set(0.5, 0.95);
@@ -673,9 +676,7 @@ export class CombatEngine {
     // Situational damage bonuses
     let dmgBonus = opts.bonusDmgMult ?? 0;
     if (opts.isSkill) dmgBonus += attacker.stats.skillDmgBonus;
-    if (opts.isUlt && attacker.stats.activeSets.some((s) => s.setId === 'ASTRAL_SURGE' && s.count >= 4)) {
-      dmgBonus += 0.2;
-    }
+    if (opts.isUlt) dmgBonus += attacker.stats.ultDmgBonus;
     if (enemy.lunarTraceTimer > 0) dmgBonus += 0.12;
 
     const isDebuffed =
@@ -1574,10 +1575,74 @@ export class CombatEngine {
       Math.round(a + Math.random() * (b - a));
 
     const droppedEquipment: EquipmentInstance[] = [];
+    const essencesEarned: Partial<Record<Faction, number>> = {};
+    const droppedRelics: DroppedRelicSummary[] = [];
+    let starIronIngotsEarned = 0;
+    let astralAnvilCoresEarned = 0;
+    let starCoresEarned = 0;
+    let relicFragmentsEarned = 0;
+
     if (victory) {
+      const targetSets = stage.rewards.targetSetIds;
       for (let i = 0; i < stage.rewards.equipmentDrops; i++) {
         const rarity = rollWeightedRarity(stage.rewards.rarityWeights);
-        droppedEquipment.push(generateEquipment({ rarity }));
+        const setId =
+          targetSets.length > 0
+            ? targetSets[Math.floor(Math.random() * targetSets.length)]
+            : undefined;
+        droppedEquipment.push(generateEquipment({ rarity, setId }));
+      }
+
+      // Biome Primary Faction Essence + Bonus Secondary Essence (prevents early-game soft-lock!)
+      const primaryQty = randBetween(stage.rewards.primaryEssenceQty);
+      essencesEarned[stage.rewards.primaryEssence] =
+        (essencesEarned[stage.rewards.primaryEssence] ?? 0) + primaryQty;
+
+      if (Math.random() < (stage.rewards.bonusRandomEssenceChance ?? 0.25)) {
+        const allFactions: Faction[] = ['SOLARIS', 'ASTRAL', 'VERDANT', 'ASHEN'];
+        const otherFactions = allFactions.filter((f) => f !== stage.rewards.primaryEssence);
+        const bonusFac = otherFactions[Math.floor(Math.random() * otherFactions.length)];
+        const bonusQty = stage.isBossStage ? 2 : 1;
+        essencesEarned[bonusFac] = (essencesEarned[bonusFac] ?? 0) + bonusQty;
+      }
+
+      if (stage.rewards.starIronIngots) {
+        starIronIngotsEarned = randBetween(stage.rewards.starIronIngots);
+      }
+      if (stage.rewards.astralAnvilCores) {
+        astralAnvilCoresEarned = randBetween(stage.rewards.astralAnvilCores);
+      }
+      if (stage.rewards.starCores) {
+        starCoresEarned = randBetween(stage.rewards.starCores);
+      }
+      if (stage.rewards.relicFragments) {
+        relicFragmentsEarned = randBetween(stage.rewards.relicFragments);
+      }
+
+      // Earned Relic Drops: Guaranteed First-Clear Boss/Mini-Boss Milestones + Repeatable Drop Pool!
+      const recordRelicDrop = (relicId: string) => {
+        const alreadyOwned = player.ownedRelics.includes(relicId);
+        const curRank = player.relicRanks[relicId] ?? 0;
+        const nextRank = alreadyOwned ? Math.min(MAX_RELIC_RANK, curRank + 1) : 1;
+        const isMaxed = alreadyOwned && curRank >= MAX_RELIC_RANK;
+        droppedRelics.push({
+          relicId,
+          isNew: !alreadyOwned,
+          newRank: nextRank,
+          bonusFragments: isMaxed ? 15 : undefined,
+        });
+      };
+
+      if (isFirstClear && stage.rewards.guaranteedFirstClearRelicId) {
+        recordRelicDrop(stage.rewards.guaranteedFirstClearRelicId);
+      } else if (
+        stage.rewards.relicDropPool &&
+        stage.rewards.relicDropPool.length > 0 &&
+        Math.random() < (stage.rewards.relicDropChance ?? 0)
+      ) {
+        const pool = stage.rewards.relicDropPool;
+        const picked = pool[Math.floor(Math.random() * pool.length)];
+        if (picked) recordRelicDrop(picked);
       }
     }
 
@@ -1599,9 +1664,15 @@ export class CombatEngine {
       crystalsEarned: isFirstClear ? stage.firstClearCrystals : victory ? 40 : 0,
       expPotionsEarned: victory ? randBetween(stage.rewards.expPotions) : 0,
       forgeStonesEarned: victory ? randBetween(stage.rewards.forgeStones) : 0,
+      starIronIngotsEarned,
+      astralAnvilCoresEarned,
+      starCoresEarned,
+      relicFragmentsEarned,
+      essencesEarned,
       bondGiftsEarned: victory ? (stage.isBossStage ? 2 : 1) : 0,
       isFirstClear,
       droppedEquipment,
+      droppedRelics,
     };
 
     if (victory) {

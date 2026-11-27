@@ -112,7 +112,18 @@ export interface EnemyUnit {
   castDuration: number;
   castElapsed: number;
   castCancelable: boolean;
-  castAction: 'SWEEP' | 'SHOCKWAVE' | 'SKYFALL' | 'GOLEM_SLAM' | null;
+  castAction:
+    | 'SWEEP'
+    | 'SHOCKWAVE'
+    | 'SKYFALL'
+    | 'GOLEM_SLAM'
+    | 'OBSIDIAN_CLEAVE'
+    | 'ASTRAL_NOVA'
+    | 'BRIAR_ERUPTION'
+    | 'TEMPEST_DIVE'
+    | 'WISP_BURST'
+    | 'CINDER_LOB'
+    | null;
   castTargetX: number;
   castTargetY: number;
   castAngle: number;

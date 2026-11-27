@@ -1,4 +1,5 @@
 import type { EquipmentRarity, RegionDef, StageDef, StageWave } from '../types/game';
+import { CHAPTER_BIOME_DROPS } from './materials';
 import { REGIONS, REGION_MAP } from './regions';
 
 interface StageTemplate {
@@ -162,13 +163,37 @@ const REGION_BOSS_IDS: Record<string, string> = {
   region_10: 'eclipse_demiurge',
 };
 
+const CHAPTER_ENEMY_ROSTER: Record<
+  number,
+  {
+    meleeA: string;
+    meleeB: string;
+    ranged: string;
+    eliteA: string;
+    eliteB: string;
+  }
+> = {
+  1: { meleeA: 'solar_construct', meleeB: 'void_stalker', ranged: 'rift_acolyte', eliteA: 'armored_golem', eliteB: 'obsidian_knight' },
+  2: { meleeA: 'void_wisp', meleeB: 'void_stalker', ranged: 'rift_acolyte', eliteA: 'astral_weaver', eliteB: 'armored_golem' },
+  3: { meleeA: 'briar_crawler', meleeB: 'void_stalker', ranged: 'rift_acolyte', eliteA: 'briar_behemoth', eliteB: 'briar_behemoth' },
+  4: { meleeA: 'solar_construct', meleeB: 'void_stalker', ranged: 'cinder_imp', eliteA: 'obsidian_knight', eliteB: 'armored_golem' },
+  5: { meleeA: 'frost_lancer', meleeB: 'void_wisp', ranged: 'rift_acolyte', eliteA: 'astral_weaver', eliteB: 'armored_golem' },
+  6: { meleeA: 'frost_lancer', meleeB: 'briar_crawler', ranged: 'rift_acolyte', eliteA: 'briar_behemoth', eliteB: 'astral_weaver' },
+  7: { meleeA: 'solar_construct', meleeB: 'void_wisp', ranged: 'rift_acolyte', eliteA: 'tempest_drake', eliteB: 'tempest_drake' },
+  8: { meleeA: 'solar_construct', meleeB: 'void_stalker', ranged: 'cinder_imp', eliteA: 'tempest_drake', eliteB: 'obsidian_knight' },
+  9: { meleeA: 'void_wisp', meleeB: 'void_stalker', ranged: 'cinder_imp', eliteA: 'obsidian_knight', eliteB: 'astral_weaver' },
+  10: { meleeA: 'frost_lancer', meleeB: 'solar_construct', ranged: 'cinder_imp', eliteA: 'tempest_drake', eliteB: 'obsidian_knight' },
+};
+
 function buildWavesForStage(region: RegionDef, stageNum: number): StageWave[] {
   const ch = region.chapter;
   const isMiniBoss = stageNum === 4 || stageNum === 8;
   const isBoss = stageNum === 12;
+  const pack = CHAPTER_ENEMY_ROSTER[ch] ?? CHAPTER_ENEMY_ROSTER[1];
+  const primaryElite = stageNum >= 8 ? pack.eliteB : pack.eliteA;
 
-  const extraStalkers = Math.min(4, Math.floor((stageNum - 1) / 4) + Math.floor((ch - 1) / 2));
-  const extraAcolytes = Math.min(3, Math.floor(stageNum / 5) + Math.floor(ch / 3));
+  const extraMelee = Math.min(3, Math.floor((stageNum - 1) / 4) + Math.floor((ch - 1) / 3));
+  const extraRanged = Math.min(2, Math.floor(stageNum / 5) + Math.floor(ch / 4));
 
   if (isBoss) {
     const bossEnemyId = REGION_BOSS_IDS[region.id] ?? 'aurelian_sentinel';
@@ -176,52 +201,56 @@ function buildWavesForStage(region: RegionDef, stageNum: number): StageWave[] {
       {
         label: `Wave 1 — ${region.name} Perimeter`,
         spawns: [
-          { enemyId: 'void_stalker', count: 4 + Math.min(3, Math.floor(ch / 2)) },
-          { enemyId: 'rift_acolyte', count: 2 + Math.min(2, Math.floor(ch / 3)) },
+          { enemyId: pack.meleeA, count: 3 + Math.min(2, Math.floor(ch / 3)) },
+          { enemyId: pack.meleeB, count: 2 },
+          { enemyId: pack.ranged, count: 2 + Math.min(1, Math.floor(ch / 4)) },
         ],
       },
       {
-        label: 'Wave 2 — Armored Honor Guard',
+        label: 'Wave 2 — Elite Honor Guard',
         spawns: [
-          { enemyId: 'armored_golem', count: ch >= 3 ? 2 : 1 },
-          { enemyId: 'void_stalker', count: 3 + Math.min(2, Math.floor(ch / 4)) },
-          { enemyId: 'rift_acolyte', count: 2 + Math.min(2, Math.floor(ch / 4)) },
+          { enemyId: pack.eliteA, count: 1 },
+          ...(ch >= 3 ? [{ enemyId: pack.eliteB, count: 1 }] : []),
+          { enemyId: pack.meleeA, count: 3 },
+          { enemyId: pack.ranged, count: 2 },
         ],
       },
       {
         label: `BOSS — ${region.bossName} (${region.bossTitle})`,
         spawns: [
           { enemyId: bossEnemyId, count: 1 },
-          { enemyId: 'void_stalker', count: 2 + Math.min(2, Math.floor(ch / 3)) },
-          ...(ch >= 2 ? [{ enemyId: 'rift_acolyte', count: Math.min(2, Math.ceil(ch / 4)) }] : []),
+          { enemyId: pack.meleeB, count: 2 + Math.min(2, Math.floor(ch / 3)) },
+          ...(ch >= 2 ? [{ enemyId: pack.ranged, count: Math.min(2, Math.ceil(ch / 4)) }] : []),
         ],
       },
     ];
   }
 
   if (isMiniBoss) {
-    const golemCount = stageNum === 8 || ch >= 3 ? 2 : 1;
+    const eliteCount = stageNum === 8 || ch >= 4 ? 2 : 1;
     return [
       {
         label: 'Wave 1 — Vanguard Breach',
         spawns: [
-          { enemyId: 'void_stalker', count: 3 + extraStalkers },
-          { enemyId: 'rift_acolyte', count: 2 + extraAcolytes },
+          { enemyId: pack.meleeA, count: 2 + extraMelee },
+          { enemyId: pack.meleeB, count: 2 },
+          { enemyId: pack.ranged, count: 1 + extraRanged },
         ],
       },
       {
-        label: 'Wave 2 — Arcane Crossfire',
+        label: 'Wave 2 — Biome Crossfire',
         spawns: [
-          { enemyId: 'void_stalker', count: 4 },
-          { enemyId: 'rift_acolyte', count: 3 },
+          { enemyId: pack.meleeA, count: 3 },
+          { enemyId: pack.meleeB, count: 2 },
+          { enemyId: pack.ranged, count: 2 + extraRanged },
         ],
       },
       {
-        label: `MINI-BOSS — Corrupted ${golemCount > 1 ? 'Twin Golems' : 'Armored Golem'}`,
+        label: `ELITE — ${region.name} ${eliteCount > 1 ? 'Twin Guardians' : 'Champion'}`,
         spawns: [
-          { enemyId: 'armored_golem', count: golemCount },
-          { enemyId: 'rift_acolyte', count: 2 + Math.min(2, Math.floor(ch / 4)) },
-          { enemyId: 'void_stalker', count: 2 },
+          { enemyId: primaryElite, count: eliteCount },
+          { enemyId: pack.ranged, count: 2 },
+          { enemyId: pack.meleeA, count: 2 },
         ],
       },
     ];
@@ -231,16 +260,18 @@ function buildWavesForStage(region: RegionDef, stageNum: number): StageWave[] {
     {
       label: 'Wave 1 — Rift Breach',
       spawns: [
-        { enemyId: 'void_stalker', count: 3 + extraStalkers },
-        { enemyId: 'rift_acolyte', count: 1 + extraAcolytes },
+        { enemyId: pack.meleeA, count: 2 + extraMelee },
+        { enemyId: pack.meleeB, count: 2 },
+        { enemyId: pack.ranged, count: 1 + extraRanged },
       ],
     },
     {
       label: stageNum >= 5 ? 'Wave 2 — Reinforced Patrol' : 'Wave 2 — Shadow Counterattack',
       spawns: [
-        { enemyId: 'void_stalker', count: 3 + Math.min(2, Math.floor(stageNum / 4)) },
-        { enemyId: 'rift_acolyte', count: 2 + extraAcolytes },
-        ...(stageNum >= 2 || ch >= 2 ? [{ enemyId: 'armored_golem', count: ch >= 6 && stageNum >= 8 ? 2 : 1 }] : []),
+        { enemyId: pack.meleeA, count: 2 + Math.min(2, Math.floor(stageNum / 4)) },
+        { enemyId: pack.meleeB, count: 2 },
+        { enemyId: pack.ranged, count: 2 + extraRanged },
+        ...(stageNum >= 3 || ch >= 2 ? [{ enemyId: primaryElite, count: ch >= 7 && stageNum >= 8 ? 2 : 1 }] : []),
       ],
     },
   ];
@@ -249,9 +280,10 @@ function buildWavesForStage(region: RegionDef, stageNum: number): StageWave[] {
     waves.push({
       label: 'Wave 3 — Rift Surge',
       spawns: [
-        { enemyId: 'armored_golem', count: stageNum >= 10 || ch >= 3 ? 2 : 1 },
-        { enemyId: 'void_stalker', count: 4 },
-        { enemyId: 'rift_acolyte', count: 2 + Math.min(2, Math.floor(ch / 3)) },
+        { enemyId: pack.eliteB, count: stageNum >= 10 || ch >= 4 ? 2 : 1 },
+        { enemyId: pack.meleeA, count: 3 },
+        { enemyId: pack.meleeB, count: 2 },
+        { enemyId: pack.ranged, count: 2 + Math.min(2, Math.floor(ch / 3)) },
       ],
     });
   }
@@ -287,24 +319,25 @@ function buildDescription(region: RegionDef, stageNum: number, isMiniBoss: boole
 function buildAllStages(): StageDef[] {
   const list: StageDef[] = [];
 
-  // Smooth progressive enemy scale curves across all 10 Chapters (1-1 = 0.78x ... 10-12 = 34.0x)
+  // Balanced enemy scale curves calibrated to Lv.8 ★0 -> Lv.80 ★6 +15 Legendary progression!
   const regionScalePairs: Array<[number, number]> = [
-    [0.78, 1.38],  // Ch. 1
-    [1.52, 2.55],  // Ch. 2
-    [2.75, 4.3],   // Ch. 3
-    [4.6, 6.9],    // Ch. 4
-    [7.4, 10.6],   // Ch. 5
-    [11.2, 15.4],  // Ch. 6
-    [16.2, 21.5],  // Ch. 7
-    [22.5, 29.0],  // Ch. 8
-    [30.5, 38.5],  // Ch. 9
-    [40.0, 52.0],  // Ch. 10
+    [0.78, 1.38],  // Ch. 1 (Lv.8-18 ★0)
+    [1.48, 2.25],  // Ch. 2 (Lv.18-26 ★1)
+    [2.4, 3.45],   // Ch. 3 (Lv.26-34 ★2)
+    [3.65, 4.95],  // Ch. 4 (Lv.34-42 ★2-3)
+    [5.2, 6.75],   // Ch. 5 (Lv.42-50 ★3)
+    [7.05, 8.85],  // Ch. 6 (Lv.50-58 ★4)
+    [9.2, 11.2],   // Ch. 7 (Lv.58-65 ★4-5)
+    [11.6, 13.8],  // Ch. 8 (Lv.65-72 ★5)
+    [14.2, 16.5],  // Ch. 9 (Lv.72-77 ★5-6)
+    [17.0, 20.0],  // Ch. 10 (Lv.77-80 ★6 +15)
   ];
 
   for (const region of REGIONS) {
     const templates = REGION_STAGE_NAMES[region.id] ?? [];
     const [minPwr, maxPwr] = region.recommendedPowerRange;
     const [regionBaseScale, regionMaxScale] = regionScalePairs[region.chapter - 1] ?? [1.0, 2.0];
+    const biomeDrop = CHAPTER_BIOME_DROPS[region.chapter] ?? CHAPTER_BIOME_DROPS[1];
 
     for (let s = 1; s <= region.stageCount; s++) {
       const progress = (s - 1) / Math.max(1, region.stageCount - 1);
@@ -316,15 +349,65 @@ function buildAllStages(): StageDef[] {
         subtitle: region.subtitle,
       };
 
-      const curve = Math.pow(progress, 1.12);
+      const curve = Math.pow(progress, 1.1);
       const rawScale = regionBaseScale + (regionMaxScale - regionBaseScale) * curve;
       const enemyScale = Number((rawScale * (isBossStage ? 1.0 : isMiniBoss ? 1.06 : 1.0)).toFixed(2));
-      const recommendedPower = Math.round((minPwr + (maxPwr - minPwr) * curve) / 50) * 50;
+      const recommendedPower = Math.round((minPwr + (maxPwr - minPwr) * curve) / 100) * 100;
 
       const globalIdx = (region.chapter - 1) * 12 + s;
-      const baseGold = Math.round(750 + globalIdx * 280 + (isBossStage ? 1500 : isMiniBoss ? 520 : 0));
-      const baseExp = Math.round(3 + globalIdx * 0.42 + (isBossStage ? 5 : isMiniBoss ? 2 : 0));
-      const baseStones = Math.round(2 + globalIdx * 0.4 + (isBossStage ? 5 : isMiniBoss ? 2 : 0));
+      const baseGold = Math.round(700 + globalIdx * 195 + (isBossStage ? 1800 : isMiniBoss ? 600 : 0));
+      const baseExp = Math.round(2 + globalIdx * 0.28 + (isBossStage ? 5 : isMiniBoss ? 2 : 0));
+      const baseStones = Math.round(2 + globalIdx * 0.25 + (isBossStage ? 4 : isMiniBoss ? 2 : 0));
+
+      const essenceMin = Math.max(1, Math.floor(region.chapter * 0.75) + (isBossStage ? 4 : isMiniBoss ? 2 : 1));
+      const essenceMax = essenceMin + (isBossStage ? 3 : isMiniBoss ? 2 : 1);
+
+      const starIronIngots: [number, number] | undefined =
+        region.chapter >= 2 || isMiniBoss || isBossStage
+          ? [
+              Math.max(1, Math.floor((region.chapter - 1) * 0.8) + (isBossStage ? 3 : isMiniBoss ? 1 : 1)),
+              Math.max(2, Math.floor((region.chapter - 1) * 1.0) + (isBossStage ? 5 : isMiniBoss ? 3 : 2)),
+            ]
+          : undefined;
+
+      const astralAnvilCores: [number, number] | undefined =
+        region.chapter >= 4 || (isBossStage && region.chapter >= 2)
+          ? [
+              isBossStage ? Math.max(1, Math.floor(region.chapter / 3)) : 1,
+              isBossStage ? Math.max(2, Math.floor(region.chapter / 2) + 1) : Math.max(1, Math.floor(region.chapter / 4) + 1),
+            ]
+          : undefined;
+
+      const starCores: [number, number] | undefined = isBossStage
+        ? [2 + Math.floor(region.chapter / 3), 4 + Math.floor(region.chapter / 2)]
+        : isMiniBoss
+          ? [1 + Math.floor(region.chapter / 5), 2 + Math.floor(region.chapter / 4)]
+          : undefined;
+
+      const relicFragments: [number, number] | undefined = isBossStage
+        ? [4 + Math.floor(region.chapter / 2), 7 + Math.floor(region.chapter / 2)]
+        : isMiniBoss
+          ? [1 + Math.floor(region.chapter / 4), 3 + Math.floor(region.chapter / 4)]
+          : undefined;
+
+      const guaranteedFirstClearRelicId =
+        isBossStage
+          ? biomeDrop.bossFirstClearRelicId
+          : s === 4
+            ? biomeDrop.miniBossFirstClearRelicId
+            : undefined;
+
+      const relicDropPool = isBossStage
+        ? biomeDrop.bossRelicPool
+        : isMiniBoss
+          ? biomeDrop.miniBossRelicPool
+          : undefined;
+
+      const relicDropChance = isBossStage
+        ? Math.min(0.35, 0.18 + region.chapter * 0.018)
+        : isMiniBoss
+          ? 0.1
+          : 0;
 
       list.push({
         id: `stage_${region.chapter}_${s}`,
@@ -352,9 +435,20 @@ function buildAllStages(): StageDef[] {
             ? 240 + region.chapter * 40
             : 120 + region.chapter * 20,
         rewards: {
-          gold: [baseGold, Math.round(baseGold * 1.38)],
-          expPotions: [baseExp, baseExp + 3],
-          forgeStones: [baseStones, baseStones + 3],
+          gold: [baseGold, Math.round(baseGold * 1.32)],
+          expPotions: [baseExp, baseExp + 2],
+          forgeStones: [baseStones, baseStones + 2],
+          starIronIngots,
+          astralAnvilCores,
+          starCores,
+          relicFragments,
+          primaryEssence: biomeDrop.primaryEssence,
+          primaryEssenceQty: [essenceMin, essenceMax],
+          bonusRandomEssenceChance: isBossStage ? 1.0 : isMiniBoss ? 0.75 : 0.25,
+          guaranteedFirstClearRelicId,
+          relicDropPool,
+          relicDropChance,
+          targetSetIds: biomeDrop.targetSetIds,
           equipmentDrops: isBossStage ? 3 : isMiniBoss || s >= 7 ? 2 : 1,
           rarityWeights: buildRarityWeights(region.chapter, s),
         },

@@ -3,11 +3,12 @@ import { motion } from 'framer-motion';
 import {
   Crown,
   Heart,
-  Shield,
+  ShoppingBag,
   Sparkles,
   Star,
   Trash2,
   TrendingUp,
+  Users,
 } from 'lucide-react';
 import {
   EQUIPMENT_SETS,
@@ -18,14 +19,22 @@ import {
 } from '../data/equipment';
 import { FACTIONS } from '../data/factions';
 import { HEROES, HERO_MAP } from '../data/heroes';
+import {
+  MATERIAL_META,
+  factionToEssenceKey,
+  getAwakeningCost,
+  getHeroLevelCap,
+  getLevelUpCost,
+} from '../data/materials';
 import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
 import { computeHeroStats, getActiveFactionBonuses } from '../engine/CombatMath';
-import { usePlayerStore } from '../store/usePlayerStore';
-import { getEnhanceCost } from '../systems/ForgeSystem';
+import { MAX_RELIC_RANK, usePlayerStore } from '../store/usePlayerStore';
+import { getEnhanceCost, getSalvageYield } from '../systems/ForgeSystem';
 import type { EquipmentSlot } from '../types/game';
 import { ArtImage } from './ArtImage';
-import { EquipIcon, GameIcon } from './GameIcon';
+import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
+import { PartyManagerModal } from './PartyManagerModal';
 import {
   AnimatedNumber,
   CornerFiligree,
@@ -35,25 +44,32 @@ import {
   RpgTabs,
 } from './RpgKit';
 import { RarityCrest, RoleBadge } from './RoleBadge';
+import { SkillInspector } from './SkillInspector';
 import { StarlightBackdrop } from './StarlightBackdrop';
 
 interface SquadScreenProps {
   onBack: () => void;
+  onOpenShop: (initialTab?: 'GROWTH' | 'AWAKEN' | 'FORGE' | 'RELIC') => void;
 }
 
-export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
+export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack, onOpenShop }) => {
   const {
     gold,
     expPotions,
     forgeStones,
-    starDust,
+    starIronIngots,
+    astralAnvilCores,
+    starCores,
+    factionEssences,
     bondGifts,
     squadIds,
+    partyPresets,
+    activePresetIndex,
     roster,
     ownedRelics,
+    relicRanks,
     equipmentInventory,
     unlockedCodexIds,
-    setSquadSlot,
     levelUpHero,
     awakenHero,
     giveBondGift,
@@ -66,8 +82,14 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
   const [selectedHeroId, setSelectedHeroId] = useState<string>(squadIds[0]);
   const [rightTab, setRightTab] = useState<'GEAR' | 'RELIC' | 'SKILLS'>('GEAR');
   const [activeSlot, setActiveSlot] = useState<EquipmentSlot>('WEAPON');
-  const [forgeMessage, setForgeMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<{ text: string; tone: 'ok' | 'warn' } | null>(null);
   const [upgradePulse, setUpgradePulse] = useState<{ id: number; label: string; color: string } | null>(null);
+  const [showPartyModal, setShowPartyModal] = useState(false);
+
+  const showNotice = (text: string, tone: 'ok' | 'warn' = 'ok') => {
+    setStatusMessage({ text, tone });
+    window.setTimeout(() => setStatusMessage(null), 3000);
+  };
 
   const triggerUpgradeFx = (label: string, color: string) => {
     setUpgradePulse({ id: Date.now() + Math.random(), label, color });
@@ -76,7 +98,8 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
 
   const ownedList = useMemo(() => HEROES.filter((h) => Boolean(roster[h.id])), [roster]);
   const heroDef = HERO_MAP[selectedHeroId] ?? HERO_MAP[squadIds[0]];
-  const ownedHero = roster[heroDef.id];
+  const ownedHero = roster[heroDef.id] ?? roster[squadIds[0]];
+  const activePreset = partyPresets[activePresetIndex] ?? partyPresets[0];
 
   const computed = useMemo(
     () =>
@@ -86,8 +109,9 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
         equipmentInventory,
         squadIds,
         unlockedCodexIds.length,
+        relicRanks,
       ),
-    [heroDef, ownedHero, equipmentInventory, squadIds, unlockedCodexIds.length],
+    [heroDef, ownedHero, equipmentInventory, squadIds, unlockedCodexIds.length, relicRanks],
   );
 
   const factionBonuses = useMemo(() => getActiveFactionBonuses(squadIds), [squadIds]);
@@ -101,41 +125,72 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
       return rank[b.rarity] - rank[a.rarity] || b.enhanceLevel - a.enhanceLevel;
     });
 
+  const levelCap = getHeroLevelCap(ownedHero.awakening);
+  const lv1Cost = getLevelUpCost(ownedHero.level, 1, ownedHero.awakening);
+  const lv5Cost = getLevelUpCost(ownedHero.level, 5, ownedHero.awakening);
+  const awakenCost = getAwakeningCost(ownedHero.awakening, heroDef.tier);
+  const heroEssenceKey = factionToEssenceKey(heroDef.faction);
+  const ownedHeroEssence = factionEssences[heroDef.faction] ?? 0;
+
+  const canAwakenWithMats = Boolean(
+    awakenCost &&
+      ownedHeroEssence >= awakenCost.essences &&
+      starCores >= awakenCost.starCores &&
+      gold >= awakenCost.gold,
+  );
+  const canAwakenWithShards = Boolean(
+    awakenCost && ownedHero.shards >= awakenCost.shardAltCost && gold >= awakenCost.shardAltGold,
+  );
+
   const handleEnhance = (uid: string) => {
     const res = enhanceGear(uid);
-    setForgeMessage(res.message);
-    audioManager.playSfx(res.ok ? 'forge' : 'button');
-    if (res.ok) triggerUpgradeFx('FORGE ENHANCED!', '#f5c84c');
-    setTimeout(() => setForgeMessage(null), 2600);
+    showNotice(res.message, res.ok && res.succeeded ? 'ok' : 'warn');
+    audioManager.playSfx(res.ok && res.succeeded ? 'forge' : 'button');
+    if (res.ok && res.succeeded) triggerUpgradeFx('FORGE ENHANCED!', '#f5c84c');
   };
-
-  const awakenShardCost = 10 + ownedHero.awakening * 5;
-  const awakenDustNeeded = Math.max(0, awakenShardCost - ownedHero.shards) * 4;
 
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden select-none">
       <StarlightBackdrop variant="FORGE" accentColor={heroDef.themeColor} />
 
-      {/* FLOATING TOP BAR (Back + Formation Slots + Resource Pills) */}
+      {/* FLOATING TOP BAR (Back + Manage Party CTA + Deployed Ribbon + Resource Pills) */}
       <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 safe-top pb-2">
         <div className="flex items-center gap-2 overflow-x-auto max-w-full pb-0.5">
           <RpgBackButton onClick={onBack} />
 
-          {/* Compact Deployed Formation Ribbon */}
+          {/* Prominent Manage Party / 3-Preset Button */}
+          <RpgButton
+            variant="gold"
+            size="sm"
+            onClick={() => {
+              setShowPartyModal(true);
+              audioManager.playSfx('button');
+            }}
+            className="shrink-0 font-display font-black uppercase tracking-wider"
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>Manage Party</span>
+            <span className="px-1.5 py-0.5 rounded bg-slate-950/30 font-mono text-[9px]">
+              P{activePresetIndex + 1}
+            </span>
+          </RpgButton>
+
+          {/* Compact Active Preset Formation Ribbon */}
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             {squadIds.map((hid, idx) => {
               const h = HERO_MAP[hid];
+              if (!h) return null;
               const isSel = hid === heroDef.id;
               return (
                 <motion.button
-                  key={idx}
+                  key={`${hid}_${idx}`}
                   whileHover={{ y: -1 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
                     setSelectedHeroId(hid);
                     audioManager.playSfx('button');
                   }}
-                  className={`flex items-center gap-1.5 pr-2.5 pl-1 py-1 rounded-xl border transition shrink-0 ${
+                  className={`flex items-center gap-1.5 pr-2 pl-1 py-1 rounded-xl border transition shrink-0 ${
                     isSel
                       ? 'bg-gradient-to-r from-amber-400/25 to-amber-500/10 border-amber-300 shadow-[0_0_16px_rgba(245,200,76,0.38)]'
                       : 'bg-slate-950/80 border-slate-700/80 hover:border-amber-400/50'
@@ -150,9 +205,11 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
                       className="w-full h-full object-cover object-top"
                     />
                   </div>
-                  <div className="text-left hidden xs:block sm:block">
-                    <div className="text-[10px] sm:text-[11px] font-bold text-white leading-none">{h.name}</div>
-                    <div className="text-[9px] text-amber-300 font-mono font-bold mt-0.5">S{idx + 1}</div>
+                  <div className="text-left hidden md:block">
+                    <div className="text-[10px] font-bold text-white leading-none">{h.name}</div>
+                    <div className="text-[9px] text-amber-300 font-mono font-bold mt-0.5">
+                      S{idx + 1}
+                    </div>
                   </div>
                 </motion.button>
               );
@@ -162,32 +219,60 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
           {factionBonuses.map((fb) => (
             <span
               key={fb.faction}
-              className="hidden xl:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border bg-slate-950/85 shrink-0"
+              className="hidden 2xl:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border bg-slate-950/85 shrink-0"
               style={{
                 borderColor: FACTIONS[fb.faction].color,
                 color: FACTIONS[fb.faction].color,
               }}
             >
               <Crown className="w-3 h-3" />
-              {FACTIONS[fb.faction].name} ({fb.count})
+              {FACTIONS[fb.faction].name.split(' ')[0]} ({fb.count})
             </span>
           ))}
         </div>
 
         <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] font-mono overflow-x-auto max-w-full">
-          <span className="rpg-panel-subtle px-2 py-1 text-amber-300 flex items-center gap-1.5 shrink-0">
+          <span className="rpg-panel-subtle px-2 py-1 text-amber-300 flex items-center gap-1 shrink-0">
             <GameIcon name="gold" className="w-4 h-4" /> {gold.toLocaleString()}
           </span>
-          <span className="rpg-panel-subtle px-2 py-1 text-emerald-300 shrink-0">EXP:{expPotions}</span>
-          <span className="rpg-panel-subtle px-2 py-1 text-violet-300 shrink-0">Stn:{forgeStones}</span>
-          <span className="rpg-panel-subtle px-2 py-1 text-fuchsia-300 shrink-0">Dust:{starDust}</span>
+          <span className="rpg-panel-subtle px-2 py-1 text-emerald-300 shrink-0" title="EXP Elixirs">
+            EXP:{expPotions}
+          </span>
+          <span className="rpg-panel-subtle px-2 py-1 text-violet-300 shrink-0" title="Forge Stones">
+            Stn:{forgeStones}
+          </span>
+          <span className="rpg-panel-subtle px-2 py-1 text-sky-300 shrink-0" title="Star-Iron Ingots (+6..+15)">
+            Iron:{starIronIngots}
+          </span>
+          <span className="rpg-panel-subtle px-2 py-1 text-amber-200 shrink-0 hidden sm:inline-flex" title="Astral Anvil Cores (+11..+15)">
+            Anvil:{astralAnvilCores}
+          </span>
+          <button
+            onClick={() => {
+              audioManager.playSfx('button');
+              onOpenShop(rightTab === 'RELIC' ? 'RELIC' : rightTab === 'GEAR' ? 'FORGE' : 'AWAKEN');
+            }}
+            className="rpg-panel-subtle hover:border-amber-300 px-2.5 py-1 text-amber-200 font-display font-black uppercase flex items-center gap-1 shrink-0 transition"
+            title="Buy Growth, Awaken & Forge Materials"
+          >
+            <ShoppingBag className="w-3.5 h-3.5 text-amber-300" />
+            <span>Shop</span>
+          </button>
         </div>
       </div>
 
-      {/* HERO PEDESTAL STAGE + ROSTER RAIL + FORGE CONSOLE (Responsive Portrait, Mobile Landscape & Desktop!) */}
+      {/* HERO PEDESTAL STAGE + ROSTER RAIL + FORGE/RELIC/SKILL CONSOLE */}
       <main className="relative z-10 flex-1 grid grid-cols-1 sm:grid-cols-12 gap-2.5 sm:gap-3 px-3 sm:px-4 safe-bottom min-h-0 overflow-y-auto sm:overflow-hidden">
         {/* LEFT RAIL: Vertical Owned Chaser Selector */}
         <aside className="sm:col-span-3 lg:col-span-2 rpg-panel p-2 flex flex-row sm:flex-col gap-1.5 overflow-x-auto sm:overflow-y-auto">
+          <div className="hidden sm:flex items-center justify-between px-1 pb-1 border-b border-slate-800/80 text-[10px]">
+            <span className="font-display font-bold uppercase tracking-wider text-slate-400">
+              Roster ({ownedList.length})
+            </span>
+            <span className="font-mono text-amber-300 font-bold truncate max-w-[90px]">
+              {activePreset.name}
+            </span>
+          </div>
           {ownedList.map((h) => {
             const own = roster[h.id];
             const inSquadIdx = squadIds.indexOf(h.id);
@@ -195,14 +280,17 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
             return (
               <div
                 key={h.id}
-                onClick={() => setSelectedHeroId(h.id)}
-                className={`shrink-0 w-36 sm:w-full flex items-center gap-2 p-1.5 rounded-lg border cursor-pointer transition ${
+                onClick={() => {
+                  setSelectedHeroId(h.id);
+                  audioManager.playSfx('button');
+                }}
+                className={`shrink-0 w-36 sm:w-full flex items-center gap-2 p-1.5 rounded-xl border cursor-pointer transition ${
                   active
                     ? 'bg-amber-500/20 border-amber-300'
                     : 'bg-slate-950/70 border-slate-800 hover:border-slate-600'
                 }`}
               >
-                <div className="relative w-10 h-12 overflow-hidden border border-white/15 shrink-0">
+                <div className="relative w-10 h-12 rounded-lg overflow-hidden border border-white/15 shrink-0">
                   <ArtImage
                     kind="HERO"
                     id={h.id}
@@ -223,25 +311,11 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
                     Lv.{own.level} • ★{own.awakening}
                   </div>
                   {inSquadIdx !== -1 ? (
-                    <span className="text-[9px] font-black text-emerald-400">
-                      DEPLOYED S{inSquadIdx + 1}
+                    <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/40 text-[8px] font-black text-emerald-300">
+                      PARTY S{inSquadIdx + 1}
                     </span>
                   ) : (
-                    <div className="flex gap-0.5 mt-0.5">
-                      {[0, 1, 2, 3].map((slot) => (
-                        <button
-                          key={slot}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSquadSlot(slot, h.id);
-                            audioManager.playSfx('button');
-                          }}
-                          className="px-1 bg-slate-800 hover:bg-amber-400 hover:text-slate-950 text-[9px] font-bold text-slate-300"
-                        >
-                          S{slot + 1}
-                        </button>
-                      ))}
-                    </div>
+                    <span className="text-[9px] text-slate-500 font-semibold">Reserve</span>
                   )}
                 </div>
               </div>
@@ -249,15 +323,13 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
           })}
         </aside>
 
-        {/* CENTER STAGE: Standing Hero Pedestal + Orbiting Gear Slots & Growth */}
+        {/* CENTER STAGE: Standing Hero Pedestal + Orbiting Gear Slots & Balanced Growth */}
         <section className="sm:col-span-4 lg:col-span-5 relative flex flex-col justify-between gap-2 min-h-0 overflow-y-auto sm:overflow-hidden">
-          {/* Hero Pedestal Visual (True Full-Body Standing Cutout + Magic Rune Pedestal + Upgrade Burst!) */}
-          <div className="relative flex-1 flex flex-col items-center justify-end min-h-[210px] sm:min-h-0 pb-2">
+          <div className="relative flex-1 flex flex-col items-center justify-end min-h-[200px] sm:min-h-0 pb-2">
             <div
               className="absolute bottom-[18%] w-48 sm:w-60 md:w-72 h-48 sm:h-60 md:h-72 rounded-full blur-3xl opacity-35"
               style={{ background: heroDef.themeColor }}
             />
-            {/* Illuminated Celestial Floor Pedestal Ring */}
             <div className="pointer-events-none absolute bottom-1 w-44 sm:w-56 md:w-64 h-12 flex items-center justify-center">
               <div
                 className="w-full h-9 rounded-full border-2 opacity-60 animate-pulse"
@@ -269,7 +341,6 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
               <div className="absolute w-32 sm:w-40 h-5 rounded-full bg-black/60 blur-md" />
             </div>
 
-            {/* Upgrade Celebration Burst Ring + Floating Banner */}
             {upgradePulse && (
               <div
                 key={upgradePulse.id}
@@ -296,7 +367,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
               initial={{ opacity: 0, x: -16, scale: 0.96 }}
               animate={{ opacity: 1, x: 0, scale: 1 }}
               transition={{ type: 'spring', stiffness: 320, damping: 26 }}
-              className="relative z-10 h-[200px] sm:h-[50dvh] md:h-[345px] max-h-[380px] flex items-end justify-center animate-breathe"
+              className="relative z-10 h-[195px] sm:h-[46dvh] md:h-[325px] max-h-[360px] flex items-end justify-center animate-breathe"
             >
               <ArtImage
                 kind="HERO"
@@ -328,7 +399,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
                 <RarityCrest tier={heroDef.tier} size="sm" />
                 <RoleBadge role={heroDef.role} variant="pill" size="sm" />
               </div>
-              <h2 className="font-display text-xl sm:text-3xl font-black text-white text-glow-gold leading-tight mt-1">
+              <h2 className="font-display text-xl sm:text-2xl font-black text-white text-glow-gold leading-tight mt-1">
                 {heroDef.name}
               </h2>
               <div className="flex items-center gap-0.5 mt-0.5">
@@ -342,13 +413,16 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
                     }`}
                   />
                 ))}
-                <span className="ml-2 text-xs font-extrabold text-amber-300">
-                  PWR <AnimatedNumber value={computed.powerRating} className="text-sm font-bold text-amber-200" />
+                <span className="ml-2 text-xs font-mono font-bold text-cyan-300">
+                  Lv.{ownedHero.level}/{levelCap}
                 </span>
+              </div>
+              <div className="text-[11px] font-extrabold text-amber-300 mt-0.5">
+                PWR <AnimatedNumber value={computed.powerRating} className="text-sm font-bold text-amber-200" />
               </div>
             </div>
 
-            {/* Ornate Beveled Equipment & Relic Medallion Sockets */}
+            {/* Ornate Equipment & Relic Medallion Sockets */}
             <div className="mt-2 w-full grid grid-cols-5 gap-1.5 sm:mt-0 sm:w-auto sm:absolute sm:right-1 sm:top-2 sm:flex sm:flex-col sm:gap-1.5 z-20">
               {EQUIPMENT_SLOTS.map((slot) => {
                 const item = equipmentInventory.find((e) => e.uid === ownedHero.equippedGear[slot]);
@@ -369,89 +443,195 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
 
               <RpgEquipSlot
                 isRelic
-                relicName={ownedHero.equippedRelicId ? RELIC_MAP[ownedHero.equippedRelicId]?.name : null}
+                relicName={
+                  ownedHero.equippedRelicId
+                    ? `${RELIC_MAP[ownedHero.equippedRelicId]?.name.split(' ')[0]} R${relicRanks[ownedHero.equippedRelicId] ?? 1}`
+                    : null
+                }
                 selected={rightTab === 'RELIC'}
                 onClick={() => setRightTab('RELIC')}
               />
             </div>
           </div>
 
-          {/* Bottom Pedestal Growth & Live Stat Bar */}
-          <div className="relative rpg-panel p-3 sm:p-3.5 space-y-2.5 overflow-hidden">
+          {/* Bottom Pedestal Growth & Biome Awakening Console */}
+          <div className="relative rpg-panel p-2.5 sm:p-3 space-y-2 overflow-hidden">
             <CornerFiligree color="#f5c84c" size={9} opacity={0.55} />
-            <div className="grid grid-cols-4 gap-2 text-center bg-slate-950/80 rounded-xl p-2 border border-amber-400/20 shadow-[inset_0_2px_10px_rgba(0,0,0,0.65)]">
+
+            {/* Live Stats Bar */}
+            <div className="grid grid-cols-4 gap-2 text-center bg-slate-950/80 rounded-xl p-1.5 sm:p-2 border border-amber-400/20 shadow-[inset_0_2px_10px_rgba(0,0,0,0.65)]">
               <div>
                 <div className="text-[9px] font-display font-bold tracking-widest text-slate-400 uppercase">HP</div>
-                <AnimatedNumber value={computed.maxHp} className="text-sm font-bold text-emerald-300" />
+                <AnimatedNumber value={computed.maxHp} className="text-xs sm:text-sm font-bold text-emerald-300" />
               </div>
               <div>
                 <div className="text-[9px] font-display font-bold tracking-widest text-slate-400 uppercase">ATK</div>
-                <AnimatedNumber value={computed.atk} className="text-sm font-bold text-amber-300" />
+                <AnimatedNumber value={computed.atk} className="text-xs sm:text-sm font-bold text-amber-300" />
               </div>
               <div>
                 <div className="text-[9px] font-display font-bold tracking-widest text-slate-400 uppercase">DEF</div>
-                <AnimatedNumber value={computed.def} className="text-sm font-bold text-sky-300" />
+                <AnimatedNumber value={computed.def} className="text-xs sm:text-sm font-bold text-sky-300" />
               </div>
               <div>
                 <div className="text-[9px] font-display font-bold tracking-widest text-slate-400 uppercase">CRIT</div>
-                <div className="font-mono text-sm font-bold text-orange-300">
+                <div className="font-mono text-xs sm:text-sm font-bold text-orange-300">
                   {(computed.critRate * 100).toFixed(0)}%
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-4 gap-2">
+            {/* Awakening Biome Material Readout Bar */}
+            {awakenCost && (
+              <div className="flex flex-wrap items-center justify-between gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-950/75 border border-fuchsia-500/25 text-[10px]">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-display font-black uppercase text-fuchsia-300">
+                    ★{awakenCost.nextStar} Cost:
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 font-mono font-bold ${
+                      ownedHeroEssence >= awakenCost.essences ? 'text-emerald-300' : 'text-rose-300'
+                    }`}
+                    title={MATERIAL_META[heroEssenceKey].farmHint}
+                  >
+                    <MaterialIcon material={heroEssenceKey} className="w-4 h-4" />
+                    {ownedHeroEssence}/{awakenCost.essences}
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 font-mono font-bold ${
+                      starCores >= awakenCost.starCores ? 'text-emerald-300' : 'text-rose-300'
+                    }`}
+                    title={MATERIAL_META.starCores.farmHint}
+                  >
+                    <MaterialIcon material="starCores" className="w-4 h-4" />
+                    {starCores}/{awakenCost.starCores}
+                  </span>
+                  <span
+                    className={`font-mono font-bold ${
+                      gold >= awakenCost.gold ? 'text-amber-300' : 'text-rose-300'
+                    }`}
+                  >
+                    {awakenCost.gold.toLocaleString()}g
+                  </span>
+                  {ownedHero.shards > 0 && (
+                    <span className="text-cyan-300 font-mono font-bold">
+                      (or {ownedHero.shards}/{awakenCost.shardAltCost} Shards)
+                    </span>
+                  )}
+                </div>
+                {!canAwakenWithMats && !canAwakenWithShards && (
+                  <button
+                    onClick={() => {
+                      audioManager.playSfx('button');
+                      onOpenShop('AWAKEN');
+                    }}
+                    className="text-[9px] font-display font-black uppercase text-amber-300 hover:text-amber-200 underline"
+                  >
+                    Get in Shop →
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Growth Action Buttons */}
+            <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
               <RpgButton
                 variant="emerald"
+                size="sm"
                 onClick={() => {
-                  if (levelUpHero(heroDef.id, 1)) {
+                  const res = levelUpHero(heroDef.id, 1);
+                  if (res.ok) {
                     audioManager.playSfx('forge');
                     triggerUpgradeFx(`LEVEL ${ownedHero.level + 1}!`, '#34d399');
+                  } else if (res.message) {
+                    audioManager.playSfx('button');
+                    showNotice(res.message, 'warn');
                   }
                 }}
+                title={
+                  lv1Cost.atAwakenCap
+                    ? `At Lv.${levelCap} cap — Awaken to ★${ownedHero.awakening + 1}`
+                    : `Cost: ${lv1Cost.potions} EXP + ${lv1Cost.gold.toLocaleString()}g`
+                }
               >
-                <TrendingUp className="w-3.5 h-3.5" /> Lv +1
+                <TrendingUp className="w-3.5 h-3.5" />
+                {lv1Cost.atAwakenCap ? `Cap ${levelCap}` : `Lv +1`}
               </RpgButton>
               <RpgButton
                 variant="cyan"
+                size="sm"
                 onClick={() => {
-                  if (levelUpHero(heroDef.id, 5)) {
+                  const res = levelUpHero(heroDef.id, 5);
+                  if (res.ok) {
                     audioManager.playSfx('forge');
-                    triggerUpgradeFx('POWER SURGE +5 LV!', '#38e8ff');
+                    triggerUpgradeFx(`POWER SURGE!`, '#38e8ff');
+                  } else if (res.message) {
+                    audioManager.playSfx('button');
+                    showNotice(res.message, 'warn');
                   }
                 }}
+                title={
+                  lv5Cost.atAwakenCap
+                    ? `Awaken ★${ownedHero.awakening + 1} first`
+                    : `Cost: ${lv5Cost.potions} EXP + ${lv5Cost.gold.toLocaleString()}g`
+                }
               >
-                Lv +5
+                Lv +{Math.max(1, lv5Cost.actualLevels || 5)}
               </RpgButton>
               <RpgButton
                 variant="violet"
-                disabled={ownedHero.awakening >= 6}
+                size="sm"
+                disabled={!awakenCost}
                 onClick={() => {
-                  if (awakenHero(heroDef.id)) {
+                  const res = awakenHero(heroDef.id);
+                  if (res.ok) {
                     audioManager.playSfx('ssr_reveal');
                     triggerUpgradeFx(`AWAKENED ★${ownedHero.awakening + 1}!`, '#e879f9');
+                    if (res.message) showNotice(res.message, 'ok');
+                  } else if (res.message) {
+                    audioManager.playSfx('button');
+                    showNotice(res.message, 'warn');
                   }
                 }}
-                title={`Requires ${awakenShardCost} Shards (Have ${ownedHero.shards}) or ${awakenDustNeeded} Dust`}
               >
-                Awaken ★{ownedHero.awakening + 1}
+                <Sparkles className="w-3 h-3" />
+                {awakenCost ? `Awaken ★${awakenCost.nextStar}` : 'MAX ★6'}
               </RpgButton>
               <RpgButton
                 variant="rose"
+                size="sm"
                 onClick={() => {
                   if (giveBondGift(heroDef.id)) {
                     audioManager.playSfx('heal');
                     triggerUpgradeFx('BOND INCREASED ♥', '#fb7185');
+                  } else {
+                    showNotice(
+                      ownedHero.bondLevel >= 10
+                        ? 'Bond already Max Lv.10!'
+                        : 'No Bond Gifts left — buy in Shop or clear stages!',
+                      'warn',
+                    );
                   }
                 }}
               >
                 <Heart className="w-3 h-3" /> Bond ({bondGifts})
               </RpgButton>
             </div>
+
+            {statusMessage && (
+              <div
+                className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${
+                  statusMessage.tone === 'ok'
+                    ? 'bg-emerald-950/70 border-emerald-400/45 text-emerald-200'
+                    : 'bg-amber-950/70 border-amber-400/45 text-amber-200'
+                }`}
+              >
+                {statusMessage.text}
+              </div>
+            )}
           </div>
         </section>
 
-        {/* RIGHT CONSOLE: Blacksmith Anvil Forge (+15), Relics & Kit */}
+        {/* RIGHT CONSOLE: Blacksmith Anvil Forge (+15), Earned Relics & Interactive Skill Inspector */}
         <section className="relative sm:col-span-5 rpg-panel p-3 sm:p-4 flex flex-col min-h-0 overflow-hidden">
           <CornerFiligree color="#f5c84c" size={9} opacity={0.5} />
           <div className="mb-3">
@@ -462,7 +642,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
               onChange={setRightTab}
               items={[
                 { key: 'GEAR', label: 'Forge', icon: 'forge' },
-                { key: 'RELIC', label: 'Relics', icon: 'relic', accent: 'cyan' },
+                { key: 'RELIC', label: `Relics (${ownedRelics.length})`, icon: 'relic', accent: 'cyan' },
                 { key: 'SKILLS', label: 'Skills', icon: 'heroes' },
               ]}
             />
@@ -470,7 +650,6 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
 
           {rightTab === 'GEAR' && (
             <div className="flex-1 flex flex-col gap-3 min-h-0">
-              {/* Active Set Summary */}
               <div className="rounded-xl bg-slate-950/75 border border-amber-400/20 px-3 py-2 text-[11px]">
                 <span className="text-slate-400 uppercase font-display font-bold text-[9px] tracking-widest mr-2">
                   Active Sets:
@@ -490,10 +669,9 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
                 )}
               </div>
 
-              {/* Equipped Item Forge Anvil */}
               {equippedItemForSlot && (
                 <div
-                  className="rpg-ornate-card p-3 overflow-hidden"
+                  className="rpg-ornate-card p-3 overflow-hidden space-y-2"
                   style={{
                     borderColor: `${RARITY_COLORS[equippedItemForSlot.rarity]}aa`,
                     boxShadow: `0 8px 22px rgba(0,0,0,0.6), inset 0 0 20px ${RARITY_COLORS[equippedItemForSlot.rarity]}18`,
@@ -512,7 +690,10 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
                         <EquipIcon slot={equippedItemForSlot.slot} className="w-10 h-10" />
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[10px] font-display font-black uppercase tracking-widest" style={{ color: RARITY_COLORS[equippedItemForSlot.rarity] }}>
+                        <div
+                          className="text-[10px] font-display font-black uppercase tracking-widest"
+                          style={{ color: RARITY_COLORS[equippedItemForSlot.rarity] }}
+                        >
                           {equippedItemForSlot.rarity} • {activeSlot}
                         </div>
                         <div className="font-display font-bold text-sm text-white truncate">
@@ -531,24 +712,20 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
                         </div>
                       </div>
                     </div>
+
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      {(() => {
-                        const cost = getEnhanceCost(equippedItemForSlot);
-                        return (
-                          <RpgButton
-                            variant="gold"
-                            size="sm"
-                            disabled={equippedItemForSlot.enhanceLevel >= 15}
-                            onClick={() => handleEnhance(equippedItemForSlot.uid)}
-                            className="font-display font-black uppercase"
-                          >
-                            <GameIcon name="forge" className="w-4 h-4" />
-                            {equippedItemForSlot.enhanceLevel >= 15
-                              ? 'MAX +15'
-                              : `Forge (${cost.gold}g / ${cost.forgeStones}★)`}
-                          </RpgButton>
-                        );
-                      })()}
+                      <RpgButton
+                        variant="gold"
+                        size="sm"
+                        disabled={equippedItemForSlot.enhanceLevel >= 15}
+                        onClick={() => handleEnhance(equippedItemForSlot.uid)}
+                        className="font-display font-black uppercase"
+                      >
+                        <GameIcon name="forge" className="w-4 h-4" />
+                        {equippedItemForSlot.enhanceLevel >= 15
+                          ? 'MAX +15'
+                          : `Forge +${equippedItemForSlot.enhanceLevel + 1}`}
+                      </RpgButton>
                       <button
                         onClick={() => equipGear(heroDef.id, activeSlot, null)}
                         className="text-[10px] uppercase tracking-wider font-bold text-slate-400 hover:text-rose-300 transition"
@@ -557,9 +734,46 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
                       </button>
                     </div>
                   </div>
-                  {forgeMessage && (
-                    <div className="mt-1.5 text-xs font-bold text-cyan-300">{forgeMessage}</div>
-                  )}
+
+                  {/* Tiered Forge Material Cost Strip */}
+                  {equippedItemForSlot.enhanceLevel < 15 && (() => {
+                    const cost = getEnhanceCost(equippedItemForSlot);
+                    return (
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-white/10 text-[10px] font-mono">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <span className={gold >= cost.gold ? 'text-amber-300 font-bold' : 'text-rose-300 font-bold'}>
+                            {cost.gold.toLocaleString()}g
+                          </span>
+                          <span className={`inline-flex items-center gap-1 font-bold ${forgeStones >= cost.forgeStones ? 'text-violet-300' : 'text-rose-300'}`}>
+                            <MaterialIcon material="forgeStones" className="w-3.5 h-3.5" />
+                            {forgeStones}/{cost.forgeStones}
+                          </span>
+                          {cost.starIronIngots > 0 && (
+                            <span className={`inline-flex items-center gap-1 font-bold ${starIronIngots >= cost.starIronIngots ? 'text-sky-300' : 'text-rose-300'}`}>
+                              <MaterialIcon material="starIronIngots" className="w-3.5 h-3.5" />
+                              {starIronIngots}/{cost.starIronIngots}
+                            </span>
+                          )}
+                          {cost.astralAnvilCores > 0 && (
+                            <span className={`inline-flex items-center gap-1 font-bold ${astralAnvilCores >= cost.astralAnvilCores ? 'text-amber-200' : 'text-rose-300'}`}>
+                              <MaterialIcon material="astralAnvilCores" className="w-3.5 h-3.5" />
+                              {astralAnvilCores}/{cost.astralAnvilCores}
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`px-1.5 py-0.5 rounded font-bold ${
+                            cost.effectiveSuccessRate >= 1
+                              ? 'bg-emerald-500/15 text-emerald-300'
+                              : 'bg-amber-500/15 text-amber-300'
+                          }`}
+                        >
+                          Rate {Math.round(cost.effectiveSuccessRate * 100)}%
+                          {(equippedItemForSlot.forgePity ?? 0) > 0 && ' (+Pity)'}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -567,6 +781,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
               <div className="space-y-1.5 overflow-y-auto pr-1 flex-1">
                 {candidateGear.map((eq) => {
                   const isEquippedHere = eq.uid === equippedUidForSlot;
+                  const salvage = getSalvageYield(eq);
                   return (
                     <div
                       key={eq.uid}
@@ -625,8 +840,11 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
                           <RpgButton
                             variant="slate"
                             size="xs"
-                            onClick={() => salvageGear(eq.uid)}
-                            title="Salvage"
+                            onClick={() => {
+                              salvageGear(eq.uid);
+                              audioManager.playSfx('button');
+                            }}
+                            title={`Salvage for +${salvage.gold}g, +${salvage.forgeStones} Stones${salvage.starIronIngots ? `, +${salvage.starIronIngots} Ingots` : ''}${salvage.astralAnvilCores ? `, +${salvage.astralAnvilCores} Anvil Core` : ''}`}
                             className="!px-2 hover:!border-rose-400 hover:!text-rose-200"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -642,96 +860,106 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({ onBack }) => {
 
           {rightTab === 'RELIC' && (
             <div className="flex-1 space-y-2.5 overflow-y-auto pr-1">
-              {ownedRelics.map((rid) => {
-                const r = RELIC_MAP[rid];
-                if (!r) return null;
-                const equippedHere = ownedHero.equippedRelicId === rid;
-                return (
-                  <div
-                    key={rid}
-                    className={`rounded-xl p-3 border flex gap-3 items-center transition ${
-                      equippedHere
-                        ? 'bg-amber-500/15 border-amber-400 shadow-[0_0_16px_rgba(245,200,76,0.2)]'
-                        : 'bg-slate-950/80 border-slate-700/75 hover:border-amber-400/40'
-                    }`}
-                  >
-                    <div className="w-16 aspect-[3/4] rounded-lg overflow-hidden border border-white/20 shrink-0">
-                      <ArtImage
-                        kind="RELIC"
-                        id={rid}
-                        src={r.assetCard}
-                        alt={r.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-display font-black text-amber-300">{r.tier}</span>
-                        <span className="font-display font-bold text-sm text-white truncate">
-                          {r.name}
+              {ownedRelics.length === 0 ? (
+                <div className="rpg-ornate-card p-5 text-center space-y-3 border-cyan-400/40">
+                  <CornerFiligree color="#38e8ff" size={8} opacity={0.65} />
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-cyan-500/15 border border-cyan-400/50 flex items-center justify-center">
+                    <GameIcon name="relic" className="w-9 h-9" />
+                  </div>
+                  <div>
+                    <h3 className="font-display text-base font-black text-white">
+                      No Starlight Relics Acquired Yet
+                    </h3>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                      Relics are earned through combat exploration! Clear{' '}
+                      <strong className="text-amber-300">Stage 1-4 (Mini-Boss)</strong> for your
+                      first guaranteed Relic, challenge{' '}
+                      <strong className="text-fuchsia-300">Region Bosses (X-12)</strong> for SR &
+                      SSR Relics, or craft any Relic using Boss Fragments in the Relic Vault.
+                    </p>
+                  </div>
+                  <div className="flex justify-center">
+                    <RpgButton
+                      variant="cyan"
+                      size="sm"
+                      onClick={() => {
+                        audioManager.playSfx('button');
+                        onOpenShop('RELIC');
+                      }}
+                    >
+                      <ShoppingBag className="w-3.5 h-3.5" /> Open Relic Vault (Shop)
+                    </RpgButton>
+                  </div>
+                </div>
+              ) : (
+                ownedRelics.map((rid) => {
+                  const r = RELIC_MAP[rid];
+                  if (!r) return null;
+                  const equippedHere = ownedHero.equippedRelicId === rid;
+                  const rank = relicRanks[rid] ?? 1;
+                  const rankPct = (rank - 1) * 15;
+                  return (
+                    <div
+                      key={rid}
+                      className={`rounded-xl p-3 border flex gap-3 items-center transition ${
+                        equippedHere
+                          ? 'bg-amber-500/15 border-amber-400 shadow-[0_0_16px_rgba(245,200,76,0.2)]'
+                          : 'bg-slate-950/80 border-slate-700/75 hover:border-amber-400/40'
+                      }`}
+                    >
+                      <div className="relative w-16 aspect-[3/4] rounded-lg overflow-hidden border border-white/20 shrink-0">
+                        <ArtImage
+                          kind="RELIC"
+                          id={rid}
+                          src={r.assetCard}
+                          alt={r.name}
+                          className="w-full h-full object-cover"
+                        />
+                        <span className="absolute bottom-0 inset-x-0 bg-black/85 text-[9px] font-mono font-black text-center text-cyan-300">
+                          R{rank}/{MAX_RELIC_RANK}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-300 mt-1 leading-snug">{r.passiveDesc}</p>
-                      <div className="mt-2">
-                        <RpgButton
-                          variant={equippedHere ? 'rose' : 'gold'}
-                          size="xs"
-                          onClick={() => {
-                            equipRelic(heroDef.id, equippedHere ? null : rid);
-                            audioManager.playSfx('button');
-                          }}
-                          className="uppercase font-display font-black"
-                        >
-                          {equippedHere ? 'Unequip' : 'Equip Relic'}
-                        </RpgButton>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-display font-black text-amber-300">
+                            {r.tier}
+                          </span>
+                          <span className="font-display font-bold text-sm text-white truncate">
+                            {r.name}
+                          </span>
+                          {rank > 1 && (
+                            <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-400/40 text-[9px] font-mono font-bold text-cyan-200">
+                              +{rankPct}% Stats
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-300 mt-1 leading-snug">{r.passiveDesc}</p>
+                        <div className="mt-2">
+                          <RpgButton
+                            variant={equippedHere ? 'rose' : 'gold'}
+                            size="xs"
+                            onClick={() => {
+                              equipRelic(heroDef.id, equippedHere ? null : rid);
+                              audioManager.playSfx('button');
+                            }}
+                            className="uppercase font-display font-black"
+                          >
+                            {equippedHere ? 'Unequip' : 'Equip Relic'}
+                          </RpgButton>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              )}
             </div>
           )}
 
-          {rightTab === 'SKILLS' && (
-            <div className="space-y-2.5 overflow-y-auto pr-1 text-xs">
-              <div className="rpg-ornate-card p-3 border-l-4" style={{ borderLeftColor: '#f5c84c' }}>
-                <div className="text-[10px] font-display font-black uppercase tracking-widest text-amber-300 flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5" /> Passive — {heroDef.passive.name}
-                </div>
-                <p className="text-slate-200 mt-1 leading-relaxed">{heroDef.passive.description}</p>
-              </div>
-              {heroDef.skills.map((sk, idx) => (
-                <div key={sk.id} className="rpg-ornate-card p-3 border-l-4" style={{ borderLeftColor: '#38e8ff' }}>
-                  <div className="flex justify-between font-bold text-cyan-300">
-                    <span>
-                      S{idx + 1}: {sk.name}
-                    </span>
-                    <span className="font-mono text-[10px] text-slate-400">
-                      {sk.spCost} SP • {sk.cooldown}s
-                    </span>
-                  </div>
-                  <p className="text-slate-200 mt-1">{sk.description}</p>
-                </div>
-              ))}
-              <div className="bg-fuchsia-950/35 border-l-2 border-l-fuchsia-400 p-3">
-                <div className="flex justify-between font-bold text-fuchsia-300">
-                  <span>ULT: {heroDef.ultimate.name}</span>
-                  <span className="font-mono text-[10px] text-amber-300">
-                    {heroDef.ultimate.gaugeCost} Gauge
-                  </span>
-                </div>
-                <p className="text-slate-200 mt-1">{heroDef.ultimate.description}</p>
-              </div>
-              <div className="bg-slate-950/60 border border-rose-500/30 p-3">
-                <div className="flex items-center gap-1 text-rose-300 font-bold mb-1">
-                  <Shield className="w-3.5 h-3.5" /> Bond Story (Lv.{ownedHero.bondLevel})
-                </div>
-                <p className="text-slate-300 italic">{heroDef.bondStory}</p>
-              </div>
-            </div>
-          )}
+          {rightTab === 'SKILLS' && <SkillInspector hero={heroDef} owned={ownedHero} />}
         </section>
       </main>
+
+      <PartyManagerModal open={showPartyModal} onClose={() => setShowPartyModal(false)} />
     </div>
   );
 };

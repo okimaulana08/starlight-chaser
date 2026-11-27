@@ -2,7 +2,7 @@ export type Tier = 'R' | 'SR' | 'SSR';
 export type Role = 'TANK' | 'ASSAULT' | 'RANGER' | 'MAGE' | 'HEALER';
 export type Faction = 'SOLARIS' | 'ASTRAL' | 'VERDANT' | 'ASHEN';
 export type AimType = 'CIRCLE' | 'CONE' | 'LINE' | 'DASH' | 'SELF';
-export type ScreenId = 'LOBBY' | 'COMBAT' | 'SQUAD' | 'GACHA' | 'CODEX';
+export type ScreenId = 'LOBBY' | 'COMBAT' | 'SQUAD' | 'GACHA' | 'CODEX' | 'SHOP';
 
 export type EquipmentSlot = 'WEAPON' | 'ARMOR' | 'ACCESSORY' | 'EMBLEM';
 export type EquipmentRarity = 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
@@ -13,6 +13,25 @@ export type EquipmentSetId =
   | 'AEGIS_BASTION'
   | 'ASTRAL_SURGE'
   | 'VERDANT_GRACE';
+
+export type MaterialKey =
+  | 'expPotions'
+  | 'bondGifts'
+  | 'forgeStones'
+  | 'starIronIngots'
+  | 'astralAnvilCores'
+  | 'starCores'
+  | 'relicFragments'
+  | 'essence_SOLARIS'
+  | 'essence_ASTRAL'
+  | 'essence_VERDANT'
+  | 'essence_ASHEN';
+
+export interface PartyPreset {
+  id: string;
+  name: string;
+  heroIds: [string, string, string, string];
+}
 
 export type SkillEffectTag =
   | 'GATHER'
@@ -129,6 +148,7 @@ export interface EquipmentInstance {
   setId: EquipmentSetId;
   rarity: EquipmentRarity;
   enhanceLevel: number; // 0 - 15
+  forgePity?: number; // cumulative fail pity bonus (0..1)
   mainStat: { stat: string; value: number };
   subStats: EquipmentSubStat[];
   equippedHeroId: string | null;
@@ -224,6 +244,17 @@ export interface StageDef {
     gold: [number, number];
     expPotions: [number, number];
     forgeStones: [number, number];
+    starIronIngots?: [number, number];
+    astralAnvilCores?: [number, number];
+    starCores?: [number, number];
+    relicFragments?: [number, number];
+    primaryEssence: Faction;
+    primaryEssenceQty: [number, number];
+    bonusRandomEssenceChance?: number;
+    guaranteedFirstClearRelicId?: string;
+    relicDropPool?: string[];
+    relicDropChance?: number;
+    targetSetIds: EquipmentSetId[];
     equipmentDrops: number;
     rarityWeights: Record<EquipmentRarity, number>;
   };
@@ -279,19 +310,30 @@ export interface PlayerSaveState {
   starlightTokens: number;
   expPotions: number;
   forgeStones: number;
+  starIronIngots: number;
+  astralAnvilCores: number;
+  starCores: number;
+  relicFragments: number;
+  factionEssences: Record<Faction, number>;
   bondGifts: number;
   pityCounterHero: number;
   pityCounterRelic: number;
   guaranteedFeaturedHero: boolean;
   guaranteedFeaturedRelic: boolean;
   squadIds: [string, string, string, string];
+  partyPresets: [PartyPreset, PartyPreset, PartyPreset];
+  activePresetIndex: 0 | 1 | 2;
   roster: Record<string, OwnedHeroState>;
   ownedRelics: string[];
+  relicRanks: Record<string, number>; // 1 - 5 refinement rank
   equipmentInventory: EquipmentInstance[];
   unlockedCodexIds: string[];
   claimedCodexMilestones: number[];
   clearedStages: string[];
   selectedStageId: string;
+  shopPurchases: Record<string, number>;
+  shopResetDay: string;
+  lastDailySupplyAt: number;
 }
 
 export interface HeroCombatSnapshot {
@@ -348,6 +390,13 @@ export interface ActiveCutInState {
   phase: 'FREEZE' | 'CUTIN' | 'IMPACT' | 'AFTERMATH';
 }
 
+export interface DroppedRelicSummary {
+  relicId: string;
+  isNew: boolean;
+  newRank: number;
+  bonusFragments?: number;
+}
+
 export interface CombatLootSummary {
   victory: boolean;
   stageId: string;
@@ -359,7 +408,13 @@ export interface CombatLootSummary {
   crystalsEarned: number;
   expPotionsEarned: number;
   forgeStonesEarned: number;
+  starIronIngotsEarned: number;
+  astralAnvilCoresEarned: number;
+  starCoresEarned: number;
+  relicFragmentsEarned: number;
+  essencesEarned: Partial<Record<Faction, number>>;
   bondGiftsEarned: number;
   isFirstClear: boolean;
   droppedEquipment: EquipmentInstance[];
+  droppedRelics: DroppedRelicSummary[];
 }

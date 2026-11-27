@@ -4,6 +4,7 @@ import {
   Download,
   MessageSquare,
   RefreshCw,
+  Users,
   Volume2,
   VolumeX,
 } from 'lucide-react';
@@ -16,10 +17,11 @@ import { getHighestUnlockedStage, isStageUnlocked, STAGE_MAP } from '../data/sta
 import { audioManager } from '../engine/AudioManager';
 import { computeHeroStats, getActiveFactionBonuses } from '../engine/CombatMath';
 import { usePwaInstall } from '../hooks/usePwaInstall';
-import { CODEX_MILESTONES, usePlayerStore } from '../store/usePlayerStore';
+import { CODEX_MILESTONES, DAILY_SUPPLY_COOLDOWN_MS, usePlayerStore } from '../store/usePlayerStore';
 import type { ScreenId } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { GameIcon } from './GameIcon';
+import { PartyManagerModal } from './PartyManagerModal';
 import { RarityCrest, RoleBadge } from './RoleBadge';
 import { StarlightBackdrop } from './StarlightBackdrop';
 import { WorldMapOverlay } from './WorldMapOverlay';
@@ -37,25 +39,33 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
     gold,
     starlightCrystals,
     squadIds,
+    partyPresets,
+    activePresetIndex,
     roster,
+    relicRanks,
     equipmentInventory,
     unlockedCodexIds,
     claimedCodexMilestones,
     clearedStages,
     selectedStageId,
-    grantDebugResources,
+    lastDailySupplyAt,
+    claimDailySupply,
   } = usePlayerStore();
 
   const { canInstall, promptInstall } = usePwaInstall();
   const [muted, setMuted] = useState(audioManager.isMuted());
   const [showMap, setShowMap] = useState(false);
+  const [showPartyModal, setShowPartyModal] = useState(false);
   const [showDialogue, setShowDialogue] = useState(true);
+  const [supplyToast, setSupplyToast] = useState<string | null>(null);
   const [parallax, setParallax] = useState({ x: 0, y: 0 });
 
   const ownedHeroIds = Object.keys(roster);
   const displayHeroId = roster[favoriteHeroId] ? favoriteHeroId : squadIds[0];
   const displayHero = HERO_MAP[displayHeroId] ?? HERO_MAP.vaelen;
   const displayOwned = roster[displayHero.id];
+  const activePreset = partyPresets[activePresetIndex] ?? partyPresets[0];
+  const dailySupplyReady = Date.now() - (lastDailySupplyAt ?? 0) >= DAILY_SUPPLY_COOLDOWN_MS;
 
   const squadPower = useMemo(
     () =>
@@ -65,11 +75,17 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
         if (!def || !owned) return sum;
         return (
           sum +
-          computeHeroStats(def, owned, equipmentInventory, squadIds, unlockedCodexIds.length)
-            .powerRating
+          computeHeroStats(
+            def,
+            owned,
+            equipmentInventory,
+            squadIds,
+            unlockedCodexIds.length,
+            relicRanks,
+          ).powerRating
         );
       }, 0),
-    [squadIds, roster, equipmentInventory, unlockedCodexIds.length],
+    [squadIds, roster, equipmentInventory, unlockedCodexIds.length, relicRanks],
   );
 
   const activeFactions = useMemo(() => getActiveFactionBonuses(squadIds), [squadIds]);
@@ -238,14 +254,21 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
             )}
             <button
               onClick={() => {
-                grantDebugResources();
-                audioManager.playSfx('ssr_reveal');
+                const res = claimDailySupply();
+                setSupplyToast(res.message);
+                window.setTimeout(() => setSupplyToast(null), 3000);
+                audioManager.playSfx(res.ok ? 'ssr_reveal' : 'button');
               }}
-              title="Claim Commander Supply Drop (+3,200 Crystals, Gold & Gear)"
-              className="rpg-panel-subtle hover:border-amber-400 px-2 sm:px-3 py-1 sm:py-1.5 text-[11px] font-extrabold uppercase text-amber-300 flex items-center gap-1.5 transition"
+              title="Claim 4h Commander Supply Dispatch (Gold, Crystals, EXP, Stones & Essences)"
+              className={`rpg-panel-subtle hover:border-amber-400 px-2 sm:px-3 py-1 sm:py-1.5 text-[11px] font-extrabold uppercase flex items-center gap-1.5 transition relative ${
+                dailySupplyReady ? 'text-amber-300 border-amber-400/60' : 'text-slate-400'
+              }`}
             >
               <GameIcon name="supply" className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden md:inline">Supply</span>
+              <span className="hidden md:inline">{dailySupplyReady ? 'Daily Supply' : 'Supply'}</span>
+              {dailySupplyReady && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse" />
+              )}
             </button>
             <button
               onClick={() => setMuted(audioManager.toggleMute())}
@@ -291,30 +314,30 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
             </button>
           </div>
 
-          {/* Right Side Sculpted RPG Crest Menu Cards (No more awkward parallelograms!) */}
-          <div className="pointer-events-auto sm:ml-auto grid grid-cols-3 sm:flex sm:flex-col items-stretch gap-2 sm:gap-2 md:gap-2.5 w-full sm:w-[250px] md:w-[345px] ls-tight-gap">
+          {/* Right Side Sculpted RPG Crest Menu Cards (4 Core Menus: Heroes, Shop, Summon, Codex) */}
+          <div className="pointer-events-auto sm:ml-auto grid grid-cols-4 sm:flex sm:flex-col items-stretch gap-1.5 sm:gap-2 w-full sm:w-[250px] md:w-[345px] ls-tight-gap">
             {/* Crest Card 1: Heroes & Forge */}
             <button
               onClick={() => {
                 audioManager.playSfx('button');
                 onNavigate('SQUAD');
               }}
-              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-3 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group"
+              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-2.5 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group"
             >
               <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3">
                 <div className="relative flex items-center justify-center shrink-0">
                   <div className="absolute inset-0 rounded-full bg-amber-400/25 blur-md group-hover:bg-amber-400/45 transition" />
                   <GameIcon
                     name="heroes"
-                    className="relative w-9 h-9 sm:w-8 sm:h-8 md:w-11 md:h-11 group-hover:scale-110 transition"
+                    className="relative w-8 h-8 sm:w-8 sm:h-8 md:w-10 md:h-10 group-hover:scale-110 transition"
                   />
                 </div>
                 <div className="text-center sm:text-left">
-                  <div className="font-display font-black text-[11px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-amber-300 leading-tight">
+                  <div className="font-display font-black text-[10px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-amber-300 leading-tight">
                     HEROES
                   </div>
                   <div className="hidden md:block ls-hide text-[11px] text-slate-400">
-                    Formation • +15 Gear • Relics
+                    Growth • +15 Forge • Relics
                   </div>
                 </div>
               </div>
@@ -323,24 +346,54 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
               </span>
             </button>
 
-            {/* Crest Card 2: Starlight Summon */}
+            {/* Crest Card 2: Starlight Shop Emporium */}
+            <button
+              onClick={() => {
+                audioManager.playSfx('button');
+                onNavigate('SHOP');
+              }}
+              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-2.5 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group border-emerald-400/45 hover:border-emerald-300"
+            >
+              <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3">
+                <div className="relative flex items-center justify-center shrink-0">
+                  <div className="absolute inset-0 rounded-full bg-emerald-400/25 blur-md group-hover:bg-emerald-400/45 transition" />
+                  <GameIcon
+                    name="shop"
+                    className="relative w-8 h-8 sm:w-8 sm:h-8 md:w-10 md:h-10 group-hover:scale-110 transition"
+                  />
+                </div>
+                <div className="text-center sm:text-left">
+                  <div className="font-display font-black text-[10px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-emerald-300 leading-tight">
+                    SHOP
+                  </div>
+                  <div className="hidden md:block ls-hide text-[11px] text-emerald-200/75">
+                    Awaken • EXP • Forge • Relic Vault
+                  </div>
+                </div>
+              </div>
+              <span className="hidden sm:inline px-2 py-0.5 rounded-full bg-emerald-400/15 border border-emerald-400/40 font-mono text-[10px] font-bold text-emerald-200">
+                OPEN
+              </span>
+            </button>
+
+            {/* Crest Card 3: Starlight Summon */}
             <button
               onClick={() => {
                 audioManager.playSfx('button');
                 onNavigate('GACHA');
               }}
-              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-3 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group border-cyan-400/50 hover:border-cyan-300"
+              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-2.5 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group border-cyan-400/50 hover:border-cyan-300"
             >
               <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3">
                 <div className="relative flex items-center justify-center shrink-0">
                   <div className="absolute inset-0 rounded-full bg-cyan-400/25 blur-md group-hover:bg-cyan-400/45 transition" />
                   <GameIcon
                     name="summon"
-                    className="relative w-9 h-9 sm:w-8 sm:h-8 md:w-11 md:h-11 group-hover:scale-110 transition"
+                    className="relative w-8 h-8 sm:w-8 sm:h-8 md:w-10 md:h-10 group-hover:scale-110 transition"
                   />
                 </div>
                 <div className="text-center sm:text-left">
-                  <div className="font-display font-black text-[11px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-cyan-300 leading-tight">
+                  <div className="font-display font-black text-[10px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-cyan-300 leading-tight">
                     SUMMON
                   </div>
                   <div className="hidden md:block ls-hide text-[11px] text-cyan-200/75">
@@ -353,24 +406,24 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
               </span>
             </button>
 
-            {/* Crest Card 3: Starlight Codex */}
+            {/* Crest Card 4: Starlight Codex */}
             <button
               onClick={() => {
                 audioManager.playSfx('button');
                 onNavigate('CODEX');
               }}
-              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-3 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group relative border-fuchsia-400/45 hover:border-fuchsia-300"
+              className="rpg-blade px-2 sm:px-3.5 py-2 sm:py-2 md:py-2.5 text-left flex flex-col sm:flex-row items-center justify-between gap-1 group relative border-fuchsia-400/45 hover:border-fuchsia-300"
             >
               <div className="flex flex-col sm:flex-row items-center gap-1 sm:gap-3">
                 <div className="relative flex items-center justify-center shrink-0">
                   <div className="absolute inset-0 rounded-full bg-fuchsia-400/25 blur-md group-hover:bg-fuchsia-400/45 transition" />
                   <GameIcon
                     name="codex"
-                    className="relative w-9 h-9 sm:w-8 sm:h-8 md:w-11 md:h-11 group-hover:scale-110 transition"
+                    className="relative w-8 h-8 sm:w-8 sm:h-8 md:w-10 md:h-10 group-hover:scale-110 transition"
                   />
                 </div>
                 <div className="text-center sm:text-left">
-                  <div className="font-display font-black text-[11px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-fuchsia-300 leading-tight">
+                  <div className="font-display font-black text-[10px] sm:text-xs md:text-base tracking-wider text-white group-hover:text-fuchsia-300 leading-tight">
                     CODEX
                   </div>
                   <div className="hidden md:block ls-hide text-[11px] text-slate-400">
@@ -393,21 +446,21 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
 
         {/* BOTTOM DOCK: Active Squad Emblem Strip + Royal Gold Sculpted BATTLE Crest */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-2 sm:gap-3 mt-1">
-          {/* Active Deployed Squad Portraits */}
+          {/* Active Deployed Squad Portraits — Opens Dedicated 3-Preset Party Manager! */}
           <button
             onClick={() => {
               audioManager.playSfx('button');
-              onNavigate('SQUAD');
+              setShowPartyModal(true);
             }}
-            className="pointer-events-auto rpg-panel-subtle px-2.5 sm:px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2.5 hover:border-amber-400/75 transition group"
+            className="pointer-events-auto rpg-panel-subtle px-2.5 sm:px-3 py-1.5 flex items-center justify-between sm:justify-start gap-2.5 hover:border-amber-400/80 transition group"
           >
             <div className="flex items-center gap-1.5">
-              {squadIds.map((hid) => {
+              {squadIds.map((hid, idx) => {
                 const h = HERO_MAP[hid];
                 if (!h) return null;
                 return (
                   <div
-                    key={hid}
+                    key={`${hid}_${idx}`}
                     className="relative w-9 h-9 sm:w-9 sm:h-9 md:w-11 md:h-11 rounded-lg overflow-hidden border-2 bg-slate-950 shadow-md"
                     style={{ borderColor: h.themeColor }}
                   >
@@ -426,8 +479,11 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
               })}
             </div>
             <div className="text-right sm:text-left pr-1">
-              <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold group-hover:text-amber-300 leading-none">
-                Active Squad
+              <div className="text-[9px] uppercase tracking-widest text-amber-300 font-black flex items-center justify-end sm:justify-start gap-1 leading-none">
+                <Users className="w-3 h-3" />
+                <span>
+                  P{activePresetIndex + 1}: {activePreset.name}
+                </span>
               </div>
               {activeFactions.length > 0 ? (
                 <div className="flex items-center justify-end sm:justify-start gap-1 text-[11px] font-bold mt-1">
@@ -440,7 +496,9 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
                   </span>
                 </div>
               ) : (
-                <div className="text-[11px] text-slate-300 mt-0.5">Edit Formation</div>
+                <div className="text-[11px] text-cyan-200 font-bold mt-0.5 group-hover:text-amber-200">
+                  Manage Party →
+                </div>
               )}
             </div>
           </button>
@@ -476,6 +534,14 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({ onNavigate, onStartCom
           </button>
         </div>
       </div>
+
+      {supplyToast && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-slate-950/95 border border-amber-400/70 text-amber-200 text-xs font-bold shadow-2xl">
+          {supplyToast}
+        </div>
+      )}
+
+      <PartyManagerModal open={showPartyModal} onClose={() => setShowPartyModal(false)} />
 
       {showMap && (
         <WorldMapOverlay

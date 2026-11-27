@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import type { ShopCategory } from './data/materials';
 import { audioManager } from './engine/AudioManager';
 import { usePlayerStore } from './store/usePlayerStore';
 import type { ScreenId } from './types/game';
@@ -7,6 +8,7 @@ import { CodexScreen } from './ui/CodexScreen';
 import { CombatHUD } from './ui/CombatHUD';
 import { GachaScreen } from './ui/GachaScreen';
 import { LobbyScreen } from './ui/LobbyScreen';
+import { ShopScreen } from './ui/ShopScreen';
 import { SquadScreen } from './ui/SquadScreen';
 import { TitleScreen } from './ui/TitleScreen';
 
@@ -14,6 +16,7 @@ export const App: React.FC = () => {
   const [entered, setEntered] = useState(false);
   const [screen, setScreen] = useState<ScreenId>('LOBBY');
   const [activeStageId, setActiveStageId] = useState<string>('stage_1_1');
+  const [shopTab, setShopTab] = useState<ShopCategory>('GROWTH');
 
   useEffect(() => {
     if (entered && screen !== 'COMBAT') {
@@ -25,6 +28,11 @@ export const App: React.FC = () => {
     usePlayerStore.getState().setSelectedStage(stageId);
     setActiveStageId(stageId);
     setScreen('COMBAT');
+  };
+
+  const handleOpenShop = (initialTab: ShopCategory = 'GROWTH') => {
+    setShopTab(initialTab);
+    setScreen('SHOP');
   };
 
   return (
@@ -60,7 +68,18 @@ export const App: React.FC = () => {
                 onExit={() => setScreen('LOBBY')}
               />
             )}
-            {screen === 'SQUAD' && <SquadScreen onBack={() => setScreen('LOBBY')} />}
+            {screen === 'SQUAD' && (
+              <SquadScreen
+                onBack={() => setScreen('LOBBY')}
+                onOpenShop={handleOpenShop}
+              />
+            )}
+            {screen === 'SHOP' && (
+              <ShopScreen
+                initialTab={shopTab}
+                onBack={() => setScreen('LOBBY')}
+              />
+            )}
             {screen === 'GACHA' && <GachaScreen onBack={() => setScreen('LOBBY')} />}
             {screen === 'CODEX' && <CodexScreen onBack={() => setScreen('LOBBY')} />}
           </motion.div>

@@ -27,6 +27,7 @@ export interface ComputedHeroStats {
   cdr: number;
   healBonus: number;
   skillDmgBonus: number;
+  ultDmgBonus: number;
   shieldPower: number;
   defIgnore: number;
   spRegenBonus: number;
@@ -65,10 +66,11 @@ export function computeHeroStats(
   allEquipment: EquipmentInstance[],
   squadIds: string[],
   codexCount: number,
+  relicRanks: Record<string, number> = {},
 ): ComputedHeroStats {
-  // GDD Section 2.3: Stat(L) = BaseStat * (1 + 0.065 * (L - 1)) * AwakeningMult
-  const levelMult = 1 + 0.065 * (owned.level - 1);
-  const awakeningMult = 1 + 0.08 * owned.awakening;
+  // Balanced RPG growth: Stat(L) = BaseStat * (1 + 0.072 * (L - 1)) * AwakeningMult * BondMult
+  const levelMult = 1 + 0.072 * (owned.level - 1);
+  const awakeningMult = 1 + 0.1 * owned.awakening;
   const bondMult = 1 + 0.015 * Math.max(0, owned.bondLevel - 1);
   // Codex Global Account Bonus: +1% ATK / +1% HP per 5 unlocked entries
   const codexSteps = Math.floor(codexCount / 5);
@@ -86,7 +88,9 @@ export function computeHeroStats(
   let atkSpeedBonus = 0;
   let cdr = 0;
   let healBonus = 0;
-  let skillDmgBonus = 0;
+  // Awakening Milestone Bonuses: ★3 (+10% Skill DMG), ★6 (+15% Ult DMG)
+  let skillDmgBonus = owned.awakening >= 3 ? 0.1 : 0;
+  let ultDmgBonus = owned.awakening >= 6 ? 0.15 : 0;
   let shieldPower = 1.0;
   let defIgnore = 0;
   let spRegenBonus = 0;
@@ -176,29 +180,40 @@ export function computeHeroStats(
         if (count >= 4) shieldPower += 0.25;
       } else if (setId === 'ASTRAL_SURGE') {
         skillDmgBonus += 0.15;
-        if (count >= 4) ultGaugeBonus += 0.2;
+        if (count >= 4) {
+          ultGaugeBonus += 0.2;
+          ultDmgBonus += 0.2;
+        }
       } else if (setId === 'VERDANT_GRACE') {
         healBonus += 0.15;
       }
     }
   }
 
-  // 3. Starlight Relic Bonus
+  // 3. Starlight Relic Bonus (scales +15% per Refinement Rank R1..R5!)
   if (owned.equippedRelicId) {
     const relic = RELIC_MAP[owned.equippedRelicId];
     if (relic) {
-      if (relic.bonuses.hp) flatHp += relic.bonuses.hp;
-      if (relic.bonuses.atk) flatAtk += relic.bonuses.atk;
-      if (relic.bonuses.def) flatDef += relic.bonuses.def;
-      if (relic.bonuses.critRate) critRate += relic.bonuses.critRate;
-      if (relic.bonuses.critDmg) critDmg += relic.bonuses.critDmg;
-      if (relic.bonuses.atkSpeed) atkSpeedBonus += relic.bonuses.atkSpeed;
-      if (relic.bonuses.startingGauge) startingGauge += relic.bonuses.startingGauge;
-      if (relic.bonuses.aoeRadiusBonus) aoeRadiusBonus += relic.bonuses.aoeRadiusBonus;
-      if (relic.bonuses.shieldBonus) shieldPower += relic.bonuses.shieldBonus;
-      if (relic.bonuses.dmgBonusVsDebuffed) dmgBonusVsDebuffed += relic.bonuses.dmgBonusVsDebuffed;
-      if (relic.bonuses.healBonus) healBonus += relic.bonuses.healBonus;
-      if (relic.id === 'relic_prism_aegis') startShieldRatio = Math.max(startShieldRatio, 0.15);
+      const rank = Math.max(1, Math.min(5, relicRanks[relic.id] ?? 1));
+      const rankMult = 1 + 0.15 * (rank - 1);
+      if (relic.bonuses.hp) flatHp += Math.round(relic.bonuses.hp * rankMult);
+      if (relic.bonuses.atk) flatAtk += Math.round(relic.bonuses.atk * rankMult);
+      if (relic.bonuses.def) flatDef += Math.round(relic.bonuses.def * rankMult);
+      if (relic.bonuses.critRate) critRate += relic.bonuses.critRate * rankMult;
+      if (relic.bonuses.critDmg) critDmg += relic.bonuses.critDmg * rankMult;
+      if (relic.bonuses.atkSpeed) atkSpeedBonus += relic.bonuses.atkSpeed * rankMult;
+      if (relic.bonuses.startingGauge) {
+        startingGauge += Math.round(relic.bonuses.startingGauge * rankMult);
+      }
+      if (relic.bonuses.aoeRadiusBonus) aoeRadiusBonus += relic.bonuses.aoeRadiusBonus * rankMult;
+      if (relic.bonuses.shieldBonus) shieldPower += relic.bonuses.shieldBonus * rankMult;
+      if (relic.bonuses.dmgBonusVsDebuffed) {
+        dmgBonusVsDebuffed += relic.bonuses.dmgBonusVsDebuffed * rankMult;
+      }
+      if (relic.bonuses.healBonus) healBonus += relic.bonuses.healBonus * rankMult;
+      if (relic.id === 'relic_prism_aegis') {
+        startShieldRatio = Math.max(startShieldRatio, 0.15 * rankMult);
+      }
     }
   }
 
@@ -231,12 +246,13 @@ export function computeHeroStats(
   const atkSpeed = Number((heroDef.baseStats.atkSpeed * (1 + atkSpeedBonus)).toFixed(2));
 
   const powerRating = Math.round(
-    maxHp * 0.22 +
-      atk * 3.1 +
-      def * 2.2 +
-      clampedCrit * 900 +
-      critDmg * 240 +
-      owned.awakening * 320,
+    maxHp * 0.24 +
+      atk * 3.4 +
+      def * 2.4 +
+      clampedCrit * 950 +
+      critDmg * 280 +
+      owned.awakening * 480 +
+      (owned.equippedRelicId ? 450 * (relicRanks[owned.equippedRelicId] ?? 1) : 0),
   );
 
   return {
@@ -251,6 +267,7 @@ export function computeHeroStats(
     cdr: clampedCdr,
     healBonus,
     skillDmgBonus,
+    ultDmgBonus,
     shieldPower,
     defIgnore,
     spRegenBonus,

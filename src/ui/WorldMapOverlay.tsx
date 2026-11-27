@@ -12,11 +12,15 @@ import {
   Sparkles,
   Star,
   Swords,
+  Users,
   X,
 } from 'lucide-react';
 import { ENEMY_MAP } from '../data/enemies';
+import { EQUIPMENT_SETS } from '../data/equipment';
 import { FACTIONS } from '../data/factions';
 import { HERO_MAP } from '../data/heroes';
+import { MATERIAL_META, factionToEssenceKey } from '../data/materials';
+import { RELIC_MAP } from '../data/relics';
 import { REGION_LINKS, REGION_MAP, REGIONS } from '../data/regions';
 import {
   getHighestUnlockedStage,
@@ -27,10 +31,12 @@ import {
   STAGES,
 } from '../data/stages';
 import { audioManager } from '../engine/AudioManager';
+import { computeHeroStats } from '../engine/CombatMath';
 import { usePlayerStore } from '../store/usePlayerStore';
 import type { RegionDef } from '../types/game';
 import { ArtImage } from './ArtImage';
-import { GameIcon } from './GameIcon';
+import { GameIcon, MaterialIcon } from './GameIcon';
+import { PartyManagerModal } from './PartyManagerModal';
 
 interface WorldMapOverlayProps {
   squadPower: number;
@@ -75,12 +81,45 @@ function buildCurvedPath(x1: number, y1: number, x2: number, y2: number, bend = 
 }
 
 export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
-  squadPower,
+  squadPower: initialSquadPower,
   onClose,
   onDeploy,
 }) => {
-  const { clearedStages, selectedStageId, setSelectedStage, squadIds, favoriteHeroId } =
-    usePlayerStore();
+  const {
+    clearedStages,
+    selectedStageId,
+    setSelectedStage,
+    squadIds,
+    partyPresets,
+    activePresetIndex,
+    selectPreset,
+    roster,
+    equipmentInventory,
+    unlockedCodexIds,
+    relicRanks,
+    favoriteHeroId,
+  } = usePlayerStore();
+  const [showPartyModal, setShowPartyModal] = useState(false);
+
+  const squadPower = useMemo(() => {
+    const computed = squadIds.reduce((sum, id) => {
+      const def = HERO_MAP[id];
+      const own = roster[id];
+      if (!def || !own) return sum;
+      return (
+        sum +
+        computeHeroStats(
+          def,
+          own,
+          equipmentInventory,
+          squadIds,
+          unlockedCodexIds.length,
+          relicRanks,
+        ).powerRating
+      );
+    }, 0);
+    return computed || initialSquadPower;
+  }, [squadIds, roster, equipmentInventory, unlockedCodexIds.length, relicRanks, initialSquadPower]);
 
   const safeInitialStage = useMemo(() => {
     const saved = STAGE_MAP[selectedStageId];
@@ -904,7 +943,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                             BOSS
                           </span>
                         </div>
-                      ) : stage.isMiniBoss ? (
+                      ) : stage.isMiniBoss ? (() => {
+                        const eliteSpawn = stage.waves[stage.waves.length - 1]?.spawns.find(
+                          (sp) => ENEMY_MAP[sp.enemyId]?.isMiniBoss,
+                        );
+                        const eliteDef = eliteSpawn ? ENEMY_MAP[eliteSpawn.enemyId] : ENEMY_MAP.armored_golem;
+                        return (
                         <div
                           className={`relative w-10 h-10 md:w-14 md:h-14 rounded-full border-2 flex items-center justify-center overflow-hidden shadow-[0_0_18px_rgba(249,115,22,0.55)] transition ${
                             selected
@@ -914,9 +958,11 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                                 : 'border-slate-700 bg-slate-950/85 opacity-70'
                           }`}
                         >
-                          <img
-                            src="/assets/enemies/enemy_armored_golem.webp"
-                            alt="Elite Golem"
+                          <ArtImage
+                            kind="ENEMY"
+                            id={eliteDef.id}
+                            src={eliteDef.assetKey}
+                            alt={eliteDef.name}
                             className={`w-8 h-8 md:w-11 md:h-11 object-contain ${
                               !unlocked ? 'grayscale opacity-45' : ''
                             }`}
@@ -930,7 +976,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                             <Crown className="w-2.5 h-2.5" />
                           </span>
                         </div>
-                      ) : (
+                        );
+                      })() : (
                         <div
                           className={`relative w-8 h-8 md:w-11 md:h-11 rounded-full border-2 flex items-center justify-center shadow-[0_6px_16px_rgba(0,0,0,0.85)] transition ${
                             selected
@@ -1095,32 +1142,152 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     })}
                   </div>
 
-                  {/* Rewards Preview */}
-                  <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                    <div className="rounded-lg bg-slate-950/90 border border-slate-800 px-2 py-1 flex items-center gap-1.5">
-                      <GameIcon name="crystal" className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <div className="font-mono font-bold text-cyan-300">
-                        +
-                        {clearedStages.includes(activeStage.id)
-                          ? 40
-                          : activeStage.firstClearCrystals}
+                  {/* Biome Rewards & Drop Table Preview */}
+                  <div className="space-y-1.5">
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                      <div className="rounded-lg bg-slate-950/90 border border-slate-800 px-2 py-1 flex items-center gap-1.5">
+                        <GameIcon name="crystal" className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <div className="font-mono font-bold text-cyan-300">
+                          +
+                          {clearedStages.includes(activeStage.id)
+                            ? 40
+                            : activeStage.firstClearCrystals}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-slate-950/90 border border-slate-800 px-2 py-1 flex items-center gap-1.5">
+                        <GameIcon name="gold" className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <div className="font-mono font-bold text-amber-300 truncate">
+                          {activeStage.rewards.gold[0].toLocaleString()}+
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-slate-950/90 border border-slate-800 px-2 py-1 flex items-center gap-1.5 min-w-0">
+                        <MaterialIcon
+                          material={factionToEssenceKey(activeStage.rewards.primaryEssence)}
+                          className="w-4 h-4 sm:w-5 sm:h-5 shrink-0"
+                        />
+                        <div className="font-mono font-bold text-amber-200 truncate text-[10px]">
+                          {MATERIAL_META[factionToEssenceKey(activeStage.rewards.primaryEssence)].shortName} ×
+                          {activeStage.rewards.primaryEssenceQty[0]}–{activeStage.rewards.primaryEssenceQty[1]}
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-slate-950/90 border border-slate-800 px-2 py-1 flex items-center gap-1.5 min-w-0">
+                        <GameIcon name="forge" className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                        <div className="font-mono font-bold text-violet-300 truncate text-[10px]">
+                          ×{activeStage.rewards.equipmentDrops}{' '}
+                          {activeStage.rewards.targetSetIds.length <= 2
+                            ? activeStage.rewards.targetSetIds
+                                .map((id) => EQUIPMENT_SETS[id].name.split(' ')[0])
+                                .join('/')
+                            : 'All Sets'}
+                        </div>
                       </div>
                     </div>
-                    <div className="rounded-lg bg-slate-950/90 border border-slate-800 px-2 py-1 flex items-center gap-1.5">
-                      <GameIcon name="gold" className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <div className="font-mono font-bold text-amber-300 truncate">
-                        {activeStage.rewards.gold[0].toLocaleString()}+
-                      </div>
+
+                    {/* Tiered Forge / Star Core / Relic Drop Tags */}
+                    <div className="flex flex-wrap gap-1 text-[9px] font-bold">
+                      {activeStage.rewards.starIronIngots && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-950/80 border border-sky-400/40 text-sky-200">
+                          <MaterialIcon material="starIronIngots" className="w-3 h-3" /> Star-Iron
+                        </span>
+                      )}
+                      {activeStage.rewards.astralAnvilCores && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-400/40 text-amber-200">
+                          <MaterialIcon material="astralAnvilCores" className="w-3 h-3" /> Anvil Core
+                        </span>
+                      )}
+                      {activeStage.rewards.starCores && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-fuchsia-950/80 border border-fuchsia-400/40 text-fuchsia-200">
+                          <MaterialIcon material="starCores" className="w-3 h-3" /> Star Core
+                        </span>
+                      )}
+                      {activeStage.rewards.relicFragments && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-400/45 text-cyan-200">
+                          <GameIcon name="relic" className="w-3 h-3" />
+                          Relic Frags ×{activeStage.rewards.relicFragments[0]}–{activeStage.rewards.relicFragments[1]}
+                        </span>
+                      )}
+                      {activeStage.rewards.guaranteedFirstClearRelicId &&
+                        !clearedStages.includes(activeStage.id) && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-gradient-to-r from-amber-400/25 to-cyan-400/25 border border-amber-300 text-amber-200">
+                            ★ 1st Clear Relic:{' '}
+                            {RELIC_MAP[activeStage.rewards.guaranteedFirstClearRelicId]?.name}
+                          </span>
+                        )}
+                      {(!activeStage.rewards.guaranteedFirstClearRelicId ||
+                        clearedStages.includes(activeStage.id)) &&
+                        (activeStage.rewards.relicDropChance ?? 0) > 0 && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-400/45 text-amber-200">
+                            Relic Drop {Math.round((activeStage.rewards.relicDropChance ?? 0) * 100)}%
+                          </span>
+                        )}
                     </div>
-                    <div className="rounded-lg bg-slate-950/90 border border-slate-800 px-2 py-1 flex items-center gap-1.5">
-                      <GameIcon name="forge" className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <div className="font-mono font-bold text-violet-300">
-                        ×{activeStage.rewards.equipmentDrops} ({activeStage.rewards.rarityWeights.LEGENDARY}% L)
+                  </div>
+
+                  {/* Pre-Battle Quick Party Preset Bar (P1 / P2 / P3 + Edit Party) */}
+                  <div className="rounded-xl bg-slate-950/85 border border-amber-400/25 p-2 space-y-1.5">
+                    <div className="flex items-center justify-between gap-1.5">
+                      <div className="flex items-center gap-1">
+                        {partyPresets.map((pr, i) => {
+                          const idx = i as 0 | 1 | 2;
+                          const active = activePresetIndex === idx;
+                          return (
+                            <button
+                              key={pr.id}
+                              onClick={() => {
+                                selectPreset(idx);
+                                audioManager.playSfx('button');
+                              }}
+                              className={`px-2 py-0.5 rounded-lg text-[9px] font-display font-black uppercase border transition ${
+                                active
+                                  ? 'bg-amber-400 text-slate-950 border-amber-200'
+                                  : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-amber-400/50'
+                              }`}
+                            >
+                              P{i + 1}
+                            </button>
+                          );
+                        })}
+                        <span className="text-[10px] font-bold text-amber-200 ml-1 truncate max-w-[100px]">
+                          {partyPresets[activePresetIndex]?.name}
+                        </span>
                       </div>
+                      <button
+                        onClick={() => {
+                          setShowPartyModal(true);
+                          audioManager.playSfx('button');
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-cyan-500/15 border border-cyan-400/45 text-cyan-200 hover:bg-cyan-500/25 text-[9px] font-display font-black uppercase flex items-center gap-1 transition"
+                      >
+                        <Users className="w-3 h-3" /> Edit Party
+                      </button>
                     </div>
-                    <div className="rounded-lg bg-slate-950/90 border border-slate-800 px-2 py-1 flex items-center gap-1.5">
-                      <GameIcon name="supply" className="w-4 h-4 sm:w-5 sm:h-5" />
-                      <div className="font-mono font-bold text-emerald-300">EXP & Stones</div>
+                    <div className="flex items-center gap-1.5">
+                      {squadIds.map((hid, i) => {
+                        const h = HERO_MAP[hid];
+                        if (!h) return null;
+                        return (
+                          <div
+                            key={`${hid}_${i}`}
+                            className="flex-1 flex items-center gap-1 bg-slate-900/90 border border-slate-800 rounded-lg p-1 min-w-0"
+                          >
+                            <div
+                              className="w-6 h-6 rounded overflow-hidden border shrink-0"
+                              style={{ borderColor: h.themeColor }}
+                            >
+                              <ArtImage
+                                kind="HERO"
+                                id={hid}
+                                src={h.assets.card}
+                                alt={h.name}
+                                className="w-full h-full object-cover object-top"
+                              />
+                            </div>
+                            <span className="text-[9px] font-bold text-white truncate">
+                              {h.name}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1153,6 +1320,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           </div>
         </div>
       )}
+
+      <PartyManagerModal open={showPartyModal} onClose={() => setShowPartyModal(false)} />
     </div>
   );
 };

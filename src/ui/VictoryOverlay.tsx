@@ -17,10 +17,18 @@ import {
   getEnhancedMainStatValue,
 } from '../data/equipment';
 import { HERO_MAP } from '../data/heroes';
+import { MATERIAL_META, factionToEssenceKey } from '../data/materials';
+import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
-import type { CombatLootSummary, EquipmentInstance, HeroCombatSnapshot } from '../types/game';
+import type {
+  CombatLootSummary,
+  DroppedRelicSummary,
+  EquipmentInstance,
+  Faction,
+  HeroCombatSnapshot,
+} from '../types/game';
 import { ArtImage } from './ArtImage';
-import { EquipIcon, GameIcon } from './GameIcon';
+import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
 import {
   AnimatedNumber,
   CornerFiligree,
@@ -54,6 +62,9 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
 }) => {
   const [selectedGear, setSelectedGear] = useState<EquipmentInstance | null>(
     result.droppedEquipment[0] ?? null,
+  );
+  const [selectedRelic, setSelectedRelic] = useState<DroppedRelicSummary | null>(
+    result.droppedRelics?.[0] ?? null,
   );
 
   const heroEntries = useMemo(() => {
@@ -333,12 +344,64 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                     {
                       label: 'Stones',
                       val: `×${result.forgeStonesEarned}`,
-                      color: '#c084fc',
+                      color: '#a78bfa',
                       icon: <GameIcon name="forge" className="w-7 h-7" />,
                     },
+                    ...(result.starIronIngotsEarned > 0
+                      ? [
+                          {
+                            label: 'Star-Iron',
+                            val: `×${result.starIronIngotsEarned}`,
+                            color: '#38bdf8',
+                            icon: <MaterialIcon material="starIronIngots" className="w-7 h-7" />,
+                          },
+                        ]
+                      : []),
+                    ...(result.astralAnvilCoresEarned > 0
+                      ? [
+                          {
+                            label: 'Anvil Core',
+                            val: `×${result.astralAnvilCoresEarned}`,
+                            color: '#f5c84c',
+                            icon: <MaterialIcon material="astralAnvilCores" className="w-7 h-7" />,
+                          },
+                        ]
+                      : []),
+                    ...(result.starCoresEarned > 0
+                      ? [
+                          {
+                            label: 'Star Core',
+                            val: `×${result.starCoresEarned}`,
+                            color: '#e879f9',
+                            icon: <MaterialIcon material="starCores" className="w-7 h-7" />,
+                          },
+                        ]
+                      : []),
+                    ...(result.relicFragmentsEarned > 0
+                      ? [
+                          {
+                            label: 'Relic Frag',
+                            val: `×${result.relicFragmentsEarned}`,
+                            color: '#22d3ee',
+                            icon: <GameIcon name="relic" className="w-7 h-7" />,
+                          },
+                        ]
+                      : []),
+                    ...(Object.entries(result.essencesEarned ?? {}) as Array<[Faction, number]>)
+                      .filter(([, qty]) => qty > 0)
+                      .map(([fac, qty]) => {
+                        const key = factionToEssenceKey(fac);
+                        const meta = MATERIAL_META[key];
+                        return {
+                          label: meta.shortName,
+                          val: `×${qty}`,
+                          color: meta.color,
+                          icon: <MaterialIcon material={key} className="w-7 h-7" />,
+                        };
+                      }),
                   ].map((mat, i) => (
                     <RpgLootTile
-                      key={mat.label}
+                      key={`${mat.label}_${i}`}
                       color={mat.color}
                       subLabel={mat.label}
                       bottomLabel={mat.val}
@@ -348,10 +411,43 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                     </RpgLootTile>
                   ))}
 
+                  {/* Dropped Starlight Relics (Boss/Mini-Boss Earned Drops!) */}
+                  {(result.droppedRelics ?? []).map((dr, i) => {
+                    const relic = RELIC_MAP[dr.relicId];
+                    if (!relic) return null;
+                    const col =
+                      relic.tier === 'SSR' ? '#f5c84c' : relic.tier === 'SR' ? '#c084fc' : '#38bdf8';
+                    const isSel = selectedRelic?.relicId === dr.relicId;
+                    return (
+                      <RpgLootTile
+                        key={`${dr.relicId}_${i}`}
+                        color={col}
+                        topTag={dr.isNew ? 'NEW!' : `R${dr.newRank}`}
+                        bottomLabel={relic.tier}
+                        selected={isSel}
+                        index={8 + i}
+                        title={relic.name}
+                        onClick={() => {
+                          setSelectedRelic(dr);
+                          setSelectedGear(null);
+                          audioManager.playSfx('ssr_reveal');
+                        }}
+                      >
+                        <ArtImage
+                          kind="RELIC"
+                          id={relic.id}
+                          src={relic.assetCard}
+                          alt={relic.name}
+                          className="w-10 h-10 rounded object-cover"
+                        />
+                      </RpgLootTile>
+                    );
+                  })}
+
                   {/* Dropped Equipment Beveled Treasure Tiles (Tap to Inspect!) */}
                   {result.droppedEquipment.map((eq, i) => {
                     const col = RARITY_COLORS[eq.rarity];
-                    const isSel = selectedGear?.uid === eq.uid;
+                    const isSel = !selectedRelic && selectedGear?.uid === eq.uid;
                     return (
                       <RpgLootTile
                         key={eq.uid}
@@ -359,9 +455,10 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                         topTag={eq.rarity.slice(0, 3)}
                         bottomLabel={eq.setId.split('_')[0]}
                         selected={isSel}
-                        index={4 + i}
+                        index={10 + i}
                         title={eq.name}
                         onClick={() => {
+                          setSelectedRelic(null);
                           setSelectedGear(eq);
                           audioManager.playSfx('button');
                         }}
@@ -372,8 +469,57 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                   })}
                 </div>
 
+                {/* Selected Dropped Relic Tooltip Plaque */}
+                {selectedRelic && RELIC_MAP[selectedRelic.relicId] && (() => {
+                  const relic = RELIC_MAP[selectedRelic.relicId];
+                  const col =
+                    relic.tier === 'SSR' ? '#f5c84c' : relic.tier === 'SR' ? '#c084fc' : '#38bdf8';
+                  return (
+                    <motion.div
+                      key={relic.id}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rpg-ornate-card flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 overflow-hidden"
+                      style={{
+                        borderColor: `${col}aa`,
+                        borderLeft: `4px solid ${col}`,
+                      }}
+                    >
+                      <CornerFiligree color={col} size={7} opacity={0.75} />
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div
+                          className="w-11 h-14 rounded-lg overflow-hidden border-2 shrink-0"
+                          style={{ borderColor: col }}
+                        >
+                          <ArtImage
+                            kind="RELIC"
+                            id={relic.id}
+                            src={relic.assetCard}
+                            alt={relic.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[9px] font-display font-black uppercase border"
+                              style={{ color: col, borderColor: `${col}88`, backgroundColor: `${col}20` }}
+                            >
+                              ★ {selectedRelic.isNew ? 'NEW RELIC DROP' : `REFINED RANK ${selectedRelic.newRank}`}
+                            </span>
+                            <span className="font-display font-bold text-sm sm:text-base text-white">
+                              {relic.name}
+                            </span>
+                          </div>
+                          <p className="text-xs text-cyan-200 mt-1 leading-snug">{relic.passiveDesc}</p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })()}
+
                 {/* Sculpted Selected Loot Gear Tooltip Plaque */}
-                {selectedGear && (
+                {!selectedRelic && selectedGear && (
                   <motion.div
                     key={selectedGear.uid}
                     initial={{ opacity: 0, y: 6 }}

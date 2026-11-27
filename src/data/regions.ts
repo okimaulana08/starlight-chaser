@@ -24,7 +24,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Corrupted Sky Warden',
     lore: 'The gleaming capital citadel of the Solaris Vanguard, now fractured by falling star-shards and Void Stalker swarms spilling across its outer marble terraces.',
     stageCount: 12,
-    recommendedPowerRange: [2400, 6200],
+    recommendedPowerRange: [6500, 12500],
   },
   {
     id: 'region_2',
@@ -43,7 +43,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Fractured Star Watcher',
     lore: 'High above the cloud sea, the Astral Sanctum’s crystal telescope towers refract unstable Void signals, empowering Rift Acolytes with heightened arcane barrages.',
     stageCount: 12,
-    recommendedPowerRange: [6600, 14200],
+    recommendedPowerRange: [13000, 19500],
   },
   {
     id: 'region_3',
@@ -62,7 +62,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Blighted Grove Colossus',
     lore: 'Towering emerald bridges woven across the World Tree. Corrupted marble golems and shadow packs stalk the moonlit groves of the Verdant Covenant.',
     stageCount: 12,
-    recommendedPowerRange: [15000, 27500],
+    recommendedPowerRange: [20000, 28000],
   },
   {
     id: 'region_4',
@@ -81,7 +81,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Forgemaster of Ash',
     lore: 'The industrial lava basins of the Ashen Legion. Relentless armored constructs and scorching rift storms test every veteran Chaser squad to the limit.',
     stageCount: 12,
-    recommendedPowerRange: [29000, 48000],
+    recommendedPowerRange: [29000, 38000],
   },
   {
     id: 'region_5',
@@ -100,7 +100,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Warden of Frozen Time',
     lore: 'A silent icebound fortress where fallen stars froze mid-descent, locking ancient constructs inside shimmering frost armor.',
     stageCount: 12,
-    recommendedPowerRange: [50000, 74000],
+    recommendedPowerRange: [39500, 49500],
   },
   {
     id: 'region_6',
@@ -119,7 +119,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Tidebreaker of the Deep',
     lore: 'Submerged temple vaults cradling a drowned Star Pillar beneath luminous ocean currents and relentless rift tides.',
     stageCount: 12,
-    recommendedPowerRange: [78000, 112000],
+    recommendedPowerRange: [51000, 62000],
   },
   {
     id: 'region_7',
@@ -138,7 +138,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Eye of the Sky Maelstrom',
     lore: 'Chained sky-islands spinning around cascading waterfalls and hurricane winds where fallen skyships drift.',
     stageCount: 12,
-    recommendedPowerRange: [118000, 162000],
+    recommendedPowerRange: [63500, 75000],
   },
   {
     id: 'region_8',
@@ -157,7 +157,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Mirage of Eternal Noon',
     lore: 'Vitrified glass deserts where shattered sun-fragments twist time and light into lethal battlefields.',
     stageCount: 12,
-    recommendedPowerRange: [170000, 228000],
+    recommendedPowerRange: [76500, 87000],
   },
   {
     id: 'region_9',
@@ -176,7 +176,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Herald of Unmaking',
     lore: 'A jagged needle of black crystal piercing the outer Void, humming with the dark heartbeat of the Starfall.',
     stageCount: 12,
-    recommendedPowerRange: [240000, 320000],
+    recommendedPowerRange: [88500, 98000],
   },
   {
     id: 'region_10',
@@ -195,7 +195,7 @@ export const REGIONS: RegionDef[] = [
     bossTitle: 'Architect of the Starfall',
     lore: 'The apex of Aetheria’s broken firmament, where the ultimate truth behind the Starfall Shattering awaits.',
     stageCount: 12,
-    recommendedPowerRange: [340000, 460000],
+    recommendedPowerRange: [99500, 112000],
   },
 ];
 

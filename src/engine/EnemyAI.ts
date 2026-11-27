@@ -147,6 +147,32 @@ export class EnemyAI {
         continue;
       }
 
+      // New Elite & Kroco Bespoke Combat Patterns!
+      if (enemy.def.id === 'obsidian_knight' && enemy.aiCooldown <= 0 && dist < 240) {
+        this.startObsidianCleave(ctx, enemy, targetHero, telegraphLayer);
+        continue;
+      }
+      if (enemy.def.id === 'astral_weaver' && enemy.aiCooldown <= 0 && dist < 360) {
+        this.startAstralNova(ctx, enemy, telegraphLayer);
+        continue;
+      }
+      if (enemy.def.id === 'briar_behemoth' && enemy.aiCooldown <= 0 && dist < 280) {
+        this.startBriarEruption(ctx, enemy, targetHero, telegraphLayer);
+        continue;
+      }
+      if (enemy.def.id === 'tempest_drake' && enemy.aiCooldown <= 0 && dist < 320) {
+        this.startTempestDive(ctx, enemy, targetHero, telegraphLayer);
+        continue;
+      }
+      if (enemy.def.id === 'void_wisp' && enemy.aiCooldown <= 0 && dist < 130) {
+        this.startWispBurst(ctx, enemy, telegraphLayer);
+        continue;
+      }
+      if (enemy.def.id === 'cinder_imp' && enemy.aiCooldown <= 0 && dist < 310) {
+        this.startCinderLob(ctx, enemy, targetHero, telegraphLayer);
+        continue;
+      }
+
       // Move toward target if outside attack range
       const desiredRange = enemy.def.attackRange + 16;
       if (dist > desiredRange) {
@@ -162,31 +188,49 @@ export class EnemyAI {
         const dmg = enemy.atk * atkMult;
 
         if (enemy.def.attackRange > 150) {
-          // Ranged caster (Rift Acolyte)
+          // Ranged caster (Rift Acolyte, Cinder Imp, Astral Weaver)
+          const projColor =
+            enemy.def.id === 'cinder_imp'
+              ? 0xf97316
+              : enemy.def.id === 'astral_weaver'
+                ? 0x38e8ff
+                : 0xc084fc;
           ctx.spawnProjectile({
             x: enemy.x,
             y: enemy.y - 26,
             tx: targetHero.x,
             ty: targetHero.y - 22,
-            speed: 420,
-            color: 0xc084fc,
-            radius: 7,
+            speed: enemy.def.id === 'cinder_imp' ? 390 : 420,
+            color: projColor,
+            radius: enemy.def.isMiniBoss ? 9 : 7,
             fromHero: false,
             onHit: (hx, hy) => {
-              ctx.spawnBurst(hx, hy, 0xc084fc, 5, 10);
+              ctx.spawnBurst(hx, hy, projColor, 5, 10);
               if (targetHero.alive) {
                 ctx.damageHero(enemy, targetHero, dmg, true);
               }
             },
           });
         } else {
-          // Melee strike
+          // Melee strike colored by enemy theme
+          const slashColor =
+            enemy.def.isBoss
+              ? 0xd946ef
+              : enemy.def.id === 'frost_lancer'
+                ? 0x7dd3fc
+                : enemy.def.id === 'solar_construct'
+                  ? 0xf5c84c
+                  : enemy.def.id === 'briar_crawler' || enemy.def.id === 'briar_behemoth'
+                    ? 0x34d399
+                    : enemy.def.id === 'obsidian_knight'
+                      ? 0xf43f5e
+                      : 0xa855f7;
           ctx.spawnSlashArc(
             enemy.x + (dx / Math.max(1, dist)) * 28,
             enemy.y - 20,
             Math.atan2(dy, dx),
-            enemy.def.isBoss ? 86 : 48,
-            enemy.def.isBoss ? 0xd946ef : 0xa855f7,
+            enemy.def.isBoss ? 86 : enemy.def.isMiniBoss ? 68 : 48,
+            slashColor,
           );
           ctx.damageHero(enemy, targetHero, dmg, false);
         }
@@ -249,6 +293,193 @@ export class EnemyAI {
       angle: 0,
       arcSpan: 0,
       duration: 1.5,
+      elapsed: 0,
+      cancelable: false,
+    });
+  }
+
+  private startObsidianCleave(
+    ctx: CombatContext,
+    enemy: EnemyUnit,
+    target: HeroUnit,
+    telegraphLayer: { addChild: (g: Graphics) => void },
+  ): void {
+    const angle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
+    enemy.isCasting = true;
+    enemy.castName = 'Crimson Cleave';
+    enemy.castDuration = 1.35;
+    enemy.castElapsed = 0;
+    enemy.castCancelable = false;
+    enemy.castAction = 'OBSIDIAN_CLEAVE';
+    enemy.castAngle = angle;
+    enemy.aiCooldown = 6.0;
+
+    this.addTelegraph(ctx, telegraphLayer, {
+      id: `tg_obs_${Date.now()}_${Math.random()}`,
+      enemyUid: enemy.uid,
+      shape: 'CONE',
+      x: enemy.x,
+      y: enemy.y,
+      radius: 210,
+      angle,
+      arcSpan: 1.25,
+      duration: 1.35,
+      elapsed: 0,
+      cancelable: false,
+    });
+  }
+
+  private startAstralNova(
+    ctx: CombatContext,
+    enemy: EnemyUnit,
+    telegraphLayer: { addChild: (g: Graphics) => void },
+  ): void {
+    enemy.isCasting = true;
+    enemy.castName = 'Rift Nova';
+    enemy.castDuration = 2.1;
+    enemy.castElapsed = 0;
+    enemy.castCancelable = true;
+    enemy.castAction = 'ASTRAL_NOVA';
+    enemy.castTargetX = enemy.x;
+    enemy.castTargetY = enemy.y;
+    enemy.aiCooldown = 7.5;
+
+    this.addTelegraph(ctx, telegraphLayer, {
+      id: `tg_nova_${Date.now()}_${Math.random()}`,
+      enemyUid: enemy.uid,
+      shape: 'CIRCLE',
+      x: enemy.x,
+      y: enemy.y,
+      radius: 240,
+      angle: 0,
+      arcSpan: 0,
+      duration: 2.1,
+      elapsed: 0,
+      cancelable: true,
+    });
+    ctx.notifyBanner('ELITE CASTING RIFT NOVA — Interrupt with STUN_CANCEL!');
+  }
+
+  private startBriarEruption(
+    ctx: CombatContext,
+    enemy: EnemyUnit,
+    target: HeroUnit,
+    telegraphLayer: { addChild: (g: Graphics) => void },
+  ): void {
+    enemy.isCasting = true;
+    enemy.castName = 'Root Eruption';
+    enemy.castDuration = 1.45;
+    enemy.castElapsed = 0;
+    enemy.castCancelable = false;
+    enemy.castAction = 'BRIAR_ERUPTION';
+    enemy.castTargetX = target.x;
+    enemy.castTargetY = target.y;
+    enemy.aiCooldown = 6.8;
+
+    this.addTelegraph(ctx, telegraphLayer, {
+      id: `tg_briar_${Date.now()}_${Math.random()}`,
+      enemyUid: enemy.uid,
+      shape: 'CIRCLE',
+      x: target.x,
+      y: target.y,
+      radius: 135,
+      angle: 0,
+      arcSpan: 0,
+      duration: 1.45,
+      elapsed: 0,
+      cancelable: false,
+    });
+  }
+
+  private startTempestDive(
+    ctx: CombatContext,
+    enemy: EnemyUnit,
+    target: HeroUnit,
+    telegraphLayer: { addChild: (g: Graphics) => void },
+  ): void {
+    const angle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
+    enemy.isCasting = true;
+    enemy.castName = 'Gale Dive';
+    enemy.castDuration = 1.25;
+    enemy.castElapsed = 0;
+    enemy.castCancelable = false;
+    enemy.castAction = 'TEMPEST_DIVE';
+    enemy.castAngle = angle;
+    enemy.castTargetX = target.x;
+    enemy.castTargetY = target.y;
+    enemy.aiCooldown = 5.6;
+
+    this.addTelegraph(ctx, telegraphLayer, {
+      id: `tg_gale_${Date.now()}_${Math.random()}`,
+      enemyUid: enemy.uid,
+      shape: 'CONE',
+      x: enemy.x,
+      y: enemy.y,
+      radius: 255,
+      angle,
+      arcSpan: 0.72,
+      duration: 1.25,
+      elapsed: 0,
+      cancelable: false,
+    });
+  }
+
+  private startWispBurst(
+    ctx: CombatContext,
+    enemy: EnemyUnit,
+    telegraphLayer: { addChild: (g: Graphics) => void },
+  ): void {
+    enemy.isCasting = true;
+    enemy.castName = 'Rift Burst';
+    enemy.castDuration = 1.05;
+    enemy.castElapsed = 0;
+    enemy.castCancelable = false;
+    enemy.castAction = 'WISP_BURST';
+    enemy.castTargetX = enemy.x;
+    enemy.castTargetY = enemy.y;
+    enemy.aiCooldown = 5.4;
+
+    this.addTelegraph(ctx, telegraphLayer, {
+      id: `tg_wisp_${Date.now()}_${Math.random()}`,
+      enemyUid: enemy.uid,
+      shape: 'CIRCLE',
+      x: enemy.x,
+      y: enemy.y,
+      radius: 105,
+      angle: 0,
+      arcSpan: 0,
+      duration: 1.05,
+      elapsed: 0,
+      cancelable: false,
+    });
+  }
+
+  private startCinderLob(
+    ctx: CombatContext,
+    enemy: EnemyUnit,
+    target: HeroUnit,
+    telegraphLayer: { addChild: (g: Graphics) => void },
+  ): void {
+    enemy.isCasting = true;
+    enemy.castName = 'Magma Lob';
+    enemy.castDuration = 1.25;
+    enemy.castElapsed = 0;
+    enemy.castCancelable = false;
+    enemy.castAction = 'CINDER_LOB';
+    enemy.castTargetX = target.x;
+    enemy.castTargetY = target.y;
+    enemy.aiCooldown = 6.2;
+
+    this.addTelegraph(ctx, telegraphLayer, {
+      id: `tg_cinder_${Date.now()}_${Math.random()}`,
+      enemyUid: enemy.uid,
+      shape: 'CIRCLE',
+      x: target.x,
+      y: target.y,
+      radius: 90,
+      angle: 0,
+      arcSpan: 0,
+      duration: 1.25,
       elapsed: 0,
       cancelable: false,
     });
@@ -400,6 +631,77 @@ export class EnemyAI {
       for (const h of ctx.heroes) {
         if (h.alive && Math.hypot(h.x - enemy.castTargetX, h.y - enemy.castTargetY) <= 125) {
           ctx.damageHero(enemy, h, enemy.atk * 1.65 * atkMult, false);
+        }
+      }
+    } else if (action === 'OBSIDIAN_CLEAVE') {
+      ctx.spawnSlashArc(enemy.x, enemy.y - 22, enemy.castAngle, 210, 0xf43f5e);
+      ctx.triggerShake(7);
+      audioManager.playSfx('slash');
+      for (const h of ctx.heroes) {
+        if (!h.alive) continue;
+        const dx = h.x - enemy.x;
+        const dy = h.y - enemy.y;
+        if (Math.hypot(dx, dy) <= 215) {
+          let diff = Math.atan2(dy, dx) - enemy.castAngle;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          if (Math.abs(diff) <= 0.68) {
+            ctx.damageHero(enemy, h, enemy.atk * 1.85 * atkMult, false);
+          }
+        }
+      }
+    } else if (action === 'ASTRAL_NOVA') {
+      ctx.spawnRingWave(enemy.x, enemy.y, 245, 0x38e8ff, 0.55);
+      ctx.spawnBurst(enemy.x, enemy.y - 24, 0xa855f7, 22, 52);
+      ctx.triggerShake(10);
+      audioManager.playSfx('ult_impact');
+      for (const h of ctx.heroes) {
+        if (h.alive && Math.hypot(h.x - enemy.x, h.y - enemy.y) <= 245) {
+          ctx.damageHero(enemy, h, enemy.atk * 2.05 * atkMult, false);
+        }
+      }
+    } else if (action === 'BRIAR_ERUPTION') {
+      ctx.spawnRingWave(enemy.castTargetX, enemy.castTargetY, 140, 0x34d399, 0.45);
+      ctx.spawnBurst(enemy.castTargetX, enemy.castTargetY, 0x10b981, 16, 28);
+      ctx.triggerShake(6);
+      // Treant regrows 8% Max HP on slam!
+      const healAmt = Math.round(enemy.maxHp * 0.08);
+      enemy.hp = Math.min(enemy.maxHp, enemy.hp + healAmt);
+      ctx.spawnDamageText(enemy.x, enemy.y - 54, `+${healAmt}`, 0x34d399, false);
+      for (const h of ctx.heroes) {
+        if (h.alive && Math.hypot(h.x - enemy.castTargetX, h.y - enemy.castTargetY) <= 140) {
+          ctx.damageHero(enemy, h, enemy.atk * 1.6 * atkMult, false);
+        }
+      }
+    } else if (action === 'TEMPEST_DIVE') {
+      ctx.spawnSlashArc(enemy.x, enemy.y - 26, enemy.castAngle, 255, 0x22d3ee);
+      ctx.spawnRingWave(enemy.castTargetX, enemy.castTargetY, 110, 0xa3e635, 0.35);
+      ctx.triggerShake(7);
+      // Lunge halfway toward target
+      enemy.x = Math.max(ctx.bounds.minX + 60, Math.min(ctx.bounds.maxX - 60, (enemy.x + enemy.castTargetX) * 0.5));
+      enemy.y = Math.max(ctx.bounds.minY + 60, Math.min(ctx.bounds.maxY - 60, (enemy.y + enemy.castTargetY) * 0.5));
+      for (const h of ctx.heroes) {
+        if (!h.alive) continue;
+        const dx = h.x - enemy.x;
+        const dy = h.y - enemy.y;
+        if (Math.hypot(dx, dy) <= 170) {
+          ctx.damageHero(enemy, h, enemy.atk * 1.7 * atkMult, false);
+        }
+      }
+    } else if (action === 'WISP_BURST') {
+      ctx.spawnRingWave(enemy.x, enemy.y, 110, 0x38e8ff, 0.35);
+      ctx.spawnBurst(enemy.x, enemy.y - 16, 0x38e8ff, 12, 22);
+      for (const h of ctx.heroes) {
+        if (h.alive && Math.hypot(h.x - enemy.x, h.y - enemy.y) <= 110) {
+          ctx.damageHero(enemy, h, enemy.atk * 1.55 * atkMult, false);
+        }
+      }
+    } else if (action === 'CINDER_LOB') {
+      ctx.spawnRingWave(enemy.castTargetX, enemy.castTargetY, 94, 0xf97316, 0.35);
+      ctx.spawnBurst(enemy.castTargetX, enemy.castTargetY, 0xfb923c, 12, 18);
+      for (const h of ctx.heroes) {
+        if (h.alive && Math.hypot(h.x - enemy.castTargetX, h.y - enemy.castTargetY) <= 94) {
+          ctx.damageHero(enemy, h, enemy.atk * 1.45 * atkMult, true);
         }
       }
     } else if (action === 'SWEEP') {

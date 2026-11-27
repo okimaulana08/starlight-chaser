@@ -5,9 +5,26 @@ export const MAX_ENHANCE_LEVEL = 15;
 export interface EnhanceCost {
   gold: number;
   forgeStones: number;
-  successRate: number; // 1.0 for +0..+9, slightly scaled or guaranteed for satisfying web loop
+  starIronIngots: number;
+  astralAnvilCores: number;
+  baseSuccessRate: number;
+  effectiveSuccessRate: number;
 }
 
+export interface SalvageYield {
+  gold: number;
+  forgeStones: number;
+  starIronIngots: number;
+  astralAnvilCores: number;
+}
+
+/**
+ * Balanced 3-Tier Blacksmith Enhancement Cost:
+ * - +1..+5: Gold + Forge Stones (100% guaranteed)
+ * - +6..+10: + Star-Iron Ingots (100% up to +9, 85% at +10)
+ * - +11..+15: + Astral Anvil Cores (85% at +11..+12, 70% at +13..+15)
+ * Failed attempts NEVER downgrade or break gear; they grant +15% cumulative Blessing Pity!
+ */
 export function getEnhanceCost(item: EquipmentInstance): EnhanceCost {
   const rarityMult: Record<EquipmentRarity, number> = {
     COMMON: 0.7,
@@ -15,11 +32,59 @@ export function getEnhanceCost(item: EquipmentInstance): EnhanceCost {
     EPIC: 1.35,
     LEGENDARY: 1.75,
   };
-  const lvl = item.enhanceLevel + 1;
+  const nextLvl = item.enhanceLevel + 1;
+  const rm = rarityMult[item.rarity];
+
+  const gold = Math.round((200 * nextLvl + nextLvl * nextLvl * 28) * rm);
+  const forgeStones = Math.max(1, Math.ceil((0.8 + nextLvl * 0.65) * rm));
+  const starIronIngots =
+    nextLvl >= 6 ? Math.max(1, Math.ceil((nextLvl - 5) * 0.55 * rm)) : 0;
+  const astralAnvilCores =
+    nextLvl >= 11 ? Math.max(1, Math.ceil((nextLvl - 10) * 0.48 * rm)) : 0;
+
+  const baseSuccessRate = nextLvl <= 9 ? 1.0 : nextLvl <= 12 ? 0.85 : 0.7;
+  const pityBonus = item.forgePity ?? 0;
+  const effectiveSuccessRate = Math.min(1.0, Number((baseSuccessRate + pityBonus).toFixed(2)));
+
   return {
-    gold: Math.round(180 * lvl * rarityMult[item.rarity]),
-    forgeStones: Math.max(1, Math.ceil(lvl * 0.65 * rarityMult[item.rarity])),
-    successRate: 1.0,
+    gold,
+    forgeStones,
+    starIronIngots,
+    astralAnvilCores,
+    baseSuccessRate,
+    effectiveSuccessRate,
+  };
+}
+
+export function getSalvageYield(item: EquipmentInstance): SalvageYield {
+  const baseStones =
+    item.rarity === 'LEGENDARY'
+      ? 9
+      : item.rarity === 'EPIC'
+        ? 5
+        : item.rarity === 'RARE'
+          ? 3
+          : 1;
+  const starIronIngots =
+    item.rarity === 'LEGENDARY'
+      ? 3 + Math.floor(item.enhanceLevel / 4)
+      : item.rarity === 'EPIC'
+        ? 1 + Math.floor(item.enhanceLevel / 6)
+        : item.enhanceLevel >= 6
+          ? 1
+          : 0;
+  const astralAnvilCores =
+    item.rarity === 'LEGENDARY' && item.enhanceLevel >= 6
+      ? 1 + Math.floor((item.enhanceLevel - 6) / 5)
+      : item.rarity === 'LEGENDARY'
+        ? 1
+        : 0;
+
+  return {
+    gold: 200 * (item.enhanceLevel + 1) * (item.rarity === 'LEGENDARY' ? 2 : 1),
+    forgeStones: baseStones + Math.floor(item.enhanceLevel * 0.6),
+    starIronIngots,
+    astralAnvilCores,
   };
 }
 
@@ -36,10 +101,25 @@ const ALL_SUBSTATS: SubStatKey[] = [
 
 export function enhanceEquipmentItem(item: EquipmentInstance): {
   updated: EquipmentInstance;
+  succeeded: boolean;
   upgradedSubStat?: string;
 } {
   if (item.enhanceLevel >= MAX_ENHANCE_LEVEL) {
-    return { updated: item };
+    return { updated: item, succeeded: false };
+  }
+
+  const cost = getEnhanceCost(item);
+  const succeeded = cost.effectiveSuccessRate >= 1.0 || Math.random() < cost.effectiveSuccessRate;
+
+  if (!succeeded) {
+    const nextPity = Math.min(1.0, Number(((item.forgePity ?? 0) + 0.15).toFixed(2)));
+    return {
+      updated: {
+        ...item,
+        forgePity: nextPity,
+      },
+      succeeded: false,
+    };
   }
 
   const nextLevel = item.enhanceLevel + 1;
@@ -67,8 +147,10 @@ export function enhanceEquipmentItem(item: EquipmentInstance): {
     updated: {
       ...item,
       enhanceLevel: nextLevel,
+      forgePity: 0,
       subStats,
     },
+    succeeded: true,
     upgradedSubStat,
   };
 }
