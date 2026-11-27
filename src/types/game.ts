@@ -294,6 +294,7 @@ export interface GachaPullResult {
 export interface OwnedHeroState {
   heroId: string;
   level: number;
+  exp?: number; // current EXP progress toward next level
   awakening: number; // 0 - 6
   shards: number;
   bondLevel: number; // 1 - 10
@@ -398,6 +399,19 @@ export interface DroppedRelicSummary {
   bonusFragments?: number;
 }
 
+export interface HeroBattleExpResult {
+  heroId: string;
+  expGained: number;
+  prevLevel: number;
+  newLevel: number;
+  levelsGained: number;
+  prevExp: number;
+  newExp: number;
+  expToNext: number;
+  atLevelCap: boolean;
+  levelCap: number;
+}
+
 export interface CombatLootSummary {
   victory: boolean;
   stageId: string;
@@ -405,6 +419,7 @@ export interface CombatLootSummary {
   durationSec: number;
   damageByHero: Record<string, number>;
   healingByHero: Record<string, number>;
+  heroExpResults?: Record<string, HeroBattleExpResult>;
   goldEarned: number;
   crystalsEarned: number;
   expPotionsEarned: number;

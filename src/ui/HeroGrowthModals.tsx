@@ -15,6 +15,7 @@ import {
   MATERIAL_META,
   factionToEssenceKey,
   getAwakeningCost,
+  getExpToNextLevel,
   getHeroLevelCap,
   getLevelUpCost,
   type ShopCategory,
@@ -597,6 +598,12 @@ export const LevelUpModal: React.FC<LevelUpModalProps> = ({
                     )}
                     <span className="text-slate-400 font-normal">(Cap Lv.{levelCap})</span>
                   </div>
+                  {!atAbsoluteMax && (
+                    <div className="text-[10px] font-mono text-amber-200/85 mt-0.5">
+                      Battle EXP: {(owned.exp ?? 0).toLocaleString()} /{' '}
+                      {getExpToNextLevel(owned.level).toLocaleString()}
+                    </div>
+                  )}
                 </div>
               </div>
               <button

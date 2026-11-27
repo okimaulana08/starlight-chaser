@@ -58,6 +58,7 @@ function createOwnedHero(heroId: string, level = 1): OwnedHeroState {
   return {
     heroId,
     level,
+    exp: 0,
     awakening: 0,
     shards: 0,
     bondLevel: 1,
@@ -417,7 +418,11 @@ export const usePlayerStore = create<PlayerStore>()(
           gold: state.gold - cost.gold,
           roster: {
             ...state.roster,
-            [heroId]: { ...hero, level: hero.level + cost.actualLevels },
+            [heroId]: {
+              ...hero,
+              level: hero.level + cost.actualLevels,
+              exp: 0,
+            },
           },
         });
         return { ok: true, message: `Leveled up to Lv.${hero.level + cost.actualLevels}!` };
@@ -1017,6 +1022,19 @@ export const usePlayerStore = create<PlayerStore>()(
           nextFragments = added.relicFragments;
         }
 
+        const nextRoster: Record<string, OwnedHeroState> = { ...state.roster };
+        if (summary.heroExpResults) {
+          for (const [hid, res] of Object.entries(summary.heroExpResults)) {
+            const own = nextRoster[hid];
+            if (!own) continue;
+            nextRoster[hid] = {
+              ...own,
+              level: res.newLevel,
+              exp: res.newExp,
+            };
+          }
+        }
+
         set({
           gold: state.gold + summary.goldEarned,
           starlightCrystals: state.starlightCrystals + summary.crystalsEarned,
@@ -1029,6 +1047,7 @@ export const usePlayerStore = create<PlayerStore>()(
           factionEssences: nextEssences,
           bondGifts: state.bondGifts + summary.bondGiftsEarned,
           equipmentInventory: [...summary.droppedEquipment, ...state.equipmentInventory],
+          roster: nextRoster,
           ownedRelics: nextRelics,
           relicRanks: nextRelicRanks,
           unlockedCodexIds: nextCodex,

@@ -149,6 +149,31 @@ export function getHeroLevelCap(awakening: number): number {
 }
 
 /**
+ * Clean RPG EXP threshold required to advance from `level` to `level + 1` (rounded to multiples of 50).
+ * e.g. Lv.8 = 1,350, Lv.15 = 3,400, Lv.20 = 5,450, Lv.40 = 18,650.
+ */
+export function getExpToNextLevel(level: number): number {
+  const lv = Math.max(1, Math.min(80, level));
+  return Math.round((250 + lv * lv * 10 + lv * 60) / 50) * 50;
+}
+
+/**
+ * Combat EXP awarded to each deployed Chaser upon clearing a stage.
+ * Scales smoothly across Ch.1-10 so every 2-3 clears (or a Boss clear) triggers satisfying Level Ups!
+ */
+export function getStageCombatHeroExp(
+  chapter: number,
+  stageNumber: number,
+  isMiniBoss?: boolean,
+  isBossStage?: boolean,
+): number {
+  const globalIdx = (chapter - 1) * 12 + stageNumber; // 1..120
+  const base = 520 + globalIdx * 145 + Math.pow(chapter - 1, 1.75) * 420;
+  const mult = isBossStage ? 1.75 : isMiniBoss ? 1.35 : 1.0;
+  return Math.round((base * mult) / 10) * 10;
+}
+
+/**
  * Balanced Leveling Cost curve scaling smoothly from Lv.1 to Lv.80.
  */
 export function getLevelUpCost(

@@ -8,6 +8,7 @@ import {
   Skull,
   Sparkles,
   Star,
+  Swords,
   ChevronRight,
 } from 'lucide-react';
 import {
@@ -17,9 +18,14 @@ import {
   getEnhancedMainStatValue,
 } from '../data/equipment';
 import { HERO_MAP } from '../data/heroes';
-import { MATERIAL_META, factionToEssenceKey } from '../data/materials';
+import {
+  MATERIAL_META,
+  factionToEssenceKey,
+  getExpToNextLevel,
+} from '../data/materials';
 import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
+import { usePlayerStore } from '../store/usePlayerStore';
 import type {
   CombatLootSummary,
   DroppedRelicSummary,
@@ -35,6 +41,27 @@ import {
   RpgLootTile,
   RpgProgressBar,
 } from './RpgKit';
+
+/** Crisp bespoke rising double-chevron + sparkle SVG emblem for Level Up callouts */
+const LevelUpSvgIcon: React.FC<{ className?: string }> = ({ className = 'w-3 h-3' }) => (
+  <svg viewBox="0 0 20 20" fill="none" className={className} aria-hidden="true">
+    <path
+      d="M4.5 13.5L10 8L15.5 13.5"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4.5 8.5L10 3L15.5 8.5"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="10" cy="16.2" r="1.6" fill="currentColor" />
+  </svg>
+);
 
 interface VictoryOverlayProps {
   result: CombatLootSummary;
@@ -60,6 +87,7 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
   onReplay,
   onExit,
 }) => {
+  const roster = usePlayerStore((s) => s.roster);
   const [selectedGear, setSelectedGear] = useState<EquipmentInstance | null>(
     result.droppedEquipment[0] ?? null,
   );
@@ -251,6 +279,15 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                   const h = HERO_MAP[entry.heroId];
                   if (!h) return null;
                   const accent = idx === 0 ? '#fde047' : h.themeColor;
+                  const expRes = result.heroExpResults?.[entry.heroId];
+                  const owned = roster[entry.heroId];
+                  const curLevel = expRes?.newLevel ?? owned?.level ?? 1;
+                  const curExp = expRes?.newExp ?? owned?.exp ?? 0;
+                  const expToNext = expRes?.expToNext ?? getExpToNextLevel(curLevel);
+                  const levelsGained = expRes?.levelsGained ?? 0;
+                  const expGained = expRes?.expGained ?? 0;
+                  const atLevelCap = expRes?.atLevelCap ?? false;
+
                   return (
                     <motion.div
                       key={entry.heroId}
@@ -259,12 +296,17 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                       transition={{ duration: 0.35, delay: 0.1 + idx * 0.07 }}
                       className="rpg-ornate-card flex items-center gap-2.5 px-2.5 py-2 backdrop-blur-sm overflow-hidden"
                       style={{
-                        borderColor: idx === 0 ? 'rgba(253,224,71,0.65)' : `${h.themeColor}55`,
-                        borderLeft: `3px solid ${accent}`,
+                        borderColor:
+                          levelsGained > 0
+                            ? 'rgba(52,211,153,0.75)'
+                            : idx === 0
+                              ? 'rgba(253,224,71,0.65)'
+                              : `${h.themeColor}55`,
+                        borderLeft: `3px solid ${levelsGained > 0 ? '#34d399' : accent}`,
                       }}
                     >
-                      <CornerFiligree color={accent} size={6} opacity={0.45} />
-                      <div className="relative w-10 h-10 shrink-0 rounded-lg overflow-hidden border border-white/25 shadow-md">
+                      <CornerFiligree color={levelsGained > 0 ? '#34d399' : accent} size={6} opacity={0.5} />
+                      <div className="relative w-11 h-11 shrink-0 rounded-lg overflow-hidden border border-white/25 shadow-md">
                         <ArtImage
                           kind="HERO"
                           id={entry.heroId}
@@ -279,33 +321,109 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between text-xs mb-1">
-                          <span className="font-bold text-white truncate">{h.name}</span>
-                          <AnimatedNumber
-                            value={entry.dmg}
-                            startFromZero
-                            duration={0.85}
-                            className="text-sm font-bold text-amber-300"
-                          />
+                        {/* Row 1: Hero Name + Current Level + Lv. UP Badge | EXP Ratio (e.g. 1,283 / 5,000) */}
+                        <div className="flex items-center justify-between gap-1.5 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                            <span className="font-bold text-xs text-white truncate">{h.name}</span>
+                            <span className="px-1.5 py-0.5 rounded bg-slate-900/95 border border-cyan-400/45 font-mono text-[10px] font-black text-cyan-200 leading-none shrink-0">
+                              Lv.{curLevel}
+                            </span>
+                            {levelsGained > 0 && (
+                              <motion.span
+                                initial={{ scale: 0.45, opacity: 0, y: 4 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                transition={{
+                                  type: 'spring',
+                                  stiffness: 420,
+                                  damping: 18,
+                                  delay: 0.32 + idx * 0.09,
+                                }}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-400 via-lime-300 to-amber-300 text-slate-950 font-display font-black text-[9px] uppercase tracking-wider leading-none shadow-[0_0_14px_rgba(52,211,153,0.85)] shrink-0"
+                              >
+                                <LevelUpSvgIcon className="w-3 h-3" />
+                                <span>Lv. UP +{levelsGained}</span>
+                              </motion.span>
+                            )}
+                          </div>
+
+                          <div className="font-mono text-[11px] font-bold text-amber-200 shrink-0 tabular-nums">
+                            {result.victory ? (
+                              <>
+                                <AnimatedNumber
+                                  value={curExp}
+                                  startFromZero
+                                  duration={0.85}
+                                  className="text-[11px] font-black text-amber-300"
+                                />
+                                <span className="text-slate-400"> / {expToNext.toLocaleString()}</span>
+                              </>
+                            ) : (
+                              <>
+                                <AnimatedNumber
+                                  value={entry.dmg}
+                                  startFromZero
+                                  duration={0.85}
+                                  className="text-[11px] font-black text-amber-300"
+                                />
+                                <span className="text-slate-400"> / {maxDmg.toLocaleString()}</span>
+                              </>
+                            )}
+                          </div>
                         </div>
+
+                        {/* Row 2: EXP Progress Bar (or DMG contribution bar on Defeat) */}
                         <RpgProgressBar
-                          value={entry.dmg}
-                          max={maxDmg}
+                          value={result.victory ? (atLevelCap ? expToNext : curExp) : entry.dmg}
+                          max={result.victory ? expToNext : maxDmg}
                           animateFromZero
                           delay={0.18 + idx * 0.08}
                           heightClass="h-2.5"
                           gradient={
-                            idx === 0
-                              ? 'linear-gradient(90deg, #f59e0b 0%, #fde047 65%, #fffbeb 100%)'
-                              : `linear-gradient(90deg, ${h.themeColor}cc 0%, #fde047 100%)`
+                            levelsGained > 0
+                              ? 'linear-gradient(90deg, #10b981 0%, #a3e635 58%, #fde047 100%)'
+                              : result.victory
+                                ? 'linear-gradient(90deg, #06b6d4 0%, #38e8ff 55%, #fde047 100%)'
+                                : `linear-gradient(90deg, ${h.themeColor}cc 0%, #fde047 100%)`
                           }
-                          glowColor={idx === 0 ? 'rgba(253,224,71,0.65)' : `${h.themeColor}55`}
+                          glowColor={
+                            levelsGained > 0
+                              ? 'rgba(52,211,153,0.75)'
+                              : idx === 0
+                                ? 'rgba(253,224,71,0.6)'
+                                : `${h.themeColor}55`
+                          }
                         />
-                        {entry.heal > 0 && (
-                          <div className="text-[10px] font-mono font-bold text-emerald-400 mt-1 flex items-center gap-1">
-                            <Heart className="w-2.5 h-2.5" /> Heal {entry.heal.toLocaleString()}
+
+                        {/* Row 3: +EXP Gained + Combat DMG / Heal Summary */}
+                        <div className="flex items-center justify-between gap-2 mt-1 text-[10px] font-mono">
+                          <div className="flex items-center gap-2 text-slate-300">
+                            <span className="inline-flex items-center gap-0.5 text-amber-200/90 font-bold">
+                              <Swords className="w-2.5 h-2.5 text-amber-400" />
+                              {entry.dmg.toLocaleString()}
+                            </span>
+                            {entry.heal > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-emerald-400 font-bold">
+                                <Heart className="w-2.5 h-2.5" />
+                                {entry.heal.toLocaleString()}
+                              </span>
+                            )}
                           </div>
-                        )}
+                          {result.victory && (
+                            <span
+                              className={`font-bold ${
+                                atLevelCap
+                                  ? 'text-fuchsia-300'
+                                  : levelsGained > 0
+                                    ? 'text-emerald-300'
+                                    : 'text-cyan-300'
+                              }`}
+                            >
+                              {atLevelCap
+                                ? `CAP Lv.${expRes?.levelCap ?? curLevel}`
+                                : `+${expGained.toLocaleString()} EXP`}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </motion.div>
                   );

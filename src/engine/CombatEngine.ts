@@ -3,6 +3,11 @@ import { ENEMY_MAP } from '../data/enemies';
 import { generateEquipment } from '../data/equipment';
 import { FACTIONS } from '../data/factions';
 import { HERO_MAP } from '../data/heroes';
+import {
+  getExpToNextLevel,
+  getHeroLevelCap,
+  getStageCombatHeroExp,
+} from '../data/materials';
 import { STAGE_MAP } from '../data/stages';
 import { useCombatStore } from '../store/useCombatStore';
 import { usePlayerStore, MAX_RELIC_RANK } from '../store/usePlayerStore';
@@ -13,6 +18,7 @@ import type {
   EquipmentInstance,
   EquipmentRarity,
   Faction,
+  HeroBattleExpResult,
   HeroCombatSnapshot,
   SkillDef,
 } from '../types/game';
@@ -1648,9 +1654,61 @@ export class CombatEngine {
 
     const damageByHero: Record<string, number> = {};
     const healingByHero: Record<string, number> = {};
+    let mvpHeroId = this.ctx.heroes[0]?.heroId ?? 'vaelen';
+    let bestScore = -1;
     for (const h of this.ctx.heroes) {
       damageByHero[h.heroId] = Math.round(h.totalDamage);
       healingByHero[h.heroId] = Math.round(h.totalHealing);
+      const score = h.totalDamage + h.totalHealing * 1.15;
+      if (score > bestScore) {
+        bestScore = score;
+        mvpHeroId = h.heroId;
+      }
+    }
+
+    // Calculate per-hero Combat EXP & automatic Level Ups (respecting Awakening Level Cap!)
+    const heroExpResults: Record<string, HeroBattleExpResult> = {};
+    const baseStageHeroExp = victory
+      ? getStageCombatHeroExp(stage.chapter, stage.stageNumber, stage.isMiniBoss, stage.isBossStage)
+      : 0;
+
+    for (const h of this.ctx.heroes) {
+      const owned = player.roster[h.heroId];
+      if (!owned) continue;
+      const levelCap = getHeroLevelCap(owned.awakening);
+      const prevLevel = owned.level;
+      const prevExp = owned.exp ?? 0;
+      const expGained = victory
+        ? Math.round(baseStageHeroExp * (h.heroId === mvpHeroId ? 1.15 : 1.0))
+        : 0;
+
+      let curLevel = prevLevel;
+      let curExp = prevExp + expGained;
+      let expToNext = getExpToNextLevel(curLevel);
+
+      while (curLevel < levelCap && curExp >= expToNext) {
+        curExp -= expToNext;
+        curLevel += 1;
+        expToNext = getExpToNextLevel(curLevel);
+      }
+
+      const atLevelCap = curLevel >= levelCap;
+      if (atLevelCap) {
+        curExp = Math.min(curExp, expToNext);
+      }
+
+      heroExpResults[h.heroId] = {
+        heroId: h.heroId,
+        expGained,
+        prevLevel,
+        newLevel: curLevel,
+        levelsGained: curLevel - prevLevel,
+        prevExp,
+        newExp: curExp,
+        expToNext,
+        atLevelCap,
+        levelCap,
+      };
     }
 
     const summary: CombatLootSummary = {
@@ -1660,6 +1718,7 @@ export class CombatEngine {
       durationSec: Math.round(this.elapsedSec),
       damageByHero,
       healingByHero,
+      heroExpResults,
       goldEarned: victory ? randBetween(stage.rewards.gold) : 0,
       crystalsEarned: isFirstClear ? stage.firstClearCrystals : victory ? 40 : 0,
       expPotionsEarned: victory ? randBetween(stage.rewards.expPotions) : 0,
