@@ -169,9 +169,11 @@ export const RegionChestModal: React.FC<RegionChestModalProps> = ({
                   <RpgLootTile color="#38bdf8" subLabel="Star-Iron" bottomLabel={`×${reward.starIronIngots}`} index={6}>
                     <MaterialIcon material="starIronIngots" className="w-8 h-8" />
                   </RpgLootTile>
-                  <RpgLootTile color="#f5c84c" subLabel="Anvil Core" bottomLabel={`×${reward.astralAnvilCores}`} index={7}>
-                    <MaterialIcon material="astralAnvilCores" className="w-8 h-8" />
-                  </RpgLootTile>
+                  {reward.astralAnvilCores > 0 && (
+                    <RpgLootTile color="#f5c84c" subLabel="Anvil Core" bottomLabel={`×${reward.astralAnvilCores}`} index={7}>
+                      <MaterialIcon material="astralAnvilCores" className="w-8 h-8" />
+                    </RpgLootTile>
+                  )}
                   <RpgLootTile color="#22d3ee" subLabel="Relic Frag" bottomLabel={`×${reward.relicFragments}`} index={8}>
                     <GameIcon name="relic" className="w-8 h-8" />
                   </RpgLootTile>

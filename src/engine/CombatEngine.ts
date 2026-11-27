@@ -549,9 +549,9 @@ export class CombatEngine {
         this.pool.spawnRingWave(spawnX, spawnY, def.isBoss ? 170 : 75, 0xd946ef, 0.45);
 
         const stageScale = stage.enemyScale ?? 1.0;
-        const scaledHp = Math.max(120, Math.round(def.hp * stageScale));
-        const scaledAtk = Math.max(18, Math.round(def.atk * Math.pow(stageScale, 0.8)));
-        const scaledDef = Math.max(25, Math.round(def.def * Math.pow(stageScale, 0.65)));
+        const scaledHp = Math.max(240, Math.round(def.hp * stageScale));
+        const scaledAtk = Math.max(32, Math.round(def.atk * 1.92 * Math.pow(stageScale, 1.14)));
+        const scaledDef = Math.max(35, Math.round(def.def * Math.pow(stageScale, 0.68)));
 
         const enemyUnit: EnemyUnit = {
           uid: `en_${index}_${spawnIdx}_${Math.random().toString(36).slice(2, 6)}`,
@@ -1728,7 +1728,13 @@ export class CombatEngine {
       starCoresEarned,
       relicFragmentsEarned,
       essencesEarned,
-      bondGiftsEarned: victory ? (stage.isBossStage ? 2 : 1) : 0,
+      bondGiftsEarned: victory
+        ? stage.isBossStage
+          ? 2
+          : stage.isMiniBoss || Math.random() < 0.35
+            ? 1
+            : 0
+        : 0,
       isFirstClear,
       droppedEquipment,
       droppedRelics,

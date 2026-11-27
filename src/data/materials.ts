@@ -150,16 +150,17 @@ export function getHeroLevelCap(awakening: number): number {
 
 /**
  * Clean RPG EXP threshold required to advance from `level` to `level + 1` (rounded to multiples of 50).
- * e.g. Lv.8 = 1,350, Lv.15 = 3,400, Lv.20 = 5,450, Lv.40 = 18,650.
+ * Calibrated for ~3.5-4.5 normal clears (or ~2-3 Boss clears) per natural combat Level Up.
+ * e.g. Lv.8 = 2,100, Lv.15 = 5,050, Lv.20 = 7,950, Lv.40 = 26,650.
  */
 export function getExpToNextLevel(level: number): number {
   const lv = Math.max(1, Math.min(80, level));
-  return Math.round((250 + lv * lv * 10 + lv * 60) / 50) * 50;
+  return Math.round((450 + lv * lv * 14 + lv * 95) / 50) * 50;
 }
 
 /**
  * Combat EXP awarded to each deployed Chaser upon clearing a stage.
- * Scales smoothly across Ch.1-10 so every 2-3 clears (or a Boss clear) triggers satisfying Level Ups!
+ * Grants ~3.2 natural level-ups per chapter while complementing EXP Elixir leveling smoothly!
  */
 export function getStageCombatHeroExp(
   chapter: number,
@@ -168,8 +169,8 @@ export function getStageCombatHeroExp(
   isBossStage?: boolean,
 ): number {
   const globalIdx = (chapter - 1) * 12 + stageNumber; // 1..120
-  const base = 520 + globalIdx * 145 + Math.pow(chapter - 1, 1.75) * 420;
-  const mult = isBossStage ? 1.75 : isMiniBoss ? 1.35 : 1.0;
+  const base = 360 + globalIdx * 82 + Math.pow(chapter - 1, 1.85) * 280;
+  const mult = isBossStage ? 1.65 : isMiniBoss ? 1.3 : 1.0;
   return Math.round((base * mult) / 10) * 10;
 }
 
@@ -194,17 +195,17 @@ export function getLevelUpCost(
   for (let i = 0; i < actualLevels; i++) {
     const lv = currentLevel + i;
     if (lv < 20) {
-      potions += Math.max(1, Math.floor(lv / 10) + 1);
-      gold += 140 + lv * 32;
+      potions += Math.max(1, Math.floor(lv / 9) + 1);
+      gold += 160 + lv * 32;
     } else if (lv < 40) {
-      potions += 2 + Math.floor((lv - 20) / 6);
-      gold += 260 + lv * 50;
+      potions += 3 + Math.floor((lv - 20) / 7);
+      gold += 280 + lv * 48;
     } else if (lv < 60) {
-      potions += 5 + Math.floor((lv - 40) / 5);
-      gold += 420 + lv * 75;
+      potions += 6 + Math.floor((lv - 40) / 6);
+      gold += 480 + lv * 66;
     } else {
-      potions += 9 + Math.floor((lv - 60) / 4);
-      gold += 680 + lv * 105;
+      potions += 9 + Math.floor((lv - 60) / 5);
+      gold += 760 + lv * 88;
     }
   }
   return {
@@ -228,12 +229,12 @@ export interface AwakeningCost {
 }
 
 const BASE_AWAKEN_TABLE = [
-  { essences: 6, starCores: 2, gold: 2000, shards: 10, shardGold: 1000 },
-  { essences: 12, starCores: 4, gold: 4500, shards: 15, shardGold: 2200 },
-  { essences: 20, starCores: 7, gold: 8500, shards: 20, shardGold: 4000, milestone: '+10% Skill DMG' },
-  { essences: 30, starCores: 11, gold: 14000, shards: 25, shardGold: 6500 },
-  { essences: 44, starCores: 16, gold: 22000, shards: 30, shardGold: 10000 },
-  { essences: 60, starCores: 24, gold: 35000, shards: 40, shardGold: 15000, milestone: '+15% Ultimate DMG' },
+  { essences: 8, starCores: 3, gold: 2600, shards: 10, shardGold: 1200 },
+  { essences: 14, starCores: 5, gold: 5400, shards: 15, shardGold: 2600 },
+  { essences: 20, starCores: 8, gold: 9600, shards: 20, shardGold: 4500, milestone: '+10% Skill DMG' },
+  { essences: 28, starCores: 11, gold: 15500, shards: 25, shardGold: 7200 },
+  { essences: 38, starCores: 15, gold: 24000, shards: 30, shardGold: 11000 },
+  { essences: 50, starCores: 20, gold: 36000, shards: 40, shardGold: 16500, milestone: '+15% Ultimate DMG' },
 ];
 
 /**
@@ -390,34 +391,34 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'EXP Elixir Pack ×5',
     subtitle: 'Quick leveling tonic bundle for rising Chasers',
     currency: 'GOLD',
-    price: 1200,
-    dailyLimit: 6,
+    price: 1500,
+    dailyLimit: 4,
     accentColor: '#34d399',
     reward: { kind: 'MATERIAL', material: 'expPotions', amount: 5 },
   },
   {
     id: 'shop_exp_crate',
     category: 'GROWTH',
-    name: 'EXP Elixir Crate ×20',
-    subtitle: 'Best-value Gold leveling supply (12% savings)',
+    name: 'EXP Elixir Crate ×15',
+    subtitle: 'Best-value Gold leveling supply (11% savings)',
     currency: 'GOLD',
-    price: 4200,
-    dailyLimit: 3,
+    price: 4000,
+    dailyLimit: 2,
     badge: 'POPULAR',
     accentColor: '#10b981',
-    reward: { kind: 'MATERIAL', material: 'expPotions', amount: 20 },
+    reward: { kind: 'MATERIAL', material: 'expPotions', amount: 15 },
   },
   {
     id: 'shop_exp_chest',
     category: 'GROWTH',
-    name: 'Grand EXP Vault ×50',
+    name: 'Grand EXP Vault ×35',
     subtitle: 'High-volume training stock for Lv.40+ squads',
     currency: 'GOLD',
-    price: 9600,
+    price: 8400,
     dailyLimit: 2,
     badge: 'SAVE 20%',
     accentColor: '#22d3ee',
-    reward: { kind: 'MATERIAL', material: 'expPotions', amount: 50 },
+    reward: { kind: 'MATERIAL', material: 'expPotions', amount: 35 },
   },
   {
     id: 'shop_bond_bundle',
@@ -425,8 +426,8 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Celestial Keepsakes ×3',
     subtitle: 'Raise Chaser Bond (+1.5% All Base Stats per level)',
     currency: 'GOLD',
-    price: 1800,
-    dailyLimit: 4,
+    price: 2000,
+    dailyLimit: 3,
     accentColor: '#fb7185',
     reward: { kind: 'MATERIAL', material: 'bondGifts', amount: 3 },
   },
@@ -438,8 +439,8 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Solaris Core ×5',
     subtitle: 'Awakening material for Solaris Vanguard Chasers',
     currency: 'GOLD',
-    price: 2000,
-    dailyLimit: 4,
+    price: 2400,
+    dailyLimit: 3,
     accentColor: '#f5c84c',
     reward: { kind: 'MATERIAL', material: 'essence_SOLARIS', amount: 5 },
   },
@@ -449,8 +450,8 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Astral Prism ×5',
     subtitle: 'Awakening material for Astral Sanctum Chasers',
     currency: 'GOLD',
-    price: 2000,
-    dailyLimit: 4,
+    price: 2400,
+    dailyLimit: 3,
     accentColor: '#38e8ff',
     reward: { kind: 'MATERIAL', material: 'essence_ASTRAL', amount: 5 },
   },
@@ -460,8 +461,8 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Verdant Dew ×5',
     subtitle: 'Awakening material for Verdant Covenant Chasers',
     currency: 'GOLD',
-    price: 2000,
-    dailyLimit: 4,
+    price: 2400,
+    dailyLimit: 3,
     accentColor: '#34d399',
     reward: { kind: 'MATERIAL', material: 'essence_VERDANT', amount: 5 },
   },
@@ -471,33 +472,33 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Ashen Ember ×5',
     subtitle: 'Awakening material for Ashen Legion Chasers',
     currency: 'GOLD',
-    price: 2000,
-    dailyLimit: 4,
+    price: 2400,
+    dailyLimit: 3,
     accentColor: '#f97316',
     reward: { kind: 'MATERIAL', material: 'essence_ASHEN', amount: 5 },
   },
   {
     id: 'shop_star_core_gold',
     category: 'AWAKEN',
-    name: 'Starlight Core ×3',
+    name: 'Starlight Core ×2',
     subtitle: 'Universal Awakening nucleus (normally Boss/Elite drops)',
     currency: 'GOLD',
-    price: 3600,
-    dailyLimit: 3,
+    price: 3200,
+    dailyLimit: 2,
     badge: 'ESSENTIAL',
     accentColor: '#e879f9',
-    reward: { kind: 'MATERIAL', material: 'starCores', amount: 3 },
+    reward: { kind: 'MATERIAL', material: 'starCores', amount: 2 },
   },
   {
     id: 'shop_star_core_dust',
     category: 'AWAKEN',
-    name: 'Starlight Core Pack ×6',
+    name: 'Starlight Core Pack ×5',
     subtitle: 'Exchange surplus Gacha Star Dust for Awakening Cores',
     currency: 'STAR_DUST',
     price: 25,
-    dailyLimit: 4,
+    dailyLimit: 3,
     accentColor: '#d946ef',
-    reward: { kind: 'MATERIAL', material: 'starCores', amount: 6 },
+    reward: { kind: 'MATERIAL', material: 'starCores', amount: 5 },
   },
   {
     id: 'shop_omni_essence_dust',
@@ -505,8 +506,8 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Omni-Faction Essence Chest',
     subtitle: 'Grants +4 of EVERY Faction Essence (16 total)',
     currency: 'STAR_DUST',
-    price: 30,
-    dailyLimit: 3,
+    price: 32,
+    dailyLimit: 2,
     badge: 'ALL FACTIONS',
     accentColor: '#f5c84c',
     reward: { kind: 'OMNI_ESSENCE', amountEach: 4 },
@@ -519,21 +520,21 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Forge Stones ×10',
     subtitle: 'Tier 1 enhancement stones for +1 to +15 forging',
     currency: 'GOLD',
-    price: 1800,
-    dailyLimit: 6,
+    price: 2000,
+    dailyLimit: 4,
     accentColor: '#a78bfa',
     reward: { kind: 'MATERIAL', material: 'forgeStones', amount: 10 },
   },
   {
     id: 'shop_forge_stones_30',
     category: 'FORGE',
-    name: 'Blacksmith Stone Crate ×30',
+    name: 'Blacksmith Stone Crate ×25',
     subtitle: 'Bulk Tier 1 forge supply at discounted Gold rate',
     currency: 'GOLD',
-    price: 4800,
-    dailyLimit: 3,
+    price: 4500,
+    dailyLimit: 2,
     accentColor: '#8b5cf6',
-    reward: { kind: 'MATERIAL', material: 'forgeStones', amount: 30 },
+    reward: { kind: 'MATERIAL', material: 'forgeStones', amount: 25 },
   },
   {
     id: 'shop_star_iron_5',
@@ -541,8 +542,8 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Star-Iron Ingots ×5',
     subtitle: 'Tier 2 steel required to forge equipment from +6 to +15',
     currency: 'GOLD',
-    price: 3400,
-    dailyLimit: 4,
+    price: 3800,
+    dailyLimit: 3,
     badge: 'TIER 2',
     accentColor: '#38bdf8',
     reward: { kind: 'MATERIAL', material: 'starIronIngots', amount: 5 },
@@ -553,7 +554,7 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Astral Anvil Core ×2',
     subtitle: 'Tier 3 core required for pinnacle +11 to +15 enhancement',
     currency: 'GOLD',
-    price: 6800,
+    price: 7500,
     dailyLimit: 2,
     badge: 'TIER 3',
     accentColor: '#f5c84c',
@@ -565,7 +566,7 @@ export const SHOP_OFFERS: ShopOffer[] = [
     name: 'Forgemaster Epic Crate',
     subtitle: 'Forges 1 random Equipment piece (Epic 75% / Legendary 25%)',
     currency: 'GOLD',
-    price: 7500,
+    price: 8500,
     dailyLimit: 2,
     badge: 'EPIC+',
     accentColor: '#c084fc',
@@ -724,17 +725,17 @@ export const REGION_CHEST_REWARDS: Record<string, RegionChestRewardDef> = Object
       regionId,
       chapter: ch,
       title: `Chapter ${ch} Conqueror Chest`,
-      crystals: 800 + (ch - 1) * 100,
-      gold: 6000 + (ch - 1) * 3500,
-      expPotions: 12 + (ch - 1) * 5,
-      forgeStones: 12 + (ch - 1) * 4,
-      starIronIngots: 4 + (ch - 1) * 3,
-      astralAnvilCores: ch >= 3 ? Math.min(10, ch - 1) : 1,
-      starCores: 4 + Math.floor(ch * 0.9),
-      relicFragments: 12 + (ch - 1) * 3,
+      crystals: 640 + (ch - 1) * 100,
+      gold: 4000 + (ch - 1) * 2800,
+      expPotions: 8 + (ch - 1) * 4,
+      forgeStones: 10 + (ch - 1) * 4,
+      starIronIngots: ch === 1 ? 2 : 3 + (ch - 1) * 2,
+      astralAnvilCores: ch <= 1 ? 0 : ch <= 3 ? 1 : Math.min(7, ch - 2),
+      starCores: 2 + Math.floor(ch * 0.75),
+      relicFragments: 8 + (ch - 1) * 2,
       essenceFaction: biome.primaryEssence,
-      essenceQty: 12 + (ch - 1) * 3,
-      gearRarity: ch >= 3 ? 'LEGENDARY' : 'EPIC',
+      essenceQty: 6 + (ch - 1) * 2,
+      gearRarity: ch >= 4 ? 'LEGENDARY' : 'EPIC',
       gearSetId: biome.targetSetIds[0] ?? 'VANGUARD',
     };
     return [regionId, reward];

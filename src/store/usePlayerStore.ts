@@ -46,7 +46,7 @@ export const CODEX_MILESTONES: CodexMilestone[] = [
 ];
 
 export const DAILY_SUPPLY_COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours
-export const SHOP_RESTOCK_GOLD_COST = 1500;
+export const SHOP_RESTOCK_GOLD_COST = 6000;
 export const MAX_RELIC_RANK = 5;
 
 function getTodayKey(): string {
@@ -109,23 +109,23 @@ function buildInitialSave(): PlayerSaveState {
   return {
     commanderName: 'Chaser Commander',
     favoriteHeroId: 'vaelen',
-    gold: 8500,
+    gold: 3500,
     starlightCrystals: 3200, // 20x starter gacha pulls
     starDust: 30,
     starlightTokens: 0,
-    expPotions: 18,
-    forgeStones: 18,
-    starIronIngots: 4,
+    expPotions: 8,
+    forgeStones: 10,
+    starIronIngots: 0,
     astralAnvilCores: 0,
-    starCores: 2,
+    starCores: 0,
     relicFragments: 0,
     factionEssences: {
-      SOLARIS: 4,
+      SOLARIS: 2,
       ASTRAL: 2,
       VERDANT: 2,
       ASHEN: 2,
     },
-    bondGifts: 6,
+    bondGifts: 3,
     pityCounterHero: 0,
     pityCounterRelic: 0,
     guaranteedFeaturedHero: false,
@@ -1069,9 +1069,9 @@ export const usePlayerStore = create<PlayerStore>()(
           };
         }
         set({
-          gold: state.gold + 2000,
+          gold: state.gold + 1800,
           starlightCrystals: state.starlightCrystals + 160,
-          expPotions: state.expPotions + 6,
+          expPotions: state.expPotions + 4,
           forgeStones: state.forgeStones + 5,
           starCores: state.starCores + 1,
           factionEssences: {
@@ -1084,7 +1084,7 @@ export const usePlayerStore = create<PlayerStore>()(
         });
         return {
           ok: true,
-          message: 'Claimed Supply! +2,000g • +160 Crystals • +6 EXP • +5 Stones • +1 Core & Essences',
+          message: 'Claimed Supply! +1,800g • +160 Crystals • +4 EXP • +5 Stones • +1 Core & Essences',
         };
       },
 

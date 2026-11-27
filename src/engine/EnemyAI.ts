@@ -646,7 +646,7 @@ export class EnemyAI {
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
           if (Math.abs(diff) <= 0.68) {
-            ctx.damageHero(enemy, h, enemy.atk * 1.85 * atkMult, false);
+            ctx.damageHero(enemy, h, enemy.atk * 1.75 * atkMult, false);
           }
         }
       }
@@ -657,7 +657,7 @@ export class EnemyAI {
       audioManager.playSfx('ult_impact');
       for (const h of ctx.heroes) {
         if (h.alive && Math.hypot(h.x - enemy.x, h.y - enemy.y) <= 245) {
-          ctx.damageHero(enemy, h, enemy.atk * 2.05 * atkMult, false);
+          ctx.damageHero(enemy, h, enemy.atk * 1.95 * atkMult, false);
         }
       }
     } else if (action === 'BRIAR_ERUPTION') {
@@ -718,7 +718,7 @@ export class EnemyAI {
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
           if (Math.abs(diff) <= 0.78) {
-            ctx.damageHero(enemy, h, enemy.atk * 1.9 * atkMult, false);
+            ctx.damageHero(enemy, h, enemy.atk * 1.8 * atkMult, false);
           }
         }
       }
@@ -729,7 +729,7 @@ export class EnemyAI {
       audioManager.playSfx('ult_impact');
       for (const h of ctx.heroes) {
         if (h.alive && Math.hypot(h.x - enemy.x, h.y - enemy.y) <= 355) {
-          ctx.damageHero(enemy, h, enemy.atk * 2.7 * atkMult, false);
+          ctx.damageHero(enemy, h, enemy.atk * 2.5 * atkMult, false);
         }
       }
     }

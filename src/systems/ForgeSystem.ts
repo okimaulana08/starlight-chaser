@@ -35,12 +35,12 @@ export function getEnhanceCost(item: EquipmentInstance): EnhanceCost {
   const nextLvl = item.enhanceLevel + 1;
   const rm = rarityMult[item.rarity];
 
-  const gold = Math.round((200 * nextLvl + nextLvl * nextLvl * 28) * rm);
-  const forgeStones = Math.max(1, Math.ceil((0.8 + nextLvl * 0.65) * rm));
+  const gold = Math.round((165 * nextLvl + nextLvl * nextLvl * 22) * rm);
+  const forgeStones = Math.max(1, Math.ceil((0.8 + nextLvl * 0.6) * rm));
   const starIronIngots =
-    nextLvl >= 6 ? Math.max(1, Math.ceil((nextLvl - 5) * 0.55 * rm)) : 0;
+    nextLvl >= 6 ? Math.max(1, Math.ceil((nextLvl - 5) * 0.5 * rm)) : 0;
   const astralAnvilCores =
-    nextLvl >= 11 ? Math.max(1, Math.ceil((nextLvl - 10) * 0.48 * rm)) : 0;
+    nextLvl >= 11 ? Math.max(1, Math.ceil((nextLvl - 10) * 0.45 * rm)) : 0;
 
   const baseSuccessRate = nextLvl <= 9 ? 1.0 : nextLvl <= 12 ? 0.85 : 0.7;
   const pityBonus = item.forgePity ?? 0;
@@ -59,15 +59,15 @@ export function getEnhanceCost(item: EquipmentInstance): EnhanceCost {
 export function getSalvageYield(item: EquipmentInstance): SalvageYield {
   const baseStones =
     item.rarity === 'LEGENDARY'
-      ? 9
+      ? 7
       : item.rarity === 'EPIC'
-        ? 5
+        ? 4
         : item.rarity === 'RARE'
-          ? 3
+          ? 2
           : 1;
   const starIronIngots =
     item.rarity === 'LEGENDARY'
-      ? 3 + Math.floor(item.enhanceLevel / 4)
+      ? 2 + Math.floor(item.enhanceLevel / 4)
       : item.rarity === 'EPIC'
         ? 1 + Math.floor(item.enhanceLevel / 6)
         : item.enhanceLevel >= 6
@@ -81,8 +81,8 @@ export function getSalvageYield(item: EquipmentInstance): SalvageYield {
         : 0;
 
   return {
-    gold: 200 * (item.enhanceLevel + 1) * (item.rarity === 'LEGENDARY' ? 2 : 1),
-    forgeStones: baseStones + Math.floor(item.enhanceLevel * 0.6),
+    gold: 160 * (item.enhanceLevel + 1) * (item.rarity === 'LEGENDARY' ? 2 : 1),
+    forgeStones: baseStones + Math.floor(item.enhanceLevel * 0.55),
     starIronIngots,
     astralAnvilCores,
   };

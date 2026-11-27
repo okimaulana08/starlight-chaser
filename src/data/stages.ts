@@ -292,18 +292,66 @@ function buildWavesForStage(region: RegionDef, stageNum: number): StageWave[] {
 }
 
 function buildRarityWeights(chapter: number, stageNum: number): Record<EquipmentRarity, number> {
-  const tier = (chapter - 1) * 12 + stageNum; // 1..120
+  const isMini = stageNum === 4 || stageNum === 8;
   if (stageNum === 12) {
-    const legendary = Math.min(62, 22 + chapter * 4);
-    const rare = Math.max(0, 28 - chapter * 4);
-    const epic = Math.max(25, 100 - legendary - rare);
-    return { COMMON: 0, RARE: rare, EPIC: epic, LEGENDARY: legendary };
+    // Boss Stages: zero Common; Ch.1 = Rare/Epic + 6% lucky Legendary -> Ch.10 = 68% Legendary!
+    const bossTable: Array<Record<EquipmentRarity, number>> = [
+      { COMMON: 0, RARE: 52, EPIC: 42, LEGENDARY: 6 },
+      { COMMON: 0, RARE: 38, EPIC: 50, LEGENDARY: 12 },
+      { COMMON: 0, RARE: 26, EPIC: 56, LEGENDARY: 18 },
+      { COMMON: 0, RARE: 16, EPIC: 58, LEGENDARY: 26 },
+      { COMMON: 0, RARE: 10, EPIC: 56, LEGENDARY: 34 },
+      { COMMON: 0, RARE: 6, EPIC: 52, LEGENDARY: 42 },
+      { COMMON: 0, RARE: 2, EPIC: 48, LEGENDARY: 50 },
+      { COMMON: 0, RARE: 0, EPIC: 44, LEGENDARY: 56 },
+      { COMMON: 0, RARE: 0, EPIC: 38, LEGENDARY: 62 },
+      { COMMON: 0, RARE: 0, EPIC: 32, LEGENDARY: 68 },
+    ];
+    return bossTable[chapter - 1] ?? bossTable[0];
   }
-  const legendary = Math.min(48, Math.round(2 + tier * 0.42));
-  const epic = Math.min(54, Math.round(14 + tier * 0.48));
-  const common = Math.max(0, Math.round(26 - tier * 1.1));
-  const rare = Math.max(6, 100 - legendary - epic - common);
-  return { COMMON: common, RARE: rare, EPIC: epic, LEGENDARY: legendary };
+
+  if (chapter === 1) {
+    if (stageNum <= 4) {
+      return isMini
+        ? { COMMON: 32, RARE: 56, EPIC: 12, LEGENDARY: 0 }
+        : { COMMON: 50, RARE: 46, EPIC: 4, LEGENDARY: 0 };
+    }
+    if (stageNum <= 8) {
+      return isMini
+        ? { COMMON: 20, RARE: 60, EPIC: 20, LEGENDARY: 0 }
+        : { COMMON: 35, RARE: 55, EPIC: 10, LEGENDARY: 0 };
+    }
+    return { COMMON: 20, RARE: 62, EPIC: 17, LEGENDARY: 1 };
+  }
+
+  const normalTable: Array<Record<EquipmentRarity, number>> = [
+    { COMMON: 35, RARE: 55, EPIC: 10, LEGENDARY: 0 }, // Ch.1 fallback
+    { COMMON: 12, RARE: 60, EPIC: 25, LEGENDARY: 3 }, // Ch.2
+    { COMMON: 5, RARE: 53, EPIC: 36, LEGENDARY: 6 },  // Ch.3
+    { COMMON: 0, RARE: 44, EPIC: 45, LEGENDARY: 11 }, // Ch.4
+    { COMMON: 0, RARE: 34, EPIC: 50, LEGENDARY: 16 }, // Ch.5
+    { COMMON: 0, RARE: 26, EPIC: 52, LEGENDARY: 22 }, // Ch.6
+    { COMMON: 0, RARE: 18, EPIC: 54, LEGENDARY: 28 }, // Ch.7
+    { COMMON: 0, RARE: 12, EPIC: 54, LEGENDARY: 34 }, // Ch.8
+    { COMMON: 0, RARE: 8, EPIC: 50, LEGENDARY: 42 },  // Ch.9
+    { COMMON: 0, RARE: 4, EPIC: 46, LEGENDARY: 50 },  // Ch.10
+  ];
+  const base = { ...(normalTable[chapter - 1] ?? normalTable[1]) };
+  if (isMini) {
+    const legBump = Math.min(8, 2 + Math.floor(chapter * 0.6));
+    const epicBump = base.COMMON > 0 ? 6 : 4;
+    base.LEGENDARY += legBump;
+    base.EPIC += epicBump;
+    let trim = legBump + epicBump;
+    const fromCommon = Math.min(base.COMMON, trim);
+    base.COMMON -= fromCommon;
+    trim -= fromCommon;
+    const fromRare = Math.min(base.RARE, trim);
+    base.RARE -= fromRare;
+    trim -= fromRare;
+    if (trim > 0) base.EPIC = Math.max(10, base.EPIC - trim);
+  }
+  return base;
 }
 
 function buildDescription(region: RegionDef, stageNum: number, isMiniBoss: boolean, isBoss: boolean): string {
@@ -319,24 +367,25 @@ function buildDescription(region: RegionDef, stageNum: number, isMiniBoss: boole
 function buildAllStages(): StageDef[] {
   const list: StageDef[] = [];
 
-  // Balanced enemy scale curves calibrated to Lv.8 ★0 -> Lv.80 ★6 +15 Legendary progression!
+  // Rebalanced v2.3 enemy scale curves calibrated to Lv.8 ★0 -> Lv.80 ★6 +15 Legendary progression:
+  // Punchy 12-18s trash waves, tactical 25-50s Boss fights, meaningful Tank/Healer/Cancel-Cast stakes!
   const regionScalePairs: Array<[number, number]> = [
-    [0.78, 1.38],  // Ch. 1 (Lv.8-18 ★0)
-    [1.48, 2.25],  // Ch. 2 (Lv.18-26 ★1)
-    [2.4, 3.45],   // Ch. 3 (Lv.26-34 ★2)
-    [3.65, 4.95],  // Ch. 4 (Lv.34-42 ★2-3)
-    [5.2, 6.75],   // Ch. 5 (Lv.42-50 ★3)
-    [7.05, 8.85],  // Ch. 6 (Lv.50-58 ★4)
-    [9.2, 11.2],   // Ch. 7 (Lv.58-65 ★4-5)
-    [11.6, 13.8],  // Ch. 8 (Lv.65-72 ★5)
-    [14.2, 16.5],  // Ch. 9 (Lv.72-77 ★5-6)
-    [17.0, 20.0],  // Ch. 10 (Lv.77-80 ★6 +15)
+    [1.45, 2.45],   // Ch. 1 (Lv.8-16 ★0)
+    [2.65, 3.85],   // Ch. 2 (Lv.17-25 ★1)
+    [4.1, 5.55],    // Ch. 3 (Lv.26-34 ★2)
+    [5.85, 7.5],    // Ch. 4 (Lv.35-42 ★3)
+    [7.85, 9.75],   // Ch. 5 (Lv.43-50 ★3)
+    [10.15, 12.25], // Ch. 6 (Lv.51-58 ★4)
+    [12.7, 14.95],  // Ch. 7 (Lv.59-65 ★5)
+    [15.4, 17.65],  // Ch. 8 (Lv.66-72 ★5)
+    [18.1, 20.3],   // Ch. 9 (Lv.73-77 ★6)
+    [20.75, 22.8],  // Ch. 10 (Lv.78-80 ★6 +15)
   ];
 
   for (const region of REGIONS) {
     const templates = REGION_STAGE_NAMES[region.id] ?? [];
     const [minPwr, maxPwr] = region.recommendedPowerRange;
-    const [regionBaseScale, regionMaxScale] = regionScalePairs[region.chapter - 1] ?? [1.0, 2.0];
+    const [regionBaseScale, regionMaxScale] = regionScalePairs[region.chapter - 1] ?? [1.45, 2.45];
     const biomeDrop = CHAPTER_BIOME_DROPS[region.chapter] ?? CHAPTER_BIOME_DROPS[1];
 
     for (let s = 1; s <= region.stageCount; s++) {
@@ -349,45 +398,85 @@ function buildAllStages(): StageDef[] {
         subtitle: region.subtitle,
       };
 
-      const curve = Math.pow(progress, 1.1);
+      const curve = Math.pow(progress, 1.08);
       const rawScale = regionBaseScale + (regionMaxScale - regionBaseScale) * curve;
-      const enemyScale = Number((rawScale * (isBossStage ? 1.0 : isMiniBoss ? 1.06 : 1.0)).toFixed(2));
+      const enemyScale = Number((rawScale * (isBossStage ? 1.0 : isMiniBoss ? 1.05 : 1.0)).toFixed(2));
       const recommendedPower = Math.round((minPwr + (maxPwr - minPwr) * curve) / 100) * 100;
 
       const globalIdx = (region.chapter - 1) * 12 + s;
-      const baseGold = Math.round(700 + globalIdx * 195 + (isBossStage ? 1800 : isMiniBoss ? 600 : 0));
-      const baseExp = Math.round(2 + globalIdx * 0.28 + (isBossStage ? 5 : isMiniBoss ? 2 : 0));
-      const baseStones = Math.round(2 + globalIdx * 0.25 + (isBossStage ? 4 : isMiniBoss ? 2 : 0));
+      // Golden-ratio v2.3 economy: ~70-80% 1st-clear coverage; 2-4 replays + Salvage + Shop = smooth progression!
+      const baseGold = Math.round(
+        480 +
+          globalIdx * 66 +
+          Math.pow(region.chapter - 1, 1.65) * 120 +
+          (isBossStage ? 1200 + region.chapter * 340 : isMiniBoss ? 360 + region.chapter * 100 : 0),
+      );
 
-      const essenceMin = Math.max(1, Math.floor(region.chapter * 0.75) + (isBossStage ? 4 : isMiniBoss ? 2 : 1));
-      const essenceMax = essenceMin + (isBossStage ? 3 : isMiniBoss ? 2 : 1);
+      const expMin = Math.max(
+        1,
+        Math.floor(1 + (globalIdx - 1) * 0.068) +
+          (isBossStage ? 2 + Math.floor(region.chapter / 2) : isMiniBoss ? 1 + Math.floor(region.chapter / 5) : 0),
+      );
+      const expMax = expMin + (isBossStage ? 2 : 1);
+
+      const stonesMin = Math.max(
+        1,
+        Math.floor(1.5 + (globalIdx - 1) * 0.095) +
+          (isBossStage ? 3 + Math.floor(region.chapter / 3) : isMiniBoss ? 1 + Math.floor(region.chapter / 4) : 0),
+      );
+      const stonesMax = stonesMin + (isBossStage ? 2 : 1);
+
+      const essenceMin = Math.max(
+        1,
+        Math.floor((region.chapter + 1) / 3) +
+          (isBossStage ? 3 + Math.floor(region.chapter / 3) : isMiniBoss ? 1 + Math.floor(region.chapter / 4) : 0),
+      );
+      const essenceMax = essenceMin + (isBossStage ? 2 : isMiniBoss ? 1 : region.chapter >= 2 ? 1 : 0);
 
       const starIronIngots: [number, number] | undefined =
         region.chapter >= 2 || isMiniBoss || isBossStage
-          ? [
-              Math.max(1, Math.floor((region.chapter - 1) * 0.8) + (isBossStage ? 3 : isMiniBoss ? 1 : 1)),
-              Math.max(2, Math.floor((region.chapter - 1) * 1.0) + (isBossStage ? 5 : isMiniBoss ? 3 : 2)),
-            ]
+          ? (() => {
+              const iMin = Math.max(
+                1,
+                Math.floor((region.chapter - 1) * 0.5) + (isBossStage ? 2 : isMiniBoss ? 1 : 0),
+              );
+              return [iMin, iMin + (isBossStage ? 2 : 1)] as [number, number];
+            })()
           : undefined;
 
       const astralAnvilCores: [number, number] | undefined =
-        region.chapter >= 4 || (isBossStage && region.chapter >= 2)
-          ? [
-              isBossStage ? Math.max(1, Math.floor(region.chapter / 3)) : 1,
-              isBossStage ? Math.max(2, Math.floor(region.chapter / 2) + 1) : Math.max(1, Math.floor(region.chapter / 4) + 1),
-            ]
+        region.chapter >= 4 || (region.chapter === 3 && (isMiniBoss || isBossStage)) || (region.chapter === 2 && isBossStage)
+          ? (() => {
+              const aMin = isBossStage
+                ? Math.max(1, Math.floor((region.chapter + 1) / 3))
+                : isMiniBoss
+                  ? Math.max(1, Math.floor(region.chapter / 4))
+                  : 1;
+              const aMax = isBossStage
+                ? aMin + 2
+                : isMiniBoss
+                  ? aMin + 1
+                  : Math.max(1, Math.floor(region.chapter / 5) + 1);
+              return [aMin, aMax] as [number, number];
+            })()
           : undefined;
 
       const starCores: [number, number] | undefined = isBossStage
-        ? [2 + Math.floor(region.chapter / 3), 4 + Math.floor(region.chapter / 2)]
+        ? (() => {
+            const cMin = 2 + Math.floor(region.chapter / 3);
+            return [cMin, cMin + 2] as [number, number];
+          })()
         : isMiniBoss
-          ? [1 + Math.floor(region.chapter / 5), 2 + Math.floor(region.chapter / 4)]
+          ? (() => {
+              const cMin = 1 + Math.floor(region.chapter / 4);
+              return [cMin, cMin + 1] as [number, number];
+            })()
           : undefined;
 
       const relicFragments: [number, number] | undefined = isBossStage
-        ? [4 + Math.floor(region.chapter / 2), 7 + Math.floor(region.chapter / 2)]
+        ? [3 + Math.floor(region.chapter / 2), 5 + Math.floor(region.chapter / 2)]
         : isMiniBoss
-          ? [1 + Math.floor(region.chapter / 4), 3 + Math.floor(region.chapter / 4)]
+          ? [1 + Math.floor(region.chapter / 4), 2 + Math.floor(region.chapter / 4)]
           : undefined;
 
       const guaranteedFirstClearRelicId =
@@ -404,10 +493,22 @@ function buildAllStages(): StageDef[] {
           : undefined;
 
       const relicDropChance = isBossStage
-        ? Math.min(0.35, 0.18 + region.chapter * 0.018)
+        ? Math.min(0.32, 0.16 + region.chapter * 0.016)
         : isMiniBoss
-          ? 0.1
+          ? 0.09
           : 0;
+
+      const equipmentDrops = isBossStage
+        ? region.chapter <= 2
+          ? 2
+          : 3
+        : isMiniBoss
+          ? region.chapter === 1 && s === 4
+            ? 1
+            : 2
+          : s >= 8 && region.chapter >= 2
+            ? 2
+            : 1;
 
       list.push({
         id: `stage_${region.chapter}_${s}`,
@@ -430,26 +531,26 @@ function buildAllStages(): StageDef[] {
         ambientMoteColors: region.ambientMoteColors,
         waves: buildWavesForStage(region, s),
         firstClearCrystals: isBossStage
-          ? 640 + region.chapter * 120
+          ? 600 + region.chapter * 100
           : isMiniBoss
-            ? 240 + region.chapter * 40
-            : 120 + region.chapter * 20,
+            ? 220 + region.chapter * 35
+            : 100 + region.chapter * 15,
         rewards: {
-          gold: [baseGold, Math.round(baseGold * 1.32)],
-          expPotions: [baseExp, baseExp + 2],
-          forgeStones: [baseStones, baseStones + 2],
+          gold: [baseGold, Math.round(baseGold * 1.28)],
+          expPotions: [expMin, expMax],
+          forgeStones: [stonesMin, stonesMax],
           starIronIngots,
           astralAnvilCores,
           starCores,
           relicFragments,
           primaryEssence: biomeDrop.primaryEssence,
           primaryEssenceQty: [essenceMin, essenceMax],
-          bonusRandomEssenceChance: isBossStage ? 1.0 : isMiniBoss ? 0.75 : 0.25,
+          bonusRandomEssenceChance: isBossStage ? 0.85 : isMiniBoss ? 0.55 : 0.2,
           guaranteedFirstClearRelicId,
           relicDropPool,
           relicDropChance,
           targetSetIds: biomeDrop.targetSetIds,
-          equipmentDrops: isBossStage ? 3 : isMiniBoss || s >= 7 ? 2 : 1,
+          equipmentDrops,
           rarityWeights: buildRarityWeights(region.chapter, s),
         },
       });
