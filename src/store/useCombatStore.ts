@@ -52,6 +52,7 @@ interface CombatStore {
   maxSp: number;
   ultGauge: number;
   maxUltGauge: number;
+  globalUltCd: number;
   autoMove: boolean;
   autoSkill: boolean;
   fps: number;
@@ -111,7 +112,8 @@ export const useCombatStore = create<CombatStore>((set) => ({
   sp: 4,
   maxSp: 10,
   ultGauge: 0,
-  maxUltGauge: 80,
+  maxUltGauge: 90,
+  globalUltCd: 0,
   autoMove: true,
   autoSkill: true,
   fps: 60,
@@ -148,8 +150,9 @@ export const useCombatStore = create<CombatStore>((set) => ({
       waveLabel: 'Wave 1',
       elapsedSec: 0,
       sp: 5,
-      ultGauge: 16,
-      maxUltGauge: 80,
+      ultGauge: 8,
+      maxUltGauge: 90,
+      globalUltCd: 0,
       comboCount: 0,
       comboDecayRatio: 0,
       evadeCd: 0,

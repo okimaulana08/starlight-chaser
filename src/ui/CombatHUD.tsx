@@ -108,6 +108,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
     maxSp,
     ultGauge,
     maxUltGauge,
+    globalUltCd,
     autoMove,
     autoSkill,
     fps,
@@ -495,7 +496,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
 
             <div className="w-px h-4 bg-slate-700/80 shrink-0" />
 
-            {/* Party Chaser Ultimate Energy Bar (2-Charge 80-cap for Link Burst Chaining!) */}
+            {/* Party Chaser Ultimate Energy Bar (2-Charge 90-cap for Link Burst Chaining!) */}
             <div className="flex items-center gap-1.5 w-32 sm:w-48 shrink-0">
               <GameIcon name="summon" className="w-4 h-4 sm:w-5 sm:h-5" />
               <div className="relative flex-1 h-2 sm:h-2.5 rounded-full bg-slate-900/95 border border-amber-400/50 overflow-hidden">
@@ -504,17 +505,17 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                   style={{
                     width: `${Math.min(100, (ultGauge / maxUltGauge) * 100)}%`,
                     boxShadow:
-                      ultGauge >= 40 ? '0 0 12px rgba(253,224,71,0.95)' : undefined,
+                      ultGauge >= 45 ? '0 0 12px rgba(253,224,71,0.95)' : undefined,
                   }}
                 />
-                {/* 40-Gauge (1× ULT) Mid-Charge Divider Tick */}
+                {/* 45-Gauge (1× SSR ULT) Mid-Charge Divider Tick */}
                 <div className="pointer-events-none absolute inset-y-0 left-1/2 w-[1.5px] bg-slate-950/85" />
               </div>
               <span
                 className={`font-mono text-[10px] sm:text-[11px] font-black shrink-0 ${
-                  ultGauge >= 80
+                  ultGauge >= 90
                     ? 'text-fuchsia-300'
-                    : ultGauge >= 40
+                    : ultGauge >= 45
                       ? 'text-amber-300'
                       : 'text-amber-200/80'
                 }`}
@@ -533,11 +534,17 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
               const s2 = def.skills[1];
               const s1Ready = h.alive && h.cd1 <= 0 && sp >= s1.spCost;
               const s2Ready = h.alive && h.cd2 <= 0 && sp >= s2.spCost;
-              const ultReady = h.alive && ultGauge >= h.ultGaugeCost;
-              const isLinkReady = Boolean(
-                ultReady && linkWindow && linkWindow.partnerHeroId !== h.heroId,
+              const isLinkPartnerEligible = Boolean(
+                linkWindow && linkWindow.partnerHeroId !== h.heroId,
               );
+              const onUltCd = h.ultCd > 0;
+              const onGlobalLock = !onUltCd && globalUltCd > 0 && !isLinkPartnerEligible;
+              const ultReady =
+                h.alive && !onUltCd && !onGlobalLock && ultGauge >= h.ultGaugeCost;
+              const isLinkReady = Boolean(ultReady && isLinkPartnerEligible);
               const ultPct = Math.min(100, Math.round((ultGauge / h.ultGaugeCost) * 100));
+              const ultCdPct =
+                h.maxUltCd > 0 ? Math.min(100, (h.ultCd / h.maxUltCd) * 100) : 0;
               const key1 = idx * 2 + 1;
               const key2 = idx * 2 + 2;
               const roleMeta = ROLE_META[def.role];
@@ -682,17 +689,21 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                       title={
                         isLinkReady
                           ? `STARLIGHT LINK BURST READY! Cast ${def.ultimate.name} to trigger +35% Link Burst!`
-                          : `ULTIMATE: ${def.ultimate.name} (${h.ultGaugeCost} Gauge)`
+                          : onUltCd
+                            ? `ULTIMATE COOLDOWN: ${def.ultimate.name} ready in ${h.ultCd.toFixed(1)}s (${h.ultGaugeCost} Gauge · ${Math.round(h.maxUltCd)}s CD)`
+                            : `ULTIMATE: ${def.ultimate.name} (${h.ultGaugeCost} Gauge · ${Math.round(h.maxUltCd)}s CD)`
                       }
-                      className={`gc-skill-orb w-8 h-8 lg:w-12 lg:h-12 flex flex-col items-center justify-center border-2 ${
+                      className={`relative gc-skill-orb w-8 h-8 lg:w-12 lg:h-12 flex flex-col items-center justify-center border-2 ${
                         isLinkReady
                           ? 'bg-gradient-to-br from-cyan-300 via-amber-300 to-fuchsia-500 border-white text-slate-950 shadow-[0_0_26px_rgba(56,232,255,0.95)] scale-105 animate-pulse'
                           : ultReady
                             ? 'bg-gradient-to-br from-amber-300 via-orange-400 to-fuchsia-600 border-amber-100 text-slate-950 shadow-[0_0_20px_rgba(253,224,71,0.9)] animate-pulse'
-                            : 'bg-slate-950/90 border-slate-700/80 text-slate-500 cursor-not-allowed'
+                            : onUltCd
+                              ? 'bg-slate-950/95 border-amber-500/45 text-slate-500 cursor-not-allowed'
+                              : 'bg-slate-950/90 border-slate-700/80 text-slate-500 cursor-not-allowed'
                       }`}
                       style={
-                        !ultReady
+                        !ultReady && !onUltCd
                           ? {
                               background: `conic-gradient(rgba(245,200,76,0.28) ${ultPct}%, rgba(8,12,28,0.95) 0)`,
                             }
@@ -701,7 +712,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                     >
                       <Sparkles
                         className={`w-3 h-3 lg:w-4 lg:h-4 ${
-                          ultReady ? 'text-slate-950 fill-slate-950' : 'text-amber-400/60'
+                          ultReady ? 'text-slate-950 fill-slate-950' : 'text-amber-400/55'
                         }`}
                       />
                       <span
@@ -709,8 +720,28 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                           ultReady ? 'text-slate-950' : 'text-amber-200/75 font-mono'
                         }`}
                       >
-                        {isLinkReady ? 'LINK!' : ultReady ? 'ULT!' : `${ultPct}%`}
+                        {isLinkReady
+                          ? 'LINK!'
+                          : ultReady
+                            ? 'ULT!'
+                            : onGlobalLock && ultGauge >= h.ultGaugeCost
+                              ? `${globalUltCd.toFixed(1)}s`
+                              : `${ultPct}%`}
                       </span>
+
+                      {/* Radial Conic Ultimate Cooldown Overlay */}
+                      {onUltCd && (
+                        <div
+                          className="absolute inset-0 rounded-full flex items-center justify-center"
+                          style={{
+                            background: `conic-gradient(rgba(3, 7, 18, 0.90) ${ultCdPct}%, rgba(3, 7, 18, 0.35) 0)`,
+                          }}
+                        >
+                          <span className="font-mono text-[9px] lg:text-xs font-black text-amber-300 drop-shadow-[0_1px_4px_rgba(0,0,0,1)]">
+                            {h.ultCd >= 10 ? `${Math.ceil(h.ultCd)}s` : h.ultCd.toFixed(1)}
+                          </span>
+                        </div>
+                      )}
                     </button>
                   </div>
                 </div>

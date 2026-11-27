@@ -1268,7 +1268,11 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                       <div className="rounded-lg bg-slate-950/90 border border-slate-800 px-2 py-1 flex items-center gap-1.5 min-w-0">
                         <GameIcon name="forge" className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
                         <div className="font-mono font-bold text-violet-300 truncate text-[10px]">
-                          ×{activeStage.rewards.equipmentDrops}{' '}
+                          {(activeStage.rewards.equipmentDropChance ?? 1) < 1
+                            ? `${Math.round((activeStage.rewards.equipmentDropChance ?? 1) * 100)}% ×${activeStage.rewards.equipmentDrops}`
+                            : (activeStage.rewards.bonusEquipmentDropChance ?? 0) > 0
+                              ? `×${activeStage.rewards.equipmentDrops}–${activeStage.rewards.equipmentDrops + 1}`
+                              : `×${activeStage.rewards.equipmentDrops}`}{' '}
                           {activeStage.rewards.targetSetIds.length <= 2
                             ? activeStage.rewards.targetSetIds
                                 .map((id) => EQUIPMENT_SETS[id].name.split(' ')[0])

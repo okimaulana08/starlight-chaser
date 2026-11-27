@@ -155,6 +155,7 @@ export class SquadController {
       hero.animTime += dt;
       hero.cd1 = Math.max(0, hero.cd1 - dt);
       hero.cd2 = Math.max(0, hero.cd2 - dt);
+      hero.ultCd = Math.max(0, hero.ultCd - dt);
       hero.basicTimer = Math.max(0, hero.basicTimer - dt);
       hero.hitFlashTimer = Math.max(0, hero.hitFlashTimer - dt);
       hero.attackSwingTimer = Math.max(0, hero.attackSwingTimer - dt);
@@ -434,7 +435,7 @@ export class SquadController {
     const onBasicLand = (hitEnemy: EnemyUnit) => {
       if (!hitEnemy.alive) return;
       ctx.addSp(0.1);
-      ctx.addUltGauge(0.8, 1 + hero.stats.ultGaugeBonus);
+      ctx.addUltGauge(0.45, 1 + hero.stats.ultGaugeBonus);
       let mult = 1.0;
 
       // Elara Passive: Every 4th attack -> Starlight Bolt (135% ATK + Lunar Trace)

@@ -292,66 +292,57 @@ function buildWavesForStage(region: RegionDef, stageNum: number): StageWave[] {
 }
 
 function buildRarityWeights(chapter: number, stageNum: number): Record<EquipmentRarity, number> {
+  const idx = Math.max(0, Math.min(9, chapter - 1));
   const isMini = stageNum === 4 || stageNum === 8;
+
   if (stageNum === 12) {
-    // Boss Stages: zero Common; Ch.1 = Rare/Epic + 6% lucky Legendary -> Ch.10 = 68% Legendary!
+    // Rebalanced Boss Stages: rewarding jump over normal stages without flooding early Epic/Legendary
     const bossTable: Array<Record<EquipmentRarity, number>> = [
-      { COMMON: 0, RARE: 52, EPIC: 42, LEGENDARY: 6 },
-      { COMMON: 0, RARE: 38, EPIC: 50, LEGENDARY: 12 },
-      { COMMON: 0, RARE: 26, EPIC: 56, LEGENDARY: 18 },
-      { COMMON: 0, RARE: 16, EPIC: 58, LEGENDARY: 26 },
-      { COMMON: 0, RARE: 10, EPIC: 56, LEGENDARY: 34 },
-      { COMMON: 0, RARE: 6, EPIC: 52, LEGENDARY: 42 },
-      { COMMON: 0, RARE: 2, EPIC: 48, LEGENDARY: 50 },
-      { COMMON: 0, RARE: 0, EPIC: 44, LEGENDARY: 56 },
-      { COMMON: 0, RARE: 0, EPIC: 38, LEGENDARY: 62 },
-      { COMMON: 0, RARE: 0, EPIC: 32, LEGENDARY: 68 },
+      { COMMON: 10, RARE: 72, EPIC: 18, LEGENDARY: 0 }, // Ch.1 Boss (1-12)
+      { COMMON: 0, RARE: 68, EPIC: 30, LEGENDARY: 2 },  // Ch.2 Boss (2-12)
+      { COMMON: 0, RARE: 52, EPIC: 43, LEGENDARY: 5 },  // Ch.3 Boss (3-12)
+      { COMMON: 0, RARE: 38, EPIC: 52, LEGENDARY: 10 }, // Ch.4 Boss (4-12)
+      { COMMON: 0, RARE: 30, EPIC: 54, LEGENDARY: 16 }, // Ch.5 Boss (5-12)
+      { COMMON: 0, RARE: 24, EPIC: 54, LEGENDARY: 22 }, // Ch.6 Boss (6-12)
+      { COMMON: 0, RARE: 16, EPIC: 54, LEGENDARY: 30 }, // Ch.7 Boss (7-12)
+      { COMMON: 0, RARE: 12, EPIC: 52, LEGENDARY: 36 }, // Ch.8 Boss (8-12)
+      { COMMON: 0, RARE: 6, EPIC: 52, LEGENDARY: 42 },  // Ch.9 Boss (9-12)
+      { COMMON: 0, RARE: 0, EPIC: 52, LEGENDARY: 48 },  // Ch.10 Boss (10-12)
     ];
-    return bossTable[chapter - 1] ?? bossTable[0];
+    return { ...bossTable[idx] };
   }
 
-  if (chapter === 1) {
-    if (stageNum <= 4) {
-      return isMini
-        ? { COMMON: 32, RARE: 56, EPIC: 12, LEGENDARY: 0 }
-        : { COMMON: 50, RARE: 46, EPIC: 4, LEGENDARY: 0 };
-    }
-    if (stageNum <= 8) {
-      return isMini
-        ? { COMMON: 20, RARE: 60, EPIC: 20, LEGENDARY: 0 }
-        : { COMMON: 35, RARE: 55, EPIC: 10, LEGENDARY: 0 };
-    }
-    return { COMMON: 20, RARE: 62, EPIC: 17, LEGENDARY: 1 };
-  }
-
-  const normalTable: Array<Record<EquipmentRarity, number>> = [
-    { COMMON: 35, RARE: 55, EPIC: 10, LEGENDARY: 0 }, // Ch.1 fallback
-    { COMMON: 12, RARE: 60, EPIC: 25, LEGENDARY: 3 }, // Ch.2
-    { COMMON: 5, RARE: 53, EPIC: 36, LEGENDARY: 6 },  // Ch.3
-    { COMMON: 0, RARE: 44, EPIC: 45, LEGENDARY: 11 }, // Ch.4
-    { COMMON: 0, RARE: 34, EPIC: 50, LEGENDARY: 16 }, // Ch.5
-    { COMMON: 0, RARE: 26, EPIC: 52, LEGENDARY: 22 }, // Ch.6
-    { COMMON: 0, RARE: 18, EPIC: 54, LEGENDARY: 28 }, // Ch.7
-    { COMMON: 0, RARE: 12, EPIC: 54, LEGENDARY: 34 }, // Ch.8
-    { COMMON: 0, RARE: 8, EPIC: 50, LEGENDARY: 42 },  // Ch.9
-    { COMMON: 0, RARE: 4, EPIC: 46, LEGENDARY: 50 },  // Ch.10
-  ];
-  const base = { ...(normalTable[chapter - 1] ?? normalTable[1]) };
   if (isMini) {
-    const legBump = Math.min(8, 2 + Math.floor(chapter * 0.6));
-    const epicBump = base.COMMON > 0 ? 6 : 4;
-    base.LEGENDARY += legBump;
-    base.EPIC += epicBump;
-    let trim = legBump + epicBump;
-    const fromCommon = Math.min(base.COMMON, trim);
-    base.COMMON -= fromCommon;
-    trim -= fromCommon;
-    const fromRare = Math.min(base.RARE, trim);
-    base.RARE -= fromRare;
-    trim -= fromRare;
-    if (trim > 0) base.EPIC = Math.max(10, base.EPIC - trim);
+    // Rebalanced Mini-Boss Stages (x-4, x-8): guaranteed 1 drop with smooth midpoint rarity bump
+    const miniBossTable: Array<Record<EquipmentRarity, number>> = [
+      { COMMON: 42, RARE: 52, EPIC: 6, LEGENDARY: 0 },  // Ch.1 Mini-Boss
+      { COMMON: 20, RARE: 66, EPIC: 14, LEGENDARY: 0 }, // Ch.2 Mini-Boss
+      { COMMON: 10, RARE: 66, EPIC: 23, LEGENDARY: 1 }, // Ch.3 Mini-Boss
+      { COMMON: 4, RARE: 60, EPIC: 33, LEGENDARY: 3 },  // Ch.4 Mini-Boss
+      { COMMON: 0, RARE: 52, EPIC: 41, LEGENDARY: 7 },  // Ch.5 Mini-Boss
+      { COMMON: 0, RARE: 44, EPIC: 45, LEGENDARY: 11 }, // Ch.6 Mini-Boss
+      { COMMON: 0, RARE: 34, EPIC: 49, LEGENDARY: 17 }, // Ch.7 Mini-Boss
+      { COMMON: 0, RARE: 26, EPIC: 51, LEGENDARY: 23 }, // Ch.8 Mini-Boss
+      { COMMON: 0, RARE: 18, EPIC: 52, LEGENDARY: 30 }, // Ch.9 Mini-Boss
+      { COMMON: 0, RARE: 12, EPIC: 52, LEGENDARY: 36 }, // Ch.10 Mini-Boss
+    ];
+    return { ...miniBossTable[idx] };
   }
-  return base;
+
+  // Rebalanced Normal Stages: Common/Rare backbone in Ch.1-3, Epic climbs cleanly Ch.4+, Legendary Endgame Ch.6+
+  const normalTable: Array<Record<EquipmentRarity, number>> = [
+    { COMMON: 68, RARE: 30, EPIC: 2, LEGENDARY: 0 },  // Ch.1
+    { COMMON: 42, RARE: 52, EPIC: 6, LEGENDARY: 0 },  // Ch.2
+    { COMMON: 25, RARE: 62, EPIC: 13, LEGENDARY: 0 }, // Ch.3
+    { COMMON: 12, RARE: 65, EPIC: 22, LEGENDARY: 1 }, // Ch.4
+    { COMMON: 5, RARE: 62, EPIC: 30, LEGENDARY: 3 },  // Ch.5
+    { COMMON: 0, RARE: 56, EPIC: 38, LEGENDARY: 6 },  // Ch.6
+    { COMMON: 0, RARE: 46, EPIC: 44, LEGENDARY: 10 }, // Ch.7
+    { COMMON: 0, RARE: 37, EPIC: 48, LEGENDARY: 15 }, // Ch.8
+    { COMMON: 0, RARE: 28, EPIC: 50, LEGENDARY: 22 }, // Ch.9
+    { COMMON: 0, RARE: 22, EPIC: 50, LEGENDARY: 28 }, // Ch.10
+  ];
+  return { ...normalTable[idx] };
 }
 
 function buildDescription(region: RegionDef, stageNum: number, isMiniBoss: boolean, isBoss: boolean): string {
@@ -499,16 +490,12 @@ function buildAllStages(): StageDef[] {
           : 0;
 
       const equipmentDrops = isBossStage
-        ? region.chapter <= 2
-          ? 2
-          : 3
-        : isMiniBoss
-          ? region.chapter === 1 && s === 4
-            ? 1
-            : 2
-          : s >= 8 && region.chapter >= 2
-            ? 2
-            : 1;
+        ? region.chapter <= 3
+          ? 1
+          : 2
+        : 1;
+      const equipmentDropChance = isBossStage || isMiniBoss ? 1.0 : 0.6;
+      const bonusEquipmentDropChance = isMiniBoss && region.chapter >= 6 ? 0.35 : undefined;
 
       list.push({
         id: `stage_${region.chapter}_${s}`,
@@ -551,6 +538,8 @@ function buildAllStages(): StageDef[] {
           relicDropChance,
           targetSetIds: biomeDrop.targetSetIds,
           equipmentDrops,
+          equipmentDropChance,
+          bonusEquipmentDropChance,
           rarityWeights: buildRarityWeights(region.chapter, s),
         },
       });

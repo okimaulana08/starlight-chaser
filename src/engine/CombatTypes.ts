@@ -43,6 +43,8 @@ export interface HeroUnit {
   alive: boolean;
   cd1: number;
   cd2: number;
+  ultCd: number;
+  maxUltCd: number;
   basicTimer: number;
   basicCount: number;
   // Hero-specific passive states
@@ -278,6 +280,7 @@ export interface CombatContext {
   maxSp: number;
   ultGauge: number;
   maxUltGauge: number;
+  globalUltCd: number;
   timeScale: number;
   cameraShake: number;
   cameraZoomTarget: number;

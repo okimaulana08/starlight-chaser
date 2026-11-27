@@ -65,7 +65,13 @@ export class SkillExecutor {
   public canCast(ctx: CombatContext, hero: HeroUnit, slot: 1 | 2 | 'ULT', skill: SkillDef): boolean {
     if (!hero.alive || ctx.ultActive) return false;
     if (slot === 'ULT') {
-      const cost = skill.gaugeCost ?? 40;
+      const cost = skill.gaugeCost ?? 45;
+      const isLinkChain =
+        ctx.linkWindowTimer > 0 &&
+        ctx.linkPartnerHeroId !== null &&
+        ctx.linkPartnerHeroId !== hero.heroId;
+      if (hero.ultCd > 0) return false;
+      if (ctx.globalUltCd > 0 && !isLinkChain) return false;
       return ctx.ultGauge >= cost;
     }
     const cd = slot === 1 ? hero.cd1 : hero.cd2;
@@ -178,15 +184,30 @@ export class SkillExecutor {
     ty = Math.max(ctx.bounds.minY + 40, Math.min(ctx.bounds.maxY - 40, ty));
 
     if (slot === 'ULT') {
-      const cost = skill.gaugeCost ?? 40;
+      const cost = skill.gaugeCost ?? 45;
       ctx.ultGauge = Math.max(0, ctx.ultGauge - cost);
+      const baseUltCd =
+        skill.cooldown > 1
+          ? skill.cooldown
+          : hero.def.tier === 'SSR'
+            ? 20
+            : hero.def.tier === 'SR'
+              ? 18
+              : 16;
+      const effectiveUltCd = Math.max(
+        10,
+        Number((baseUltCd * (1 - Math.min(0.25, hero.stats.cdr))).toFixed(1)),
+      );
+      hero.maxUltCd = effectiveUltCd;
+      hero.ultCd = effectiveUltCd;
+      ctx.globalUltCd = 3.0;
       ctx.triggerUltimate(hero, skill, tx, ty);
       return true;
     }
 
-    // Spend SP & add generous Ultimate Gauge (+5.5 per SP spent so Ult Cut-Ins fire every expedition!)
+    // Spend SP & add balanced Ultimate Gauge (+3.0 per SP spent for tactical pacing!)
     ctx.sp = Math.max(0, ctx.sp - skill.spCost);
-    ctx.addUltGauge(skill.spCost * 5.5, 1 + hero.stats.ultGaugeBonus);
+    ctx.addUltGauge(skill.spCost * 3.0, 1 + hero.stats.ultGaugeBonus);
 
     // Chrono 4-piece Set: 25% chance to refund 0.5 SP on active skill cast
     const hasChrono4 = hero.stats.activeSets.some((s) => s.setId === 'CHRONO' && s.count >= 4);
@@ -845,7 +866,7 @@ export class SkillExecutor {
       }
     }
 
-    // 3. Fire Ultimate if ready (prioritize chaining STARLIGHT LINK BURST with a different hero!)
+    // 3. Fire Ultimate if ready & tactically worthwhile (prioritize Starlight Link Burst chaining, don't overkill a single dying mob!)
     const ultReady = aliveHeroes
       .filter((h) => this.canCast(ctx, h, 'ULT', h.def.ultimate))
       .sort((a, b) => {
@@ -855,15 +876,33 @@ export class SkillExecutor {
             s += 65; // Chain Starlight Link Burst immediately!
           }
           if (boss && boss.hitShield > 0 && h.def.ultimate.effects.includes('MULTI_HIT')) s += 40;
-          if (h.def.role === 'HEALER') s -= 15;
+          if (h.def.role === 'HEALER') s -= 20;
           return s;
         };
         return score(b) - score(a);
       });
     if (ultReady.length > 0 && aliveEnemies.length > 0) {
-      const caster = ultReady[0];
-      this.castSkill(ctx, caster, 'ULT', primaryTarget.x, primaryTarget.y);
-      return;
+      const hasBossOrMiniBoss = aliveEnemies.some((e) => e.def.isBoss || e.def.isMiniBoss);
+      const hasLinkPartnerReady =
+        ctx.linkWindowTimer > 0 &&
+        ctx.linkPartnerHeroId !== null &&
+        ultReady.some((h) => h.heroId !== ctx.linkPartnerHeroId);
+      const primaryHealthy = primaryTarget.hp / Math.max(1, primaryTarget.maxHp) >= 0.35;
+      const shouldFireAutoUlt =
+        hasBossOrMiniBoss || aliveEnemies.length >= 2 || primaryHealthy || hasLinkPartnerReady;
+      if (shouldFireAutoUlt) {
+        const caster = ultReady[0];
+        const anyAllyInjured = aliveHeroes.some((h) => h.hp / h.maxHp < 0.78);
+        const casterCanLink =
+          ctx.linkWindowTimer > 0 &&
+          ctx.linkPartnerHeroId !== null &&
+          caster.heroId !== ctx.linkPartnerHeroId;
+        // Avoid burning Healer Ult on full-HP trash waves unless chaining a Link Burst or fighting a Boss
+        if (caster.def.role !== 'HEALER' || anyAllyInjured || casterCanLink || hasBossOrMiniBoss) {
+          this.castSkill(ctx, caster, 'ULT', primaryTarget.x, primaryTarget.y);
+          return;
+        }
+      }
     }
 
     // 4. Gather / Shield / Buff / Burst rotation (keep >= 1 SP reserve if boss might cast soon)

@@ -309,6 +309,8 @@ export interface StageDef {
     relicDropChance?: number;
     targetSetIds: EquipmentSetId[];
     equipmentDrops: number;
+    equipmentDropChance?: number;
+    bonusEquipmentDropChance?: number;
     rarityWeights: Record<EquipmentRarity, number>;
   };
 }
@@ -449,6 +451,8 @@ export interface HeroCombatSnapshot {
   maxCd1: number;
   cd2: number;
   maxCd2: number;
+  ultCd: number;
+  maxUltCd: number;
   ultGaugeCost: number;
   stacksLabel?: string;
   stacksCount?: number;

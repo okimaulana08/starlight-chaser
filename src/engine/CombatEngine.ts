@@ -277,7 +277,8 @@ export class CombatEngine {
       sp: 4.5,
       maxSp: 10,
       ultGauge: 0,
-      maxUltGauge: 80,
+      maxUltGauge: 90,
+      globalUltCd: 0,
       timeScale: 1.0,
       cameraShake: 0,
       cameraZoomTarget: 1.0,
@@ -392,10 +393,10 @@ export class CombatEngine {
           this.ctx.linkPartnerHeroId = null;
           useCombatStore.getState().setLinkWindow(null);
         } else {
-          // Open 5.5s Starlight Link Window & echo +10 Ult Gauge so chaining another Hero's Ult feels fluid!
+          // Open 5.5s Starlight Link Window & echo +5 Ult Gauge so chaining another Hero's Ult feels fluid without flooding gauge!
           this.ctx.linkPartnerHeroId = hero.heroId;
           this.ctx.linkWindowTimer = this.linkWindowDuration;
-          this.ctx.addUltGauge(10);
+          this.ctx.addUltGauge(5);
         }
 
         this.ultDirector.start(this.ctx, hero, skill, tx, ty, (h, sk, x, y) => {
@@ -504,6 +505,18 @@ export class CombatEngine {
       container.position.set(x, y);
 
       const startShield = Math.round(stats.maxHp * stats.startShieldRatio * stats.shieldPower);
+      const baseUltCd =
+        def.ultimate.cooldown > 1
+          ? def.ultimate.cooldown
+          : def.tier === 'SSR'
+            ? 20
+            : def.tier === 'SR'
+              ? 18
+              : 16;
+      const maxUltCd = Math.max(
+        10,
+        Number((baseUltCd * (1 - Math.min(0.25, stats.cdr))).toFixed(1)),
+      );
 
       const heroUnit: HeroUnit = {
         heroId,
@@ -524,6 +537,8 @@ export class CombatEngine {
         alive: true,
         cd1: 0,
         cd2: 0,
+        ultCd: 0,
+        maxUltCd,
         basicTimer: 0.25 + idx * 0.1,
         basicCount: 0,
         starOrbs: heroId === 'seraphina' ? 1 : 0,
@@ -621,10 +636,10 @@ export class CombatEngine {
       }
     });
 
-    // Start every expedition with 16/80 Chaser Resonance + Relic startingGauge + Spire Starlight Surge (+24)!
+    // Start every expedition with 8/90 Chaser Resonance + Relic startingGauge + Spire Starlight Surge (+24)!
     const stageDef = resolveAnyStageDef(this.stageId);
     const spireStartGauge = stageDef.spireModifier?.id === 'STARLIGHT_SURGE' ? 24 : 0;
-    this.ctx.ultGauge = Math.min(this.ctx.maxUltGauge, 16 + totalStartingGauge + spireStartGauge);
+    this.ctx.ultGauge = Math.min(this.ctx.maxUltGauge, 8 + totalStartingGauge + spireStartGauge);
 
     // 4-Faction Harmony Synergy Bonus: +1.0 Starting Squad SP!
     if (isFourFactionHarmony(squadIds)) {
@@ -1047,9 +1062,9 @@ export class CombatEngine {
       this.hitstopTimer = Math.max(this.hitstopTimer, 0.028);
     }
 
-    // Crit triggers: +1.4 Ult Gauge, Ashen Fury 4pc AtkSpd, Blade of First Eclipse stack
+    // Crit triggers: +0.55 Ult Gauge, Ashen Fury 4pc AtkSpd, Blade of First Eclipse stack
     if (roll.isCrit) {
-      this.ctx.addUltGauge(1.4, 1 + attacker.stats.ultGaugeBonus);
+      this.ctx.addUltGauge(0.55, 1 + attacker.stats.ultGaugeBonus);
       if (attacker.stats.activeSets.some((s) => s.setId === 'ASHEN_FURY' && s.count >= 4)) {
         attacker.atkSpdBuffTimer = Math.max(attacker.atkSpdBuffTimer, 4.0);
         attacker.atkSpdBuffValue = Math.max(attacker.atkSpdBuffValue, 0.15);
@@ -1099,7 +1114,7 @@ export class CombatEngine {
     }
 
     if (enemy.hp <= 0 && enemy.alive) {
-      this.ctx.addUltGauge(2.5, 1 + attacker.stats.ultGaugeBonus);
+      this.ctx.addUltGauge(1.5, 1 + attacker.stats.ultGaugeBonus);
       this.enemyAI.handleEnemyDeath(this.ctx, enemy);
     }
 
@@ -1433,6 +1448,9 @@ export class CombatEngine {
       if (this.ctx.linkWindowTimer <= 0) {
         this.ctx.linkPartnerHeroId = null;
       }
+    }
+    if (this.ctx.globalUltCd > 0 && !this.ultDirector.isRunning()) {
+      this.ctx.globalUltCd = Math.max(0, this.ctx.globalUltCd - dt);
     }
 
     // Continuous mobile floating virtual joystick steering
@@ -1931,8 +1949,8 @@ export class CombatEngine {
         h.facing * h.springLean * 0.045;
 
       // 2.5D Single-Pass Rim Lighting, Anime Ink Contour & Status Shader!
-      const ultCost = h.def.ultimate.gaugeCost ?? 40;
-      const isUltReady = h.alive && this.ctx.ultGauge >= ultCost;
+      const ultCost = h.def.ultimate.gaugeCost ?? 45;
+      const isUltReady = h.alive && h.ultCd <= 0 && this.ctx.ultGauge >= ultCost;
       const isLinkPartner =
         h.alive && this.ctx.linkWindowTimer > 0 && this.ctx.linkPartnerHeroId !== h.heroId;
       let heroStatusHex = FACTIONS[h.def.faction].accentHex;
@@ -2855,13 +2873,25 @@ export class CombatEngine {
 
     if (victory) {
       const targetSets = stage.rewards.targetSetIds;
-      for (let i = 0; i < stage.rewards.equipmentDrops; i++) {
+      const dropChance = stage.rewards.equipmentDropChance ?? 1.0;
+      const rollGearDrop = () => {
         const rarity = rollWeightedRarity(stage.rewards.rarityWeights);
         const setId =
           targetSets.length > 0
             ? targetSets[Math.floor(Math.random() * targetSets.length)]
             : undefined;
         droppedEquipment.push(generateEquipment({ rarity, setId }));
+      };
+      for (let i = 0; i < stage.rewards.equipmentDrops; i++) {
+        if (dropChance >= 1 || Math.random() < dropChance) {
+          rollGearDrop();
+        }
+      }
+      if (
+        (stage.rewards.bonusEquipmentDropChance ?? 0) > 0 &&
+        Math.random() < (stage.rewards.bonusEquipmentDropChance ?? 0)
+      ) {
+        rollGearDrop();
       }
 
       // Biome Primary Faction Essence + Bonus Secondary Essence (prevents early-game soft-lock!)
@@ -3101,7 +3131,9 @@ export class CombatEngine {
         maxCd1: Math.max(1.2, h.def.skills[0].cooldown * (1 - h.stats.cdr)),
         cd2: Number(h.cd2.toFixed(1)),
         maxCd2: Math.max(1.2, h.def.skills[1].cooldown * (1 - h.stats.cdr)),
-        ultGaugeCost: h.def.ultimate.gaugeCost ?? 40,
+        ultCd: Number(h.ultCd.toFixed(1)),
+        maxUltCd: h.maxUltCd,
+        ultGaugeCost: h.def.ultimate.gaugeCost ?? 45,
         stacksLabel,
         stacksCount,
         activeBuffs,
@@ -3148,6 +3180,7 @@ export class CombatEngine {
       sp: Number(this.ctx.sp.toFixed(2)),
       ultGauge: Number(this.ctx.ultGauge.toFixed(1)),
       maxUltGauge: this.ctx.maxUltGauge,
+      globalUltCd: Number(this.ctx.globalUltCd.toFixed(1)),
       fps: Math.round(this.fpsSamples),
       comboCount: this.comboCount,
       comboDecayRatio: this.comboCount > 0 ? Math.max(0, Math.min(1, this.comboTimer / 2.6)) : 0,

@@ -725,13 +725,25 @@ export const usePlayerStore = create<PlayerStore>()(
             essencesEarned[bonusFac] = (essencesEarned[bonusFac] ?? 0) + (stage.isBossStage ? 2 : 1);
           }
 
-          for (let i = 0; i < stage.rewards.equipmentDrops; i++) {
+          const dropChance = stage.rewards.equipmentDropChance ?? 1.0;
+          const rollCampaignGear = () => {
             const rarity = rollWeightedRarity(stage.rewards.rarityWeights);
             const setId =
               stage.rewards.targetSetIds.length > 0
                 ? stage.rewards.targetSetIds[Math.floor(Math.random() * stage.rewards.targetSetIds.length)]
                 : undefined;
             droppedEquipment.push(generateEquipment({ rarity, setId }));
+          };
+          for (let i = 0; i < stage.rewards.equipmentDrops; i++) {
+            if (dropChance >= 1 || Math.random() < dropChance) {
+              rollCampaignGear();
+            }
+          }
+          if (
+            (stage.rewards.bonusEquipmentDropChance ?? 0) > 0 &&
+            Math.random() < (stage.rewards.bonusEquipmentDropChance ?? 0)
+          ) {
+            rollCampaignGear();
           }
 
           if (
