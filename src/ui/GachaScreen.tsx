@@ -44,6 +44,7 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
   const [prismCracked, setPrismCracked] = useState(false);
   const [showSparkShop, setShowSparkShop] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [failedBgs, setFailedBgs] = useState<Record<string, boolean>>({});
 
   const ssrHeroPulls = pendingResults.filter((r) => r.tier === 'SSR' && r.kind === 'HERO');
   const currentSpotlight = ssrHeroPulls[spotlightIndex] ?? null;
@@ -112,7 +113,40 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
 
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden select-none">
+      {/* Base Celestial Fallback Layer */}
       <StarlightBackdrop variant="SUMMON" accentColor={banner.accentColor} />
+
+      {/* Bespoke Full-Bleed Event Summon Background per Banner (Cross-fades smoothly!) */}
+      <AnimatePresence mode="sync">
+        {banner.backgroundAsset && !failedBgs[banner.id] && (
+          <motion.div
+            key={banner.id}
+            initial={{ opacity: 0, scale: 1.04 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            className="pointer-events-none absolute inset-0 z-[1] overflow-hidden"
+          >
+            <img
+              src={banner.backgroundAsset}
+              alt={banner.name}
+              onError={() => setFailedBgs((prev) => ({ ...prev, [banner.id]: true }))}
+              className="w-full h-full object-cover object-center"
+              draggable={false}
+            />
+            {/* Balanced cinema veil: showcases vibrant event art behind heroes on left while keeping right console razor-crisp */}
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  'linear-gradient(95deg, rgba(6,9,22,0.34) 0%, rgba(6,9,22,0.22) 44%, rgba(6,9,22,0.72) 78%, rgba(5,7,18,0.88) 100%)',
+              }}
+            />
+            <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-[#050712]/80 via-[#050712]/35 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#050712]/85 to-transparent" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* FLOATING TOP CORNERS (Responsive Mobile & Desktop) */}
       <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 safe-top pb-2">

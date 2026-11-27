@@ -329,6 +329,7 @@ export interface BannerDef {
   tenCost: number;
   sparkCost: number;
   accentColor: string;
+  backgroundAsset?: string;
 }
 
 export interface GachaPullResult {

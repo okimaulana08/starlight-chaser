@@ -15,6 +15,7 @@ export const HERO_BANNER_NEW: BannerDef = {
   tenCost: 1600,
   sparkCost: 120,
   accentColor: '#34d399',
+  backgroundAsset: '/assets/banners/bg_summon_chrono_bloom.webp',
 };
 
 export const HERO_BANNER: BannerDef = {
@@ -32,6 +33,7 @@ export const HERO_BANNER: BannerDef = {
   tenCost: 1600,
   sparkCost: 120,
   accentColor: '#f5c84c',
+  backgroundAsset: '/assets/banners/bg_summon_eclipse.webp',
 };
 
 export const RELIC_BANNER: BannerDef = {
@@ -54,6 +56,7 @@ export const RELIC_BANNER: BannerDef = {
   tenCost: 1600,
   sparkCost: 120,
   accentColor: '#38e8ff',
+  backgroundAsset: '/assets/banners/bg_summon_relics.webp',
 };
 
 export const BANNERS = [HERO_BANNER_NEW, HERO_BANNER, RELIC_BANNER];

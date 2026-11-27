@@ -3,7 +3,6 @@ import { Sparkles } from 'lucide-react';
 import { HERO_MAP } from '../data/heroes';
 import { audioManager } from '../engine/AudioManager';
 import { ArtImage } from './ArtImage';
-import { GameIcon } from './GameIcon';
 import { StarlightBackdrop } from './StarlightBackdrop';
 
 interface TitleScreenProps {
@@ -117,11 +116,6 @@ export const TitleScreen: React.FC<TitleScreenProps> = ({ onEnterLobby }) => {
 
         {/* Bottom Center Logo Emblem + Pulsing Prompt */}
         <div className="flex flex-col items-center gap-2 sm:gap-3 pb-2 sm:pb-5 max-w-2xl px-4">
-          <div className="flex items-center gap-2 px-3 py-0.5 rounded-full bg-amber-400/15 border border-amber-300/50 text-amber-200 text-[9px] sm:text-[11px] font-black uppercase tracking-[0.28em]">
-            <GameIcon name="summon" className="w-4 h-4" />
-            <span>2.5D TACTICAL ANIME ACTION-RPG</span>
-          </div>
-
           <h1 className="font-display text-3xl sm:text-5xl md:text-6xl font-black tracking-[0.16em] text-white text-glow-gold leading-none">
             STARLIGHT CHASERS
           </h1>
