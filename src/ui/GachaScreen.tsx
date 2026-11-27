@@ -20,7 +20,7 @@ import {
 } from './RpgKit';
 import { RarityCrest } from './RoleBadge';
 import { StarlightBackdrop } from './StarlightBackdrop';
-import { SummonCinematic } from './SummonCinematic';
+import { SUMMON_POSTER_SRC, SUMMON_VIDEO_SRC, SummonCinematic } from './SummonCinematic';
 import { SummonResultsStage, SummonSpotlight } from './SummonShowcase';
 
 interface GachaScreenProps {
@@ -399,16 +399,16 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ onBack }) => {
         </div>
       </main>
 
-      {/* SILENT PRELOADER FOR PULLED SSR HERO 1080P SAKUGA VIDEO CUT-INS */}
-      {preloadSsrVideos.length > 0 && phase !== 'IDLE' && (
-        <div className="hidden" aria-hidden="true">
-          {preloadSsrVideos.map((src) => (
+      {/* SILENT PRELOADER FOR 1080p SUMMON STARFALL VIDEO + PULLED SSR HERO CUT-IN MP4s */}
+      <div className="hidden" aria-hidden="true">
+        <video src={SUMMON_VIDEO_SRC} poster={SUMMON_POSTER_SRC} preload="auto" muted playsInline />
+        {phase !== 'IDLE' &&
+          preloadSsrVideos.map((src) => (
             <video key={src} src={src} preload="auto" muted playsInline />
           ))}
-        </div>
-      )}
+      </div>
 
-      {/* ACT 1–3: FULL-ANIMATION 60 FPS CELESTIAL STARFALL SUMMON CINEMATIC */}
+      {/* ACT 1–3: FULL-SCREEN 1080p ANIME SAKUGA STARFALL SUMMON VIDEO */}
       <AnimatePresence>
         {phase === 'CINEMATIC' && (
           <SummonCinematic
