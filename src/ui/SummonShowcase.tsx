@@ -270,17 +270,19 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
                   : 'radial-gradient(circle at 50% 48%, rgba(192,132,252,0.34) 0%, rgba(59,7,100,0.22) 40%, rgba(4,6,18,0.98) 78%)',
             }}
           />
-          {/* High-contrast spinning speed rays */}
-          <div
-            className="pointer-events-none absolute w-[1400px] h-[1400px] opacity-35 animate-spin"
-            style={{
-              animationDuration: '12s',
-              background:
-                result.tier === 'SSR'
-                  ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.72) 0deg 5deg, transparent 5deg 16deg)'
-                  : 'repeating-conic-gradient(from 0deg, rgba(192,132,252,0.68) 0deg 5deg, transparent 5deg 18deg)',
-            }}
-          />
+          {/* High-contrast spinning speed rays (full-bleed at any resolution) */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden flex items-center justify-center">
+            <div
+              className="w-[260vmax] h-[260vmax] shrink-0 opacity-35 animate-spin"
+              style={{
+                animationDuration: '12s',
+                background:
+                  result.tier === 'SSR'
+                    ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.72) 0deg 5deg, transparent 5deg 16deg)'
+                    : 'repeating-conic-gradient(from 0deg, rgba(192,132,252,0.68) 0deg 5deg, transparent 5deg 18deg)',
+              }}
+            />
+          </div>
 
           <motion.div
             initial={{ scale: 1.32, opacity: 0 }}
@@ -397,19 +399,21 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
             }}
           />
 
-          {/* Rotating Conic Volumetric Light Shafts */}
-          <div
-            className="pointer-events-none absolute w-[1500px] h-[1500px] opacity-25 animate-spin"
-            style={{
-              animationDuration: result.tier === 'SSR' ? '26s' : '38s',
-              background:
-                result.tier === 'SSR'
-                  ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.68) 0deg 7deg, transparent 7deg 22deg)'
-                  : result.tier === 'SR'
-                    ? 'repeating-conic-gradient(from 0deg, rgba(192,132,252,0.58) 0deg 8deg, transparent 8deg 26deg)'
-                    : 'repeating-conic-gradient(from 0deg, rgba(56,189,248,0.48) 0deg 8deg, transparent 8deg 28deg)',
-            }}
-          />
+          {/* Rotating Conic Volumetric Light Shafts (full-bleed at any resolution) */}
+          <div className="pointer-events-none absolute inset-0 overflow-hidden flex items-center justify-center">
+            <div
+              className="w-[260vmax] h-[260vmax] shrink-0 opacity-25 animate-spin"
+              style={{
+                animationDuration: result.tier === 'SSR' ? '26s' : '38s',
+                background:
+                  result.tier === 'SSR'
+                    ? 'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.68) 0deg 7deg, transparent 7deg 22deg)'
+                    : result.tier === 'SR'
+                      ? 'repeating-conic-gradient(from 0deg, rgba(192,132,252,0.58) 0deg 8deg, transparent 8deg 26deg)'
+                      : 'repeating-conic-gradient(from 0deg, rgba(56,189,248,0.48) 0deg 8deg, transparent 8deg 28deg)',
+              }}
+            />
+          </div>
 
           {/* 60 FPS Ambient Celebration Particles */}
           <CelebrationCanvas tier={result.tier} themeColor={accentColor} />

@@ -160,16 +160,20 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
         }}
       />
 
-      {/* Rotating Sunburst Light Rays on Victory */}
+      {/* Fullscreen Rotating Sunburst Light Rays on Victory (scales cleanly to 4K & ultrawide!) */}
       {result.victory && (
-        <div
-          className="pointer-events-none absolute -left-24 top-1/2 -translate-y-1/2 w-[900px] h-[900px] opacity-20 animate-spin"
-          style={{
-            animationDuration: '38s',
-            background:
-              'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.55) 0deg 8deg, transparent 8deg 24deg)',
-          }}
-        />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute left-[28%] top-[46%] -translate-x-1/2 -translate-y-1/2">
+            <div
+              className="w-[300vmax] h-[300vmax] opacity-20 animate-spin"
+              style={{
+                animationDuration: '38s',
+                background:
+                  'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.55) 0deg 8deg, transparent 8deg 24deg)',
+              }}
+            />
+          </div>
+        </div>
       )}
 
       {/* Diagonal Celestial Accent Slash */}
