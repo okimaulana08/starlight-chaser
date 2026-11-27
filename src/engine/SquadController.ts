@@ -406,8 +406,8 @@ export class SquadController {
     const effectiveAtkSpd = Math.min(3.5, hero.stats.atkSpeed * atkSpdMult);
     hero.basicTimer = 1 / effectiveAtkSpd;
     hero.basicCount += 1;
-    hero.attackSwingDuration = 0.22;
-    hero.attackSwingTimer = 0.22;
+    hero.attackSwingDuration = 0.3;
+    hero.attackSwingTimer = 0.3;
     hero.springLeanVel += 6.5;
     hero.squashX = 1.09;
     hero.squashY = 0.92;

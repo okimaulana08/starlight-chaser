@@ -611,11 +611,12 @@ export class CombatEngine {
         fallbackCrestGroup.visible = false;
         weaponGfx.visible = false;
       });
-      const atkSpriteUrl = HERO_ATTACK_SPRITES[def.id];
-      if (atkSpriteUrl) {
-        tryLoadPixiTexture(atkSpriteUrl).then((atkLoaded) => {
+      const atkCfg = HERO_ATTACK_SPRITES[def.id];
+      if (atkCfg) {
+        tryLoadPixiTexture(atkCfg.url).then((atkLoaded) => {
           if (!atkLoaded || this.destroyed || liveMesh.mesh.destroyed) return;
           heroUnit.attackTexture = atkLoaded;
+          heroUnit.attackScaleBoost = atkCfg.scaleBoost ?? 1.0;
         });
       }
     });
@@ -882,12 +883,13 @@ export class CombatEngine {
             enemyUnit.baseScaleY = sc;
           });
         }
-        const enemyAtkUrl =
+        const enemyAtkCfg =
           ENEMY_ATTACK_SPRITES[enemySpriteUrl] ?? ENEMY_ATTACK_SPRITES[def.id];
-        if (enemyAtkUrl) {
-          tryLoadPixiTexture(enemyAtkUrl).then((atkLoaded) => {
+        if (enemyAtkCfg) {
+          tryLoadPixiTexture(enemyAtkCfg.url).then((atkLoaded) => {
             if (!atkLoaded || this.destroyed || liveMesh.mesh.destroyed) return;
             enemyUnit.attackTexture = atkLoaded;
+            enemyUnit.attackScaleBoost = enemyAtkCfg.scaleBoost ?? 1.0;
           });
         }
       }
@@ -1894,12 +1896,9 @@ export class CombatEngine {
         : 0;
       const totalLiftY = strideHopY + dashArcY;
 
-      const baseSc = h.baseScaleY ?? 0.9;
-      const hitBend = h.hitFlashTimer > 0 ? Math.min(1, h.hitFlashTimer / 0.15) : 0;
-
       // Multi-Pose Action Keyframe Swap (Idle <-> Attack/Cast, synced with 2.5D Cast Shadow!)
       if (h.attackTexture && h.idleTexture) {
-        const nextPose: 'IDLE' | 'ATTACK' = h.alive && swingRemain > 0 ? 'ATTACK' : 'IDLE';
+        const nextPose: 'IDLE' | 'ATTACK' = h.alive && swingRemain > 0.02 ? 'ATTACK' : 'IDLE';
         if (h.activePose !== nextPose) {
           h.activePose = nextPose;
           const nextTex = nextPose === 'ATTACK' ? h.attackTexture : h.idleTexture;
@@ -1907,6 +1906,9 @@ export class CombatEngine {
           h.castShadowSprite.texture = nextTex;
         }
       }
+
+      const baseSc = (h.baseScaleY ?? 0.9) * (h.activePose === 'ATTACK' ? (h.attackScaleBoost ?? 1) : 1);
+      const hitBend = h.hitFlashTimer > 0 ? Math.min(1, h.hitFlashTimer / 0.15) : 0;
 
       // Apply Live2D-Lite real-time 5×7 vertex deformation!
       h.liveMesh.deform({
@@ -2252,7 +2254,7 @@ export class CombatEngine {
       // Multi-Pose Action Keyframe Swap for Enemies & Bosses (synced with 2.5D Cast Shadow!)
       if (e.attackTexture && e.idleTexture) {
         const nextPose: 'IDLE' | 'ATTACK' =
-          e.alive && (swingRemain > 0 || windup > 0.62) ? 'ATTACK' : 'IDLE';
+          e.alive && (swingRemain > 0.02 || windup > 0.52) ? 'ATTACK' : 'IDLE';
         if (e.activePose !== nextPose) {
           e.activePose = nextPose;
           const nextTex = nextPose === 'ATTACK' ? e.attackTexture : e.idleTexture;
@@ -2276,7 +2278,8 @@ export class CombatEngine {
         alive: e.alive,
       });
 
-      const baseSc = (e.baseScaleY ?? 1) * introScaleMult;
+      const poseBoost = e.activePose === 'ATTACK' ? (e.attackScaleBoost ?? 1) : 1;
+      const baseSc = (e.baseScaleY ?? 1) * introScaleMult * poseBoost;
       const mesh = e.liveMesh.mesh;
       const recoilShift = hitBend * -e.facing * (isHeavy ? 4 : 9);
       mesh.position.set(lungeX + recoilShift, totalLiftY);

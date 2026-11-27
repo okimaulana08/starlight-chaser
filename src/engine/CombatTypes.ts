@@ -103,6 +103,7 @@ export interface HeroUnit {
   liveMesh: LiveMeshActor;
   idleTexture?: Texture;
   attackTexture?: Texture;
+  attackScaleBoost?: number;
   activePose?: 'IDLE' | 'ATTACK';
   castShadowSprite: Sprite;
   shadowGfx: Graphics;
@@ -213,6 +214,7 @@ export interface EnemyUnit {
   liveMesh: LiveMeshActor;
   idleTexture?: Texture;
   attackTexture?: Texture;
+  attackScaleBoost?: number;
   activePose?: 'IDLE' | 'ATTACK';
   castShadowSprite: Sprite;
   shadowGfx: Graphics;
