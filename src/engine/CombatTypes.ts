@@ -91,6 +91,12 @@ export interface HeroUnit {
   // Stats tracking
   totalDamage: number;
   totalHealing: number;
+  totalDamageTaken: number;
+  totalShieldGranted: number;
+  critHits: number;
+  totalHits: number;
+  staggerDealt: number;
+  ultCasts: number;
   // Pixi display
   container: Container;
   liveMesh: LiveMeshActor;
@@ -146,6 +152,7 @@ export interface EnemyUnit {
   burnSourceAtk: number;
   // Boss-specific states
   phase: 1 | 2;
+  enraged: boolean;
   isCasting: boolean;
   castName: string;
   castDuration: number;
@@ -155,6 +162,9 @@ export interface EnemyUnit {
     | 'SWEEP'
     | 'SHOCKWAVE'
     | 'SKYFALL'
+    | 'CROSS_BEAM'
+    | 'RING_NOVA'
+    | 'METEOR_BARRAGE'
     | 'GOLEM_SLAM'
     | 'OBSIDIAN_CLEAVE'
     | 'ASTRAL_NOVA'
@@ -207,10 +217,13 @@ export interface GroundZone {
 export interface EnemyTelegraph {
   id: string;
   enemyUid: string;
-  shape: 'CIRCLE' | 'CONE';
+  shape: 'CIRCLE' | 'CONE' | 'LINE' | 'RING';
   x: number;
   y: number;
   radius: number;
+  innerRadius?: number; // SAFE inner radius for RING donut telegraphs
+  length?: number; // total beam length for LINE telegraphs
+  width?: number; // beam corridor width for LINE telegraphs
   angle: number;
   arcSpan: number; // radians for CONE
   duration: number;
@@ -244,6 +257,8 @@ export interface CombatContext {
   cameraZoomTarget: number;
   cameraFocus: { x: number; y: number } | null;
   ultActive: boolean;
+  linkPartnerHeroId: string | null;
+  linkWindowTimer: number;
   defeatedEnemyIds: Set<string>;
   addSp: (amount: number) => void;
   addUltGauge: (amount: number, bonusMult?: number) => void;

@@ -819,12 +819,15 @@ export class SkillExecutor {
       }
     }
 
-    // 3. Fire Ultimate if ready (prioritize highest-tier DPS or multi-hit when Boss Hit Shield active)
+    // 3. Fire Ultimate if ready (prioritize chaining STARLIGHT LINK BURST with a different hero!)
     const ultReady = aliveHeroes
       .filter((h) => this.canCast(ctx, h, 'ULT', h.def.ultimate))
       .sort((a, b) => {
         const score = (h: HeroUnit) => {
           let s = h.def.tier === 'SSR' ? 30 : h.def.tier === 'SR' ? 20 : 10;
+          if (ctx.linkWindowTimer > 0 && ctx.linkPartnerHeroId && h.heroId !== ctx.linkPartnerHeroId) {
+            s += 65; // Chain Starlight Link Burst immediately!
+          }
           if (boss && boss.hitShield > 0 && h.def.ultimate.effects.includes('MULTI_HIT')) s += 40;
           if (h.def.role === 'HEALER') s -= 15;
           return s;

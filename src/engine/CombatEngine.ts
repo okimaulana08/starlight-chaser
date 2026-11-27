@@ -103,6 +103,7 @@ export class CombatEngine {
   private waveTransitionTimer = 0;
   private victoryLingerTimer = 0;
   private comboCount = 0;
+  private maxCombo = 0;
   private comboTimer = 0;
   private hitstopTimer = 0;
   private evadeCooldown = 0;
@@ -110,6 +111,11 @@ export class CombatEngine {
   private perfectDodgeSlowTimer = 0;
   private breakZoomTimer = 0;
   private perfectDodgeClearHandle: number | null = null;
+  private linkBurstClearHandle: number | null = null;
+  private perfectDodgesCount = 0;
+  private bossBreaksCount = 0;
+  private linkBurstsCount = 0;
+  private readonly linkWindowDuration = 5.5;
   private pendingBossWarning: { name: string; title: string } | null = null;
   private joystickVec: { x: number; y: number } | null = null;
   private battleEnded = false;
@@ -261,12 +267,14 @@ export class CombatEngine {
       sp: 4.5,
       maxSp: 10,
       ultGauge: 0,
-      maxUltGauge: 40,
+      maxUltGauge: 80,
       timeScale: 1.0,
       cameraShake: 0,
       cameraZoomTarget: 1.0,
       cameraFocus: null,
       ultActive: false,
+      linkPartnerHeroId: null,
+      linkWindowTimer: 0,
       defeatedEnemyIds: new Set(),
 
       addSp: (amount) => {
@@ -355,8 +363,31 @@ export class CombatEngine {
         this.ctx.zones.push({ ...zone, gfx });
       },
       triggerUltimate: (hero, skill, tx, ty) => {
+        hero.ultCasts += 1;
+        const canLink =
+          this.ctx.linkWindowTimer > 0 &&
+          this.ctx.linkPartnerHeroId !== null &&
+          this.ctx.linkPartnerHeroId !== hero.heroId;
+        const partnerHero = canLink
+          ? this.ctx.heroes.find((h) => h.heroId === this.ctx.linkPartnerHeroId) ?? null
+          : null;
+
+        if (partnerHero) {
+          this.ctx.linkWindowTimer = 0;
+          this.ctx.linkPartnerHeroId = null;
+          useCombatStore.getState().setLinkWindow(null);
+        } else {
+          // Open 5.5s Starlight Link Window & echo +10 Ult Gauge so chaining another Hero's Ult feels fluid!
+          this.ctx.linkPartnerHeroId = hero.heroId;
+          this.ctx.linkWindowTimer = this.linkWindowDuration;
+          this.ctx.addUltGauge(10);
+        }
+
         this.ultDirector.start(this.ctx, hero, skill, tx, ty, (h, sk, x, y) => {
           this.skillExec.executeSkillPayload(this.ctx, h, sk, 'ULT', x, y);
+          if (partnerHero) {
+            this.triggerStarlightLinkBurst(partnerHero, h);
+          }
         });
       },
       notifyBanner: (msg) => {
@@ -484,6 +515,12 @@ export class CombatEngine {
         dashState: null,
         totalDamage: 0,
         totalHealing: 0,
+        totalDamageTaken: 0,
+        totalShieldGranted: 0,
+        critHits: 0,
+        totalHits: 0,
+        staggerDealt: 0,
+        ultCasts: 0,
         container,
         liveMesh,
         shadowGfx: heroShadow,
@@ -620,6 +657,7 @@ export class CombatEngine {
           burnTickTimer: 0.8,
           burnSourceAtk: 150,
           phase: 1,
+          enraged: false,
           isCasting: false,
           castName: '',
           castDuration: 1,
@@ -788,6 +826,8 @@ export class CombatEngine {
     // Stagger / Break Gauge depletion for Bosses & Mini-Bosses
     if (enemy.maxBreakGauge > 0 && !enemy.isBroken && enemy.hp > 0) {
       const brkDmg = opts.breakDamage ?? (opts.isUlt ? 32 : opts.isSkill ? 14 : 2.6);
+      const appliedBrk = Math.min(enemy.breakGauge, brkDmg);
+      attacker.staggerDealt += appliedBrk;
       enemy.breakGauge = Math.max(0, enemy.breakGauge - brkDmg);
       if (enemy.breakGauge <= 0) {
         this.triggerEnemyBreak(enemy, 4.0, '★ BROKEN! +50% DMG ★');
@@ -800,6 +840,8 @@ export class CombatEngine {
     enemy.hp = Math.max(0, enemy.hp - finalDmg);
     enemy.hitFlashTimer = 0.14;
     attacker.totalDamage += finalDmg;
+    attacker.totalHits += 1;
+    if (roll.isCrit) attacker.critHits += 1;
 
     // Directional Spring Knockback + Impact Squash-and-Stretch (weight-calibrated for Bosses vs Minions!)
     const kbDx = enemy.x - attacker.x;
@@ -819,6 +861,7 @@ export class CombatEngine {
 
     // Hit Combo Counter + Tactile Micro-Hitstop on Critical Skills/Ultimates!
     this.comboCount += 1;
+    if (this.comboCount > this.maxCombo) this.maxCombo = this.comboCount;
     this.comboTimer = 2.6;
     if (roll.isCrit && (opts.isSkill || opts.isUlt)) {
       this.hitstopTimer = Math.max(this.hitstopTimer, 0.028);
@@ -899,6 +942,7 @@ export class CombatEngine {
     if (hero.dmgReduceTimer > 0) dmg *= 1 - hero.dmgReduceValue;
     if (hero.heroId === 'titus' && isRanged) dmg *= 0.75; // Refracting Guard
     dmg = Math.max(1, Math.round(dmg));
+    hero.totalDamageTaken += dmg;
 
     // Garrick Ult Reflect 20%
     if (hero.reflectTimer > 0 && attacker && attacker.alive) {
@@ -1061,13 +1105,15 @@ export class CombatEngine {
   }
 
   private handleGrantShield(
-    _caster: HeroUnit,
+    caster: HeroUnit,
     target: HeroUnit,
     amount: number,
     counterBurn = false,
   ): void {
     if (!target.alive) return;
+    const prev = target.shield;
     target.shield = Math.max(target.shield, amount);
+    caster.totalShieldGranted += Math.max(0, target.shield - prev);
     if (counterBurn) target.shieldCounterBurn = true;
     this.pool.spawnRingWave(target.x, target.y, 58, 0x93c5fd, 0.3);
   }
@@ -1197,10 +1243,16 @@ export class CombatEngine {
     const dt = realDt * this.ctx.timeScale * speedMult;
     this.elapsedSec += dt;
 
-    // Combo decay timer
+    // Combo & Starlight Link Window timers (Link Window pauses during active Cut-In!)
     if (this.comboTimer > 0) {
       this.comboTimer = Math.max(0, this.comboTimer - realDt);
       if (this.comboTimer <= 0) this.comboCount = 0;
+    }
+    if (this.ctx.linkWindowTimer > 0 && !this.ultDirector.isRunning()) {
+      this.ctx.linkWindowTimer = Math.max(0, this.ctx.linkWindowTimer - realDt);
+      if (this.ctx.linkWindowTimer <= 0) {
+        this.ctx.linkPartnerHeroId = null;
+      }
     }
 
     // Continuous mobile floating virtual joystick steering
@@ -1276,12 +1328,84 @@ export class CombatEngine {
     this.weatherSystem?.update(realDt);
   }
 
+  private triggerStarlightLinkBurst(partner: HeroUnit, finisher: HeroUnit): void {
+    this.linkBurstsCount += 1;
+    const aliveEnemies = this.ctx.enemies.filter((e) => e.alive);
+    const focus = aliveEnemies.find((e) => e.def.isBoss) ?? aliveEnemies[0];
+    const cx = focus ? focus.x : this.ctx.squadAnchor.x + 200;
+    const cy = focus ? focus.y : this.ctx.squadAnchor.y;
+
+    const colorA = hexToNum(partner.def.themeColor);
+    const colorB = hexToNum(finisher.def.themeColor);
+    const breakDamage = 32;
+
+    // Spectacular Dual-Color Starlight Resonance Nova VFX
+    this.hitstopTimer = Math.max(this.hitstopTimer, 0.068);
+    this.breakZoomTimer = Math.max(this.breakZoomTimer, 0.65);
+    this.ctx.triggerShake(18);
+    this.ctx.triggerArenaDim(0x312e81, 0.72, 0.44);
+    this.pool.spawnSkyPillar(cx, cy, 175, 0xfde047, true);
+    this.pool.spawnRingWave(cx, cy, 390, colorA, 0.62);
+    this.pool.spawnRingWave(cx, cy, 310, colorB, 0.52);
+    this.pool.spawnRingWave(cx, cy, 240, 0xffffff, 0.44);
+    this.pool.spawnBurst(cx, cy - 34, 0xfde047, 36, 95);
+    this.pool.spawnBeam(partner.x, partner.y - 34, cx, cy - 30, colorA, 24);
+    this.pool.spawnBeam(finisher.x, finisher.y - 34, cx, cy - 30, colorB, 24);
+    audioManager.playSfx('ssr_reveal', 0.02);
+    audioManager.playSfx('ult_impact', 0.04);
+
+    // Refund +1.5 Squad SP & blast ALL alive enemies with +35% Resonance Link Nova (+32 Break!)
+    this.ctx.addSp(1.5);
+    let bonusTotal = 0;
+    for (const e of aliveEnemies) {
+      if (!e.alive) continue;
+      const resA = this.handleDamageEnemy(partner, e, {
+        multiplier: 1.15,
+        isUlt: true,
+        bonusDmgMult: 0.35,
+        breakDamage: breakDamage * 0.5,
+        hitShieldHits: 2,
+      });
+      bonusTotal += resA.damage;
+      if (e.alive) {
+        const resB = this.handleDamageEnemy(finisher, e, {
+          multiplier: 1.35,
+          isUlt: true,
+          bonusDmgMult: 0.35,
+          breakDamage: breakDamage * 0.5,
+          hitShieldHits: 2,
+        });
+        bonusTotal += resB.damage;
+      }
+    }
+
+    this.pool.spawnFloatingText(cx, cy - 112, '✦ STARLIGHT LINK BURST! ✦', 0xfde047, true);
+    useCombatStore.getState().setActiveLinkBurst({
+      id: Date.now() + Math.random(),
+      heroAId: partner.heroId,
+      heroAName: partner.def.name,
+      heroACard: partner.def.assets.card,
+      heroAColor: partner.def.themeColor,
+      heroBId: finisher.heroId,
+      heroBName: finisher.def.name,
+      heroBCard: finisher.def.assets.card,
+      heroBColor: finisher.def.themeColor,
+      bonusDamageTotal: bonusTotal,
+      breakDamage,
+    });
+    if (this.linkBurstClearHandle) window.clearTimeout(this.linkBurstClearHandle);
+    this.linkBurstClearHandle = window.setTimeout(() => {
+      useCombatStore.getState().setActiveLinkBurst(null);
+    }, 1650);
+  }
+
   private triggerEnemyBreak(
     enemy: EnemyUnit,
     duration = 4.0,
     reasonLabel = '★ BROKEN! +50% DMG ★',
   ): void {
     if (!enemy.alive) return;
+    this.bossBreaksCount += 1;
     enemy.isCasting = false;
     enemy.castAction = null;
     enemy.isBroken = true;
@@ -1338,6 +1462,28 @@ export class CombatEngine {
         const len = Math.max(1, dist);
         escapeX += dx / len;
         escapeY += dy / len;
+      } else if (tg.shape === 'LINE') {
+        const halfLen = (tg.length ?? 900) * 0.5;
+        const halfW = (tg.width ?? 92) * 0.5 + 22;
+        const along = dx * Math.cos(tg.angle) + dy * Math.sin(tg.angle);
+        const signedPerp = -dx * Math.sin(tg.angle) + dy * Math.cos(tg.angle);
+        if (Math.abs(along) <= halfLen && Math.abs(signedPerp) <= halfW) {
+          inDanger = true;
+          if (progress >= 0.22) imminent = true;
+          const sign = signedPerp >= 0 ? 1 : -1;
+          escapeX += -Math.sin(tg.angle) * sign;
+          escapeY += Math.cos(tg.angle) * sign;
+        }
+      } else if (tg.shape === 'RING') {
+        const innerR = tg.innerRadius ?? 165;
+        if (dist > innerR - 14 && dist <= tg.radius + 24) {
+          inDanger = true;
+          if (progress >= 0.22) imminent = true;
+          // Dash cleanly INWARD into the emerald-cyan Safe Zone!
+          const len = Math.max(1, dist);
+          escapeX += -dx / len;
+          escapeY += -dy / len;
+        }
       } else if (tg.shape === 'CONE' && dist <= tg.radius + 26) {
         const ang = Math.atan2(dy, dx);
         let diff = ang - tg.angle;
@@ -1467,6 +1613,7 @@ export class CombatEngine {
 
     if (isPerfect) {
       // ★ STARLIGHT REFLEX — PERFECT DODGE BULLET-TIME! ★
+      this.perfectDodgesCount += 1;
       this.perfectDodgeSlowTimer = 0.44;
       this.breakZoomTimer = Math.max(this.breakZoomTimer, 0.5);
       this.ctx.addSp(1.5);
@@ -1874,7 +2021,16 @@ export class CombatEngine {
           .stroke({ color: 0x34d399, width: 2.2, alpha: 0.9 });
       }
 
-      // 6. Boss Phase 2 Hit-Count Shield Ring
+      // 6. Boss Phase 2 Hit-Count Shield Ring & Fiery Enraged Overdrive Aura
+      if (e.enraged) {
+        const ragePulse = 0.72 + Math.sin(this.elapsedSec * 12) * 0.28;
+        e.statusGfx
+          .ellipse(0, 4, 118, 36)
+          .stroke({ color: 0xf43f5e, width: 4, alpha: ragePulse });
+        e.statusGfx
+          .ellipse(0, 4, 96, 28)
+          .stroke({ color: 0xfde047, width: 2.2, alpha: ragePulse * 0.85 });
+      }
       if (e.hitShield > 0) {
         e.statusGfx
           .ellipse(0, -80 + totalLiftY * 0.5, 96, 108)
@@ -2328,6 +2484,18 @@ export class CombatEngine {
       };
     }
 
+    const reportHeroes = this.ctx.heroes.map((h) => ({
+      heroId: h.heroId,
+      damageDealt: Math.round(h.totalDamage),
+      healingDone: Math.round(h.totalHealing),
+      damageTaken: Math.round(h.totalDamageTaken),
+      shieldGranted: Math.round(h.totalShieldGranted),
+      critHits: h.critHits,
+      totalHits: h.totalHits,
+      staggerDealt: Math.round(h.staggerDealt),
+      ultCasts: h.ultCasts,
+    }));
+
     const summary: CombatLootSummary = {
       victory,
       stageId: stage.id,
@@ -2336,6 +2504,16 @@ export class CombatEngine {
       damageByHero,
       healingByHero,
       heroExpResults,
+      battleReport: {
+        heroes: reportHeroes,
+        totalDamage: reportHeroes.reduce((s, r) => s + r.damageDealt, 0),
+        totalHealing: reportHeroes.reduce((s, r) => s + r.healingDone, 0),
+        totalDamageTaken: reportHeroes.reduce((s, r) => s + r.damageTaken, 0),
+        maxCombo: this.maxCombo,
+        perfectDodges: this.perfectDodgesCount,
+        bossBreaks: this.bossBreaksCount,
+        linkBursts: this.linkBurstsCount,
+      },
       goldEarned: victory ? randBetween(stage.rewards.gold) : 0,
       crystalsEarned: stage.isDungeon
         ? 0
@@ -2435,6 +2613,7 @@ export class CombatEngine {
         hp: Math.round(bossUnit.hp),
         maxHp: bossUnit.maxHp,
         phase: bossUnit.phase,
+        enraged: bossUnit.enraged,
         isCasting: bossUnit.isCasting,
         castName: bossUnit.castName,
         castProgress: bossUnit.isCasting
@@ -2453,16 +2632,31 @@ export class CombatEngine {
       };
     }
 
+    const linkPartner =
+      this.ctx.linkWindowTimer > 0 && this.ctx.linkPartnerHeroId
+        ? this.ctx.heroes.find((h) => h.heroId === this.ctx.linkPartnerHeroId) ?? null
+        : null;
+
     useCombatStore.getState().setSnapshot({
       elapsedSec: Math.floor(this.elapsedSec),
       sp: Number(this.ctx.sp.toFixed(2)),
       ultGauge: Number(this.ctx.ultGauge.toFixed(1)),
+      maxUltGauge: this.ctx.maxUltGauge,
       fps: Math.round(this.fpsSamples),
       comboCount: this.comboCount,
       comboDecayRatio: this.comboCount > 0 ? Math.max(0, Math.min(1, this.comboTimer / 2.6)) : 0,
       evadeCd: Number(this.evadeCooldown.toFixed(1)),
       evadeMaxCd: this.evadeMaxCooldown,
       inDangerZone: this.isSquadInDangerZone(),
+      linkWindow: linkPartner
+        ? {
+            partnerHeroId: linkPartner.heroId,
+            partnerHeroName: linkPartner.def.name,
+            partnerThemeColor: linkPartner.def.themeColor,
+            remaining: Number(this.ctx.linkWindowTimer.toFixed(1)),
+            maxDuration: this.linkWindowDuration,
+          }
+        : null,
       heroes: heroesSnap,
       boss: bossSnap,
     });
@@ -2475,10 +2669,13 @@ export class CombatEngine {
     if (this.bossWarnClearHandle) window.clearTimeout(this.bossWarnClearHandle);
     if (this.waveBannerClearHandle) window.clearTimeout(this.waveBannerClearHandle);
     if (this.perfectDodgeClearHandle) window.clearTimeout(this.perfectDodgeClearHandle);
+    if (this.linkBurstClearHandle) window.clearTimeout(this.linkBurstClearHandle);
     this.weatherSystem?.destroy();
     this.weatherSystem = null;
     useCombatStore.getState().setTouchJoystick(null);
     useCombatStore.getState().setPerfectDodge(false);
+    useCombatStore.getState().setLinkWindow(null);
+    useCombatStore.getState().setActiveLinkBurst(null);
     useCombatStore.getState().setActiveBanter(null);
     useCombatStore.getState().setBossWarning(null);
     useCombatStore.getState().setWaveBanner(null);

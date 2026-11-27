@@ -2,14 +2,19 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import gsap from 'gsap';
 import {
+  BarChart3,
+  ChevronRight,
   Crown,
+  Flame,
   Heart,
   RotateCcw,
+  Shield,
   Skull,
   Sparkles,
   Star,
   Swords,
-  ChevronRight,
+  Wind,
+  Zap,
 } from 'lucide-react';
 import {
   EQUIPMENT_SETS,
@@ -98,6 +103,34 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
   const [selectedRelic, setSelectedRelic] = useState<DroppedRelicSummary | null>(
     result.droppedRelics?.[0] ?? null,
   );
+  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'REPORT'>('SUMMARY');
+  const [reportMetric, setReportMetric] = useState<'DPS' | 'HEAL' | 'TANK' | 'CRIT_BREAK'>('DPS');
+
+  const safeDurationSec = Math.max(1, result.durationSec);
+  const battleReport = useMemo(() => {
+    if (result.battleReport) return result.battleReport;
+    const heroes = Object.entries(result.damageByHero).map(([heroId, dmg]) => ({
+      heroId,
+      damageDealt: dmg,
+      healingDone: result.healingByHero[heroId] ?? 0,
+      damageTaken: 0,
+      shieldGranted: 0,
+      critHits: 0,
+      totalHits: 0,
+      staggerDealt: 0,
+      ultCasts: 0,
+    }));
+    return {
+      heroes,
+      totalDamage: heroes.reduce((s, h) => s + h.damageDealt, 0),
+      totalHealing: heroes.reduce((s, h) => s + h.healingDone, 0),
+      totalDamageTaken: 0,
+      maxCombo: 0,
+      perfectDodges: 0,
+      bossBreaks: 0,
+      linkBursts: 0,
+    };
+  }, [result]);
 
   const heroEntries = useMemo(() => {
     const entries = Object.entries(result.damageByHero).map(([heroId, dmg]) => ({
@@ -225,15 +258,280 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
             </div>
           </div>
 
-          {result.isFirstClear && result.victory && (
-            <div className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-400/25 to-cyan-400/25 border border-amber-300 text-amber-200 text-[10px] sm:text-xs font-black uppercase tracking-[0.18em] shrink-0">
-              ★ FIRST CLEAR BONUS!
+          <div className="flex items-center gap-2 shrink-0">
+            {result.isFirstClear && result.victory && (
+              <div className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-400/25 to-cyan-400/25 border border-amber-300 text-amber-200 text-[10px] sm:text-xs font-black uppercase tracking-[0.18em]">
+                ★ FIRST CLEAR!
+              </div>
+            )}
+
+            {/* SUMMARY vs BATTLE REPORT VIEW SWITCHER */}
+            <div className="flex items-center rounded-xl bg-slate-950/90 border border-white/15 p-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  audioManager.playSfx('button');
+                  setActiveTab('SUMMARY');
+                }}
+                className={`px-2.5 sm:px-3 py-1 rounded-lg text-[10px] sm:text-xs font-display font-black uppercase tracking-wider flex items-center gap-1 transition ${
+                  activeTab === 'SUMMARY'
+                    ? 'bg-amber-400/25 text-amber-200 border border-amber-300/60'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3 h-3" />
+                <span>Spoils</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  audioManager.playSfx('button');
+                  setActiveTab('REPORT');
+                }}
+                className={`px-2.5 sm:px-3 py-1 rounded-lg text-[10px] sm:text-xs font-display font-black uppercase tracking-wider flex items-center gap-1 transition ${
+                  activeTab === 'REPORT'
+                    ? 'bg-cyan-400/25 text-cyan-200 border border-cyan-300/70 shadow-[0_0_12px_rgba(56,232,255,0.3)]'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <BarChart3 className="w-3 h-3" />
+                <span>Battle Report</span>
+              </button>
             </div>
-          )}
+          </div>
         </div>
 
         {/* 2. DEDICATED SCROLLABLE MIDDLE STAGE (Never Collides With Bottom Action Buttons!) */}
         <div className="ls-victory-body flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4">
+          {activeTab === 'REPORT' ? (
+            <motion.div
+              key="battle-report-view"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="space-y-4 max-w-4xl mx-auto pb-2"
+            >
+              {/* Combat Telemetry Highlights Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                {[
+                  {
+                    label: 'Squad DPS',
+                    val: `${Math.round(battleReport.totalDamage / safeDurationSec).toLocaleString()}/s`,
+                    sub: `${battleReport.totalDamage.toLocaleString()} Total`,
+                    color: 'text-amber-300',
+                    icon: <Swords className="w-3.5 h-3.5 text-amber-300" />,
+                  },
+                  {
+                    label: 'Max Combo',
+                    val: `${battleReport.maxCombo} HITS`,
+                    sub: `Time ${formatClock(result.durationSec)}`,
+                    color: 'text-cyan-300',
+                    icon: <Flame className="w-3.5 h-3.5 text-orange-400" />,
+                  },
+                  {
+                    label: 'Link Bursts',
+                    val: `${battleReport.linkBursts}`,
+                    sub: 'Dual Ult Chains',
+                    color: 'text-fuchsia-300',
+                    icon: <Sparkles className="w-3.5 h-3.5 text-fuchsia-300" />,
+                  },
+                  {
+                    label: 'Perfect Dodges',
+                    val: `${battleReport.perfectDodges}`,
+                    sub: 'Starlight Reflex',
+                    color: 'text-sky-300',
+                    icon: <Wind className="w-3.5 h-3.5 text-sky-300" />,
+                  },
+                  {
+                    label: 'Boss Breaks',
+                    val: `${battleReport.bossBreaks}`,
+                    sub: 'Stagger Shatters',
+                    color: 'text-emerald-300',
+                    icon: <Zap className="w-3.5 h-3.5 text-emerald-300" />,
+                  },
+                ].map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="rpg-ornate-card px-3 py-2.5 flex flex-col justify-between bg-slate-950/70"
+                  >
+                    <div className="flex items-center justify-between gap-1 text-[9px] font-display font-black uppercase tracking-[0.16em] text-slate-400">
+                      <span>{stat.label}</span>
+                      {stat.icon}
+                    </div>
+                    <div className={`font-mono text-base sm:text-lg font-black mt-1 ${stat.color}`}>
+                      {stat.val}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">{stat.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Metric Category Filter Tabs */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-[10px] font-display font-black uppercase tracking-[0.24em] text-cyan-300 flex items-center gap-1.5">
+                  <BarChart3 className="w-3.5 h-3.5" /> Per-Hero Combat Telemetry
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(
+                    [
+                      { key: 'DPS', label: 'Damage & DPS', icon: <Swords className="w-3 h-3" /> },
+                      { key: 'HEAL', label: 'Healing', icon: <Heart className="w-3 h-3" /> },
+                      { key: 'TANK', label: 'Tank / Shield', icon: <Shield className="w-3 h-3" /> },
+                      { key: 'CRIT_BREAK', label: 'Crit & Break', icon: <Zap className="w-3 h-3" /> },
+                    ] as const
+                  ).map((m) => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => {
+                        audioManager.playSfx('button');
+                        setReportMetric(m.key);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg border text-[10px] sm:text-xs font-display font-bold uppercase tracking-wider flex items-center gap-1.5 transition ${
+                        reportMetric === m.key
+                          ? 'bg-cyan-500/20 border-cyan-300 text-cyan-100'
+                          : 'bg-slate-950/75 border-white/10 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {m.icon}
+                      <span>{m.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Per-Hero Animated Horizontal Telemetry Bars */}
+              <div className="space-y-2.5">
+                {(() => {
+                  const getVal = (h: (typeof battleReport.heroes)[number]) => {
+                    if (reportMetric === 'DPS') return h.damageDealt;
+                    if (reportMetric === 'HEAL') return h.healingDone;
+                    if (reportMetric === 'TANK') return h.damageTaken + h.shieldGranted;
+                    return h.staggerDealt;
+                  };
+                  const sorted = [...battleReport.heroes].sort((a, b) => getVal(b) - getVal(a));
+                  const maxMetric = Math.max(1, ...sorted.map(getVal));
+                  const totalMetric = Math.max(1, sorted.reduce((s, h) => s + getVal(h), 0));
+
+                  return sorted.map((row, idx) => {
+                    const def = HERO_MAP[row.heroId];
+                    if (!def) return null;
+                    const val = getVal(row);
+                    const sharePct = Math.round((val / totalMetric) * 100);
+                    const dps = Math.round(row.damageDealt / safeDurationSec);
+                    const critPct =
+                      row.totalHits > 0 ? Math.round((row.critHits / row.totalHits) * 100) : 0;
+
+                    const barGradient =
+                      reportMetric === 'DPS'
+                        ? `linear-gradient(90deg, ${def.themeColor}cc 0%, #fde047 100%)`
+                        : reportMetric === 'HEAL'
+                          ? 'linear-gradient(90deg, #059669 0%, #34d399 65%, #a7f3d0 100%)'
+                          : reportMetric === 'TANK'
+                            ? 'linear-gradient(90deg, #0284c7 0%, #38bdf8 65%, #bae6fd 100%)'
+                            : 'linear-gradient(90deg, #d97706 0%, #f59e0b 55%, #38e8ff 100%)';
+
+                    return (
+                      <motion.div
+                        key={`${reportMetric}_${row.heroId}`}
+                        initial={{ opacity: 0, x: -14 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.28, delay: idx * 0.06 }}
+                        className="rpg-ornate-card p-3 flex items-center gap-3 bg-slate-950/75"
+                        style={{
+                          borderLeft: `4px solid ${def.themeColor}`,
+                        }}
+                      >
+                        <div className="relative w-12 h-12 rounded-xl overflow-hidden border border-white/25 shrink-0">
+                          <ArtImage
+                            kind="HERO"
+                            id={row.heroId}
+                            src={def.assets.card}
+                            alt={def.name}
+                            className="w-full h-full object-cover object-top"
+                          />
+                          {row.heroId === mvpId && (
+                            <span className="absolute bottom-0 inset-x-0 bg-amber-400 text-slate-950 text-[7px] font-display font-black text-center">
+                              MVP
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="font-display font-extrabold text-sm text-white truncate">
+                                {def.name}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-white/15 text-[9px] font-bold uppercase text-slate-300">
+                                {def.role}
+                              </span>
+                              {row.ultCasts > 0 && (
+                                <span className="px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-400/50 text-[9px] font-mono font-bold text-amber-200">
+                                  ULT ×{row.ultCasts}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="font-mono text-xs sm:text-sm font-black text-white flex items-center gap-2 shrink-0">
+                              {reportMetric === 'DPS' && (
+                                <>
+                                  <span className="text-amber-300">{row.damageDealt.toLocaleString()}</span>
+                                  <span className="text-[11px] text-cyan-300">({dps.toLocaleString()}/s)</span>
+                                </>
+                              )}
+                              {reportMetric === 'HEAL' && (
+                                <span className="text-emerald-300">+{row.healingDone.toLocaleString()} HP</span>
+                              )}
+                              {reportMetric === 'TANK' && (
+                                <>
+                                  <span className="text-sky-300">{row.damageTaken.toLocaleString()} Taken</span>
+                                  {row.shieldGranted > 0 && (
+                                    <span className="text-[11px] text-cyan-200">
+                                      • {row.shieldGranted.toLocaleString()} Shield
+                                    </span>
+                                  )}
+                                </>
+                              )}
+                              {reportMetric === 'CRIT_BREAK' && (
+                                <>
+                                  <span className="text-amber-300">{critPct}% CRIT</span>
+                                  <span className="text-[11px] text-cyan-300">
+                                    • {row.staggerDealt} Break
+                                  </span>
+                                </>
+                              )}
+                              <span className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-slate-200">
+                                {sharePct}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <RpgProgressBar
+                            value={val}
+                            max={maxMetric}
+                            animateFromZero
+                            delay={0.05 + idx * 0.05}
+                            heightClass="h-3"
+                            gradient={barGradient}
+                            glowColor={`${def.themeColor}66`}
+                          />
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[10px] font-mono text-slate-400">
+                            <span>DMG: <strong className="text-amber-200">{row.damageDealt.toLocaleString()}</strong></span>
+                            <span>HEAL: <strong className="text-emerald-300">{row.healingDone.toLocaleString()}</strong></span>
+                            <span>TAKEN: <strong className="text-sky-300">{row.damageTaken.toLocaleString()}</strong></span>
+                            <span>CRIT: <strong className="text-yellow-200">{critPct}%</strong> ({row.critHits}/{row.totalHits})</span>
+                            <span>BREAK: <strong className="text-cyan-300">{row.staggerDealt}</strong></span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  });
+                })()}
+              </div>
+            </motion.div>
+          ) : (
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-5 items-center min-h-full">
             {/* LEFT: FULL-HEIGHT MVP HERO SHOWCASE */}
             <motion.div
@@ -738,6 +1036,7 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
             )}
             </div>
           </div>
+          )}
         </div>
 
         {/* 3. PINNED BOTTOM HEROIC ACTION BAR (Zero Overlap Guaranteed!) */}

@@ -445,6 +445,7 @@ export interface BossCombatSnapshot {
   hp: number;
   maxHp: number;
   phase: 1 | 2;
+  enraged?: boolean;
   isCasting: boolean;
   castName: string;
   castProgress: number; // 0..1
@@ -458,6 +459,51 @@ export interface BossCombatSnapshot {
   maxHitShield: number;
   burnStacks: number;
   defShredActive: boolean;
+}
+
+export interface LinkWindowState {
+  partnerHeroId: string;
+  partnerHeroName: string;
+  partnerThemeColor: string;
+  remaining: number;
+  maxDuration: number;
+}
+
+export interface ActiveLinkBurstState {
+  id: number;
+  heroAId: string;
+  heroAName: string;
+  heroACard: string;
+  heroAColor: string;
+  heroBId: string;
+  heroBName: string;
+  heroBCard: string;
+  heroBColor: string;
+  bonusDamageTotal: number;
+  breakDamage: number;
+}
+
+export interface HeroBattleReportEntry {
+  heroId: string;
+  damageDealt: number;
+  healingDone: number;
+  damageTaken: number;
+  shieldGranted: number;
+  critHits: number;
+  totalHits: number;
+  staggerDealt: number;
+  ultCasts: number;
+}
+
+export interface BattleReportSummary {
+  heroes: HeroBattleReportEntry[];
+  totalDamage: number;
+  totalHealing: number;
+  totalDamageTaken: number;
+  maxCombo: number;
+  perfectDodges: number;
+  bossBreaks: number;
+  linkBursts: number;
 }
 
 export interface ActiveCutInState {
@@ -502,6 +548,7 @@ export interface CombatLootSummary {
   damageByHero: Record<string, number>;
   healingByHero: Record<string, number>;
   heroExpResults?: Record<string, HeroBattleExpResult>;
+  battleReport?: BattleReportSummary;
   goldEarned: number;
   crystalsEarned: number;
   expPotionsEarned: number;

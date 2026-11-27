@@ -2,9 +2,11 @@ import { create } from 'zustand';
 import type {
   ActiveBossBanter,
   ActiveCutInState,
+  ActiveLinkBurstState,
   BossCombatSnapshot,
   CombatLootSummary,
   HeroCombatSnapshot,
+  LinkWindowState,
 } from '../types/game';
 
 export interface AimingState {
@@ -68,6 +70,8 @@ interface CombatStore {
   boss: BossCombatSnapshot | null;
   activeCutIn: ActiveCutInState | null;
   activeBanter: ActiveBossBanter | null;
+  linkWindow: LinkWindowState | null;
+  activeLinkBurst: ActiveLinkBurstState | null;
   skillCallout: SkillCalloutState | null;
   impactFlash: boolean;
   bannerToast: string | null;
@@ -82,6 +86,8 @@ interface CombatStore {
   setAiming: (aiming: AimingState | null) => void;
   setActiveCutIn: (cutIn: ActiveCutInState | null) => void;
   setActiveBanter: (banter: ActiveBossBanter | null) => void;
+  setLinkWindow: (win: LinkWindowState | null) => void;
+  setActiveLinkBurst: (burst: ActiveLinkBurstState | null) => void;
   setSkillCallout: (callout: SkillCalloutState | null) => void;
   setBossWarning: (warning: BossWarningState | null) => void;
   setWaveBanner: (label: string | null) => void;
@@ -105,7 +111,7 @@ export const useCombatStore = create<CombatStore>((set) => ({
   sp: 4,
   maxSp: 10,
   ultGauge: 0,
-  maxUltGauge: 40,
+  maxUltGauge: 80,
   autoMove: true,
   autoSkill: true,
   fps: 60,
@@ -124,6 +130,8 @@ export const useCombatStore = create<CombatStore>((set) => ({
   boss: null,
   activeCutIn: null,
   activeBanter: null,
+  linkWindow: null,
+  activeLinkBurst: null,
   skillCallout: null,
   impactFlash: false,
   bannerToast: null,
@@ -141,6 +149,7 @@ export const useCombatStore = create<CombatStore>((set) => ({
       elapsedSec: 0,
       sp: 5,
       ultGauge: 16,
+      maxUltGauge: 80,
       comboCount: 0,
       comboDecayRatio: 0,
       evadeCd: 0,
@@ -155,6 +164,8 @@ export const useCombatStore = create<CombatStore>((set) => ({
       boss: null,
       activeCutIn: null,
       activeBanter: null,
+      linkWindow: null,
+      activeLinkBurst: null,
       skillCallout: null,
       impactFlash: false,
       bannerToast: null,
@@ -169,6 +180,8 @@ export const useCombatStore = create<CombatStore>((set) => ({
   setAiming: (aiming) => set({ aiming }),
   setActiveCutIn: (activeCutIn) => set({ activeCutIn }),
   setActiveBanter: (activeBanter) => set({ activeBanter }),
+  setLinkWindow: (linkWindow) => set({ linkWindow }),
+  setActiveLinkBurst: (activeLinkBurst) => set({ activeLinkBurst }),
   setSkillCallout: (skillCallout) => set({ skillCallout }),
   setBossWarning: (bossWarning) => set({ bossWarning }),
   setWaveBanner: (waveBanner) => set({ waveBanner }),

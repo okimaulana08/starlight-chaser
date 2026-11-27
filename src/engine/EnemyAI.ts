@@ -27,6 +27,76 @@ export class EnemyAI {
         tg.gfx
           .ellipse(tg.x, tg.y, tg.radius * progress, tg.radius * 0.68 * progress)
           .fill({ color, alpha: 0.32 });
+      } else if (tg.shape === 'LINE') {
+        // Full-arena laser corridor telegraph (Cross-Beam!)
+        const halfLen = (tg.length ?? 760) * 0.5;
+        const halfW = (tg.width ?? 88) * 0.5;
+        const cos = Math.cos(tg.angle);
+        const sin = Math.sin(tg.angle);
+        const px = -sin;
+        const py = cos;
+        const x1 = tg.x - cos * halfLen;
+        const y1 = tg.y - sin * halfLen;
+        const x2 = tg.x + cos * halfLen;
+        const y2 = tg.y + sin * halfLen;
+
+        // Outer corridor danger footprint
+        tg.gfx
+          .poly([
+            x1 + px * halfW,
+            y1 + py * halfW,
+            x2 + px * halfW,
+            y2 + py * halfW,
+            x2 - px * halfW,
+            y2 - py * halfW,
+            x1 - px * halfW,
+            y1 - py * halfW,
+          ])
+          .fill({ color: 0xf43f5e, alpha: 0.16 })
+          .stroke({ color: 0xfb7185, width: 2.5, alpha: 0.9 });
+
+        // Expanding central charge core
+        const fillW = halfW * progress;
+        tg.gfx
+          .poly([
+            x1 + px * fillW,
+            y1 + py * fillW,
+            x2 + px * fillW,
+            y2 + py * fillW,
+            x2 - px * fillW,
+            y2 - py * fillW,
+            x1 - px * fillW,
+            y1 - py * fillW,
+          ])
+          .fill({ color: 0xe879f9, alpha: 0.25 + progress * 0.25 });
+
+        // Razor bright center laser line
+        tg.gfx
+          .moveTo(x1, y1)
+          .lineTo(x2, y2)
+          .stroke({ color: 0xfef08a, width: 2 + progress * 4, alpha: 0.75 });
+      } else if (tg.shape === 'RING') {
+        // Donut Blast with glowing Emerald-Cyan Inner SAFE ZONE!
+        const innerR = tg.innerRadius ?? 155;
+        const outerR = tg.radius;
+        tg.gfx
+          .ellipse(tg.x, tg.y, outerR, outerR * 0.68)
+          .fill({ color: 0xef4444, alpha: 0.18 + progress * 0.18 })
+          .ellipse(tg.x, tg.y, innerR, innerR * 0.68)
+          .cut();
+        // Expanding danger wave ring moving from inner edge -> outer edge
+        const sweepR = innerR + (outerR - innerR) * progress;
+        tg.gfx
+          .ellipse(tg.x, tg.y, sweepR, sweepR * 0.68)
+          .stroke({ color: 0xf43f5e, width: 5, alpha: 0.88 });
+        tg.gfx
+          .ellipse(tg.x, tg.y, outerR, outerR * 0.68)
+          .stroke({ color: 0xef4444, width: 3, alpha: 0.92 });
+        // Safe Zone glowing cyan-emerald sanctuary circle
+        tg.gfx
+          .ellipse(tg.x, tg.y, innerR, innerR * 0.68)
+          .fill({ color: 0x10b981, alpha: 0.12 })
+          .stroke({ color: 0x34d399, width: 3.5, alpha: 0.95 });
       } else {
         // CONE telegraph
         const startA = tg.angle - tg.arcSpan * 0.5;
@@ -164,7 +234,7 @@ export class EnemyAI {
         continue;
       }
 
-      // Boss Phase 2 Transition (<50% HP): Overcharged Starfall + 15-Hit Count Shield
+      // Boss Phase 2 Transition (<=50% HP): Overcharged Starfall + 15-Hit Count Shield
       if (enemy.def.isBoss && !enemy.phase2Triggered && enemy.hp / enemy.maxHp <= 0.5) {
         enemy.phase2Triggered = true;
         enemy.phase = 2;
@@ -174,6 +244,19 @@ export class EnemyAI {
         ctx.spawnRingWave(enemy.x, enemy.y, 260, 0xd946ef, 0.65);
         ctx.spawnDamageText(enemy.x, enemy.y - 84, 'PHASE 2: HIT SHIELD (15)', 0xf0abfc, true);
         ctx.notifyBanner('PHASE 2 — OVERCHARGED STARFALL! Break the 15-Hit Shield with Multi-Hit skills!');
+      }
+
+      // Boss Phase 2 ENRAGE (<=40% HP): Faster attacks, shorter cooldowns, fiery overdrive aura!
+      if (enemy.def.isBoss && !enemy.enraged && enemy.hp / enemy.maxHp <= 0.4) {
+        enemy.enraged = true;
+        ctx.triggerShake(14);
+        ctx.triggerArenaDim(0xbe123c, 0.55, 0.28);
+        ctx.spawnRingWave(enemy.x, enemy.y, 310, 0xf43f5e, 0.6);
+        ctx.spawnRingWave(enemy.x, enemy.y, 220, 0xfde047, 0.48);
+        ctx.spawnBurst(enemy.x, enemy.y - 42, 0xf43f5e, 26, 56);
+        ctx.spawnDamageText(enemy.x, enemy.y - 108, '⚠ ENRAGED OVERDRIVE! ⚠', 0xfb7185, true);
+        ctx.notifyBanner('⚠ BOSS ENRAGED! +18% Attack Speed — Dodge Cross-Beams & Ring Novas!');
+        audioManager.playSfx('ult_impact', 0.04);
       }
 
       // Handle ongoing cast — smoothly brake velocity while winding up!
@@ -330,7 +413,8 @@ export class EnemyAI {
       }
 
       if (dist <= desiredRange + 8 && enemy.basicTimer <= 0) {
-        enemy.basicTimer = 1 / enemy.def.atkSpeed;
+        const rageSpd = enemy.enraged ? 1.18 : 1.0;
+        enemy.basicTimer = 1 / (enemy.def.atkSpeed * rageSpd);
         enemy.attackSwingDuration = isHeavy ? 0.34 : 0.26;
         enemy.attackSwingTimer = enemy.attackSwingDuration;
         enemy.springLeanVel += isHeavy ? 6.5 : 8.5;
@@ -645,8 +729,9 @@ export class EnemyAI {
   ): void {
     const roll = Math.random();
     const angle = Math.atan2(target.y - boss.y, target.x - boss.x);
+    const cdScale = boss.enraged ? 0.78 : 1.0;
 
-    if (roll < 0.4) {
+    if (roll < 0.24) {
       // Sweeping Halberd (1.2s wide red cone)
       boss.isCasting = true;
       boss.castName = 'Sweeping Halberd';
@@ -655,7 +740,7 @@ export class EnemyAI {
       boss.castCancelable = false;
       boss.castAction = 'SWEEP';
       boss.castAngle = angle;
-      boss.aiCooldown = 4.6;
+      boss.aiCooldown = 4.4 * cdScale;
 
       this.addTelegraph(ctx, telegraphLayer, {
         id: `tg_sweep_${Date.now()}`,
@@ -670,17 +755,76 @@ export class EnemyAI {
         elapsed: 0,
         cancelable: false,
       });
-    } else if (roll < 0.78 || boss.phase === 1) {
-      // Void Shockwave (2.5s CANCELABLE CAST!)
+    } else if (roll < 0.44) {
+      // NEW Boss 2.0 Pattern 1: Eclipse Cross-Beam (Twin perpendicular laser corridors!)
+      const baseAngle = boss.phase === 2 ? Math.PI * 0.25 : 0;
+      boss.isCasting = true;
+      boss.castName = boss.phase === 2 ? 'Eclipse X-Beam' : 'Eclipse Cross-Beam';
+      boss.castDuration = boss.enraged ? 1.38 : 1.55;
+      boss.castElapsed = 0;
+      boss.castCancelable = false;
+      boss.castAction = 'CROSS_BEAM';
+      boss.castAngle = baseAngle;
+      boss.castTargetX = boss.x;
+      boss.castTargetY = boss.y;
+      boss.aiCooldown = 5.6 * cdScale;
+
+      for (const offset of [0, Math.PI * 0.5]) {
+        this.addTelegraph(ctx, telegraphLayer, {
+          id: `tg_beam_${Date.now()}_${offset.toFixed(2)}`,
+          enemyUid: boss.uid,
+          shape: 'LINE',
+          x: boss.x,
+          y: boss.y,
+          radius: 520,
+          length: 1080,
+          width: 96,
+          angle: baseAngle + offset,
+          arcSpan: 0,
+          duration: boss.castDuration,
+          elapsed: 0,
+          cancelable: false,
+        });
+      }
+      ctx.notifyBanner('⚡ BOSS CHARGING CROSS-BEAM — Evade out of laser lanes!');
+    } else if (roll < 0.62) {
+      // NEW Boss 2.0 Pattern 2: Abyssal Ring Nova (Outer crimson blast with glowing Inner SAFE ZONE!)
+      boss.isCasting = true;
+      boss.castName = 'Abyssal Ring Nova';
+      boss.castDuration = boss.enraged ? 1.65 : 1.85;
+      boss.castElapsed = 0;
+      boss.castCancelable = false;
+      boss.castAction = 'RING_NOVA';
+      boss.castTargetX = boss.x;
+      boss.castTargetY = boss.y;
+      boss.aiCooldown = 6.2 * cdScale;
+
+      this.addTelegraph(ctx, telegraphLayer, {
+        id: `tg_ring_${Date.now()}`,
+        enemyUid: boss.uid,
+        shape: 'RING',
+        x: boss.x,
+        y: boss.y,
+        radius: 530,
+        innerRadius: 165,
+        angle: 0,
+        arcSpan: 0,
+        duration: boss.castDuration,
+        elapsed: 0,
+        cancelable: false,
+      });
+      ctx.notifyBanner('◎ ABYSSAL RING NOVA — Move into the GREEN SAFE ZONE or Perfect Dodge!');
+    } else if (roll < 0.80) {
+      // Void Shockwave (2.4s CANCELABLE CAST!)
       boss.isCasting = true;
       boss.castName = 'Void Shockwave';
-      boss.castDuration = 2.5;
+      boss.castDuration = 2.4;
       boss.castElapsed = 0;
       boss.castCancelable = true;
       boss.castAction = 'SHOCKWAVE';
       boss.castTargetX = boss.x;
       boss.castTargetY = boss.y;
-      boss.aiCooldown = 7.2;
+      boss.aiCooldown = 6.8 * cdScale;
 
       this.addTelegraph(ctx, telegraphLayer, {
         id: `tg_shock_${Date.now()}`,
@@ -691,44 +835,54 @@ export class EnemyAI {
         radius: 340,
         angle: 0,
         arcSpan: 0,
-        duration: 2.5,
+        duration: 2.4,
         elapsed: 0,
         cancelable: true,
       });
       ctx.notifyBanner('BOSS CASTING VOID SHOCKWAVE — Interrupt with STUN_CANCEL!');
     } else {
-      // Phase 2: Skyfall Judgment (4 sequential tracking red circles!)
+      // NEW Boss 2.0 Pattern 3: Starfall Meteor Barrage (5 staggered tracking meteor strikes with Sky Pillars!)
+      const meteorCount = boss.enraged ? 6 : boss.phase === 2 ? 5 : 4;
       boss.isCasting = true;
-      boss.castName = 'Skyfall Judgment';
+      boss.castName = 'Starfall Meteor Barrage';
       boss.castDuration = 1.1;
       boss.castElapsed = 0;
       boss.castCancelable = false;
-      boss.castAction = 'SKYFALL';
-      boss.aiCooldown = 6.8;
+      boss.castAction = 'METEOR_BARRAGE';
+      boss.aiCooldown = 6.4 * cdScale;
+      ctx.notifyBanner('☄ STARFALL METEOR BARRAGE — Time Squad Evade for Starlight Reflex!');
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < meteorCount; i++) {
         ctx.delayedStrikes.push({
-          delay: i * 0.62,
+          delay: i * (boss.enraged ? 0.48 : 0.56),
           fn: () => {
             if (!boss.alive || boss.isBroken) return;
-            const tx = ctx.squadAnchor.x + (Math.random() - 0.5) * 90;
-            const ty = ctx.squadAnchor.y + (Math.random() - 0.5) * 70;
-            const tgId = `tg_sky_${Date.now()}_${i}`;
+            const spread = i === 0 ? 40 : 125;
+            const tx = Math.max(
+              ctx.bounds.minX + 75,
+              Math.min(ctx.bounds.maxX - 75, ctx.squadAnchor.x + (Math.random() - 0.5) * spread * 2),
+            );
+            const ty = Math.max(
+              ctx.bounds.minY + 75,
+              Math.min(ctx.bounds.maxY - 75, ctx.squadAnchor.y + (Math.random() - 0.5) * spread * 1.4),
+            );
+            const tgId = `tg_meteor_${Date.now()}_${i}`;
+            const meteorDur = boss.enraged ? 0.92 : 1.04;
             this.addTelegraph(ctx, telegraphLayer, {
               id: tgId,
               enemyUid: boss.uid,
               shape: 'CIRCLE',
               x: tx,
               y: ty,
-              radius: 105,
+              radius: 112,
               angle: 0,
               arcSpan: 0,
-              duration: 1.05,
+              duration: meteorDur,
               elapsed: 0,
               cancelable: false,
             });
             ctx.delayedStrikes.push({
-              delay: 1.05,
+              delay: meteorDur,
               fn: () => {
                 ctx.telegraphs = ctx.telegraphs.filter((t) => {
                   if (t.id === tgId) {
@@ -738,12 +892,14 @@ export class EnemyAI {
                   return true;
                 });
                 if (!boss.alive) return;
-                ctx.spawnRingWave(tx, ty, 115, 0xe879f9, 0.35);
-                ctx.spawnBurst(tx, ty - 20, 0xd946ef, 14, 30);
-                ctx.triggerShake(6);
+                ctx.spawnSkyPillar(tx, ty, 78, boss.enraged ? 0xf43f5e : 0xd946ef, false);
+                ctx.spawnRingWave(tx, ty, 125, 0xf97316, 0.38);
+                ctx.spawnBurst(tx, ty - 20, 0xfde047, 16, 36);
+                ctx.triggerShake(7);
+                audioManager.playSfx('hit', 0.08);
                 for (const h of ctx.heroes) {
-                  if (h.alive && Math.hypot(h.x - tx, h.y - ty) <= 112) {
-                    ctx.damageHero(boss, h, boss.atk * 1.45, true);
+                  if (h.alive && Math.hypot(h.x - tx, h.y - ty) <= 116) {
+                    ctx.damageHero(boss, h, boss.atk * (boss.enraged ? 1.6 : 1.45), true);
                   }
                 }
               },
@@ -768,8 +924,8 @@ export class EnemyAI {
     enemy.squashX = 1.18;
     enemy.squashY = 0.84;
 
-    // Remove this enemy's non-skyfall telegraphs
-    if (action !== 'SKYFALL') {
+    // Remove this enemy's non-barrage telegraphs
+    if (action !== 'SKYFALL' && action !== 'METEOR_BARRAGE') {
       ctx.telegraphs = ctx.telegraphs.filter((t) => {
         if (t.enemyUid === enemy.uid) {
           t.gfx.destroy();
@@ -894,6 +1050,61 @@ export class EnemyAI {
           if (Math.abs(diff) <= 0.78) {
             ctx.damageHero(enemy, h, enemy.atk * 1.8 * atkMult, false);
           }
+        }
+      }
+    } else if (action === 'CROSS_BEAM') {
+      const halfLen = 540;
+      const hitHalfW = 54;
+      ctx.triggerShake(13);
+      audioManager.playSfx('ult_impact', 0.05);
+      for (const offset of [0, Math.PI * 0.5]) {
+        const a = enemy.castAngle + offset;
+        const cos = Math.cos(a);
+        const sin = Math.sin(a);
+        const x1 = enemy.castTargetX - cos * halfLen;
+        const y1 = enemy.castTargetY - sin * halfLen;
+        const x2 = enemy.castTargetX + cos * halfLen;
+        const y2 = enemy.castTargetY + sin * halfLen;
+        ctx.spawnBeam(x1, y1 - 18, x2, y2 - 18, enemy.enraged ? 0xf43f5e : 0xe879f9, 44);
+        ctx.spawnBeam(x1, y1 - 18, x2, y2 - 18, 0xfef08a, 14);
+      }
+      ctx.spawnRingWave(enemy.castTargetX, enemy.castTargetY, 195, 0xf43f5e, 0.48);
+      for (const h of ctx.heroes) {
+        if (!h.alive) continue;
+        let hit = false;
+        for (const offset of [0, Math.PI * 0.5]) {
+          const a = enemy.castAngle + offset;
+          const dx = h.x - enemy.castTargetX;
+          const dy = h.y - enemy.castTargetY;
+          const along = dx * Math.cos(a) + dy * Math.sin(a);
+          const perp = Math.abs(-dx * Math.sin(a) + dy * Math.cos(a));
+          if (Math.abs(along) <= halfLen && perp <= hitHalfW) {
+            hit = true;
+            break;
+          }
+        }
+        if (hit) {
+          ctx.damageHero(enemy, h, enemy.atk * (enemy.enraged ? 2.05 : 1.85) * atkMult, true);
+        }
+      }
+    } else if (action === 'RING_NOVA') {
+      const innerR = 165;
+      const outerR = 530;
+      ctx.triggerShake(14);
+      audioManager.playSfx('ult_impact', 0.04);
+      ctx.spawnRingWave(enemy.castTargetX, enemy.castTargetY, outerR, 0xf43f5e, 0.58);
+      ctx.spawnRingWave(enemy.castTargetX, enemy.castTargetY, innerR, 0x34d399, 0.44);
+      for (let k = 0; k < 8; k++) {
+        const ang = (k * Math.PI * 2) / 8;
+        const bx = enemy.castTargetX + Math.cos(ang) * 310;
+        const by = enemy.castTargetY + Math.sin(ang) * 215;
+        ctx.spawnBurst(bx, by, 0xf43f5e, 10, 32);
+      }
+      for (const h of ctx.heroes) {
+        if (!h.alive) continue;
+        const d = Math.hypot(h.x - enemy.castTargetX, h.y - enemy.castTargetY);
+        if (d > innerR - 8 && d <= outerR + 12) {
+          ctx.damageHero(enemy, h, enemy.atk * (enemy.enraged ? 2.15 : 1.9) * atkMult, true);
         }
       }
     } else if (action === 'SHOCKWAVE') {
