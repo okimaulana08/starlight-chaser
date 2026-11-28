@@ -345,6 +345,7 @@ export const HEROES: HeroDef[] = [
       standing: '/assets/standing/standing_malakhia.webp',
       sprite: '/assets/sprites/battle_malakhia.webp',
       cutIn: '/assets/cutins/cutin_malakhia.webp',
+      cutInVideo: '/assets/cutins/cutin_malakhia.mp4',
     },
     transcendence: {
       enabled: true,

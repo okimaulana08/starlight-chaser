@@ -392,7 +392,11 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'EVENT', 
                     id={item.id}
                     src={item.standing}
                     alt={item.name}
-                    className="relative h-full w-auto max-w-[46vw] sm:max-w-[30vw] object-contain object-bottom animate-breathe"
+                    className={`relative h-full w-auto object-contain object-bottom animate-breathe ${
+                      featuredItems.length === 1
+                        ? 'max-w-[82vw] sm:max-w-[46vw]'
+                        : 'max-w-[46vw] sm:max-w-[30vw]'
+                    }`}
                     style={{
                       filter:
                         item.tier === 'UR'
