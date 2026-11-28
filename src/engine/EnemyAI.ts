@@ -223,10 +223,12 @@ export class EnemyAI {
             perStack = Math.min(perStack, Math.max(65, enemy.burnSourceAtk * 0.4));
           }
           const burnDmg = Math.max(12, Math.round(perStack * enemy.burnStacks));
-          enemy.hp = Math.max(0, enemy.hp - burnDmg);
+          const isInfiniteBoss =
+            enemy.def.id.startsWith('raid_') || enemy.def.id === 'training_monolith';
+          enemy.hp = Math.max(isInfiniteBoss ? 1 : 0, enemy.hp - burnDmg);
           ctx.spawnDamageText(enemy.x, enemy.y - 34, `${burnDmg}`, 0xfb923c, false);
           ctx.spawnBurst(enemy.x, enemy.y - 20, 0xf97316, 4, 14);
-          if (enemy.hp <= 0) {
+          if (enemy.hp <= 0 && !isInfiniteBoss) {
             this.handleEnemyDeath(ctx, enemy);
             continue;
           }
@@ -424,7 +426,7 @@ export class EnemyAI {
         const rageSpd = enemy.enraged ? 1.18 : 1.0;
         const worldSpd = enemy.atkSpeedMult ?? 1.0;
         enemy.basicTimer = 1 / (enemy.def.atkSpeed * rageSpd * worldSpd);
-        enemy.attackSwingDuration = isHeavy ? 0.34 : 0.26;
+        enemy.attackSwingDuration = enemy.def.isBoss ? 0.48 : isHeavy ? 0.34 : 0.26;
         enemy.attackSwingTimer = enemy.attackSwingDuration;
         enemy.springLeanVel += isHeavy ? 6.5 : 8.5;
         enemy.squashX = 1.11;
@@ -927,8 +929,8 @@ export class EnemyAI {
     const action = enemy.castAction;
     enemy.isCasting = false;
     enemy.castAction = null;
-    enemy.attackSwingDuration = 0.42;
-    enemy.attackSwingTimer = 0.42;
+    enemy.attackSwingDuration = enemy.def.isBoss ? 0.62 : 0.42;
+    enemy.attackSwingTimer = enemy.attackSwingDuration;
     enemy.springLeanVel += 11.5;
     enemy.squashX = 1.18;
     enemy.squashY = 0.84;

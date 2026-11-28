@@ -85,4 +85,28 @@ export const ENEMY_ATTACK_SPRITES: Partial<Record<string, AttackSpriteConfig>> =
     url: '/assets/enemies/boss_aurelian_sentinel_atk.webp',
     scaleBoost: 1.07,
   },
+  '/assets/enemies/boss_raid_helios.webp': {
+    url: '/assets/enemies/boss_raid_helios_atk.webp',
+    scaleBoost: 1.12,
+  },
+  raid_helios_prime: {
+    url: '/assets/enemies/boss_raid_helios_atk.webp',
+    scaleBoost: 1.12,
+  },
+  '/assets/enemies/boss_raid_nihilus.webp': {
+    url: '/assets/enemies/boss_raid_nihilus_atk.webp',
+    scaleBoost: 1.14,
+  },
+  raid_nihilus_rex: {
+    url: '/assets/enemies/boss_raid_nihilus_atk.webp',
+    scaleBoost: 1.14,
+  },
+  '/assets/enemies/boss_raid_ignis.webp': {
+    url: '/assets/enemies/boss_raid_ignis_atk.webp',
+    scaleBoost: 1.12,
+  },
+  raid_ignis_valkyr: {
+    url: '/assets/enemies/boss_raid_ignis_atk.webp',
+    scaleBoost: 1.12,
+  },
 };

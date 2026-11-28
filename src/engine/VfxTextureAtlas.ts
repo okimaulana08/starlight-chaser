@@ -1,9 +1,11 @@
 import { Texture } from 'pixi.js';
+import { tryLoadPixiTexture } from './AssetManager';
 
 export type VfxTexKey =
   | 'softGlow'
   | 'crescentSlash'
   | 'impactFlare'
+  | 'explosionNova'
   | 'energyBeam'
   | 'skyColumn'
   | 'magicCircle'
@@ -121,22 +123,24 @@ function buildImpactFlare(): Texture {
   ctx.save();
   ctx.translate(128, 128);
 
-  const core = ctx.createRadialGradient(0, 0, 2, 0, 0, 76);
+  const core = ctx.createRadialGradient(0, 0, 2, 0, 0, 96);
   core.addColorStop(0, 'rgba(255,255,255,1)');
-  core.addColorStop(0.3, 'rgba(255,255,255,0.65)');
-  core.addColorStop(0.7, 'rgba(255,255,255,0.12)');
+  core.addColorStop(0.28, 'rgba(255,255,255,0.72)');
+  core.addColorStop(0.65, 'rgba(255,255,255,0.16)');
   core.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = core;
-  ctx.fillRect(-90, -90, 180, 180);
+  ctx.beginPath();
+  ctx.arc(0, 0, 96, 0, Math.PI * 2);
+  ctx.fill();
 
   const drawRay = (len: number, halfW: number, rot: number, alpha: number) => {
     ctx.save();
     ctx.rotate(rot);
     const rg = ctx.createLinearGradient(-len, 0, len, 0);
     rg.addColorStop(0, 'rgba(255,255,255,0)');
-    rg.addColorStop(0.35, `rgba(255,255,255,${alpha * 0.7})`);
+    rg.addColorStop(0.32, `rgba(255,255,255,${alpha * 0.65})`);
     rg.addColorStop(0.5, `rgba(255,255,255,${alpha})`);
-    rg.addColorStop(0.65, `rgba(255,255,255,${alpha * 0.7})`);
+    rg.addColorStop(0.68, `rgba(255,255,255,${alpha * 0.65})`);
     rg.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = rg;
     ctx.beginPath();
@@ -148,10 +152,52 @@ function buildImpactFlare(): Texture {
     ctx.restore();
   };
 
-  drawRay(122, 13, 0, 1);
-  drawRay(108, 11, Math.PI / 2, 0.95);
-  drawRay(76, 7, Math.PI / 4, 0.72);
-  drawRay(76, 7, -Math.PI / 4, 0.72);
+  drawRay(112, 12, 0, 1);
+  drawRay(102, 10, Math.PI / 2, 0.95);
+  drawRay(74, 6.5, Math.PI / 4, 0.72);
+  drawRay(74, 6.5, -Math.PI / 4, 0.72);
+
+  ctx.restore();
+  return Texture.from(c);
+}
+
+/**
+ * Radial organic anime plasma/flame nova burst (procedural fallback for vfx_anime_explosion.webp).
+ */
+function buildExplosionNova(): Texture {
+  const [c, ctx] = makeCanvas(256, 256);
+  ctx.save();
+  ctx.translate(128, 128);
+
+  const outer = ctx.createRadialGradient(0, 0, 6, 0, 0, 114);
+  outer.addColorStop(0.0, 'rgba(255,255,255,1)');
+  outer.addColorStop(0.26, 'rgba(255,255,255,0.88)');
+  outer.addColorStop(0.55, 'rgba(255,255,255,0.34)');
+  outer.addColorStop(0.84, 'rgba(255,255,255,0.08)');
+  outer.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = outer;
+  ctx.beginPath();
+  ctx.arc(0, 0, 114, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < 12; i++) {
+    const a = (i * Math.PI * 2) / 12 + (i % 2) * 0.12;
+    const len = 72 + (i % 3) * 16;
+    ctx.save();
+    ctx.rotate(a);
+    const pg = ctx.createLinearGradient(0, 0, len, 0);
+    pg.addColorStop(0, 'rgba(255,255,255,0.95)');
+    pg.addColorStop(0.55, 'rgba(255,255,255,0.55)');
+    pg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.moveTo(8, 0);
+    ctx.quadraticCurveTo(len * 0.52, -16, len, 0);
+    ctx.quadraticCurveTo(len * 0.52, 16, 8, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
 
   ctx.restore();
   return Texture.from(c);
@@ -259,15 +305,20 @@ function buildMagicCircle(): Texture {
   ctx.arc(0, 0, 58, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Inscribed 8-point celestial star (2 rotated squares)
-  for (let rot = 0; rot < 2; rot++) {
-    ctx.save();
-    ctx.rotate((rot * Math.PI) / 4);
-    ctx.strokeStyle = 'rgba(255,255,255,0.8)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-66, -66, 132, 132);
-    ctx.restore();
+  // Inscribed 12-point celestial filigree star (zero square boxes!)
+  ctx.beginPath();
+  for (let i = 0; i < 24; i++) {
+    const a = (i * Math.PI) / 12;
+    const rad = i % 2 === 0 ? 94 : 62;
+    const px = Math.cos(a) * rad;
+    const py = Math.sin(a) * rad;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
   }
+  ctx.closePath();
+  ctx.strokeStyle = 'rgba(255,255,255,0.82)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
 
   // 16 tick marks & 8 glowing rune orbs between outer rings
   for (let i = 0; i < 16; i++) {
@@ -365,18 +416,17 @@ function buildSmokePuff(): Texture {
 function buildFireWisp(): Texture {
   const [c, ctx] = makeCanvas(128, 128);
   ctx.save();
-  ctx.translate(64, 72);
-  ctx.filter = 'blur(3px)';
+  ctx.translate(64, 70);
   ctx.beginPath();
-  ctx.moveTo(0, -64);
-  ctx.bezierCurveTo(34, -22, 42, 24, 0, 44);
-  ctx.bezierCurveTo(-42, 24, -34, -22, 0, -64);
+  ctx.moveTo(0, -50);
+  ctx.bezierCurveTo(28, -18, 34, 20, 0, 36);
+  ctx.bezierCurveTo(-34, 20, -28, -18, 0, -50);
   ctx.closePath();
-  const fg = ctx.createRadialGradient(0, 12, 4, 0, -4, 52);
+  const fg = ctx.createRadialGradient(0, 8, 3, 0, -4, 44);
   fg.addColorStop(0, 'rgba(255,255,255,1)');
-  fg.addColorStop(0.42, 'rgba(255,240,200,0.92)');
-  fg.addColorStop(0.75, 'rgba(255,190,120,0.48)');
-  fg.addColorStop(1, 'rgba(255,140,80,0)');
+  fg.addColorStop(0.45, 'rgba(255,245,215,0.92)');
+  fg.addColorStop(0.78, 'rgba(255,200,140,0.45)');
+  fg.addColorStop(1, 'rgba(255,150,90,0)');
   ctx.fillStyle = fg;
   ctx.fill();
   ctx.restore();
@@ -489,46 +539,43 @@ function buildGroundCrack(): Texture {
 }
 
 function buildLightningBolt(): Texture {
-  const [c, ctx] = makeCanvas(256, 64);
+  const [c, ctx] = makeCanvas(256, 128);
   const pts: Array<[number, number]> = [
-    [6, 32],
-    [42, 20],
-    [68, 42],
-    [104, 16],
-    [136, 44],
-    [172, 18],
-    [206, 38],
-    [250, 32],
+    [16, 64],
+    [48, 50],
+    [76, 76],
+    [110, 46],
+    [142, 78],
+    [176, 48],
+    [208, 72],
+    [240, 64],
   ];
 
-  // Outer electric aura
-  ctx.save();
-  ctx.filter = 'blur(5px)';
-  ctx.beginPath();
-  pts.forEach(([x, y], idx) => (idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = 10;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-  ctx.restore();
+  // Layered soft electric aura (zero canvas-edge blur clipping!)
+  const glows: Array<[number, number]> = [
+    [18, 0.14],
+    [11, 0.34],
+    [6, 0.65],
+    [2.8, 1.0],
+  ];
+  for (const [lw, alpha] of glows) {
+    ctx.beginPath();
+    pts.forEach(([x, y], idx) => (idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
+    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }
 
-  // Razor-sharp core bolt
+  // Micro side sparks well inside safe margin
   ctx.beginPath();
-  pts.forEach(([x, y], idx) => (idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)));
-  ctx.strokeStyle = 'rgba(255,255,255,1)';
-  ctx.lineWidth = 3.2;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-
-  // Micro side sparks
-  ctx.beginPath();
-  ctx.moveTo(104, 16);
-  ctx.lineTo(124, 6);
-  ctx.moveTo(136, 44);
-  ctx.lineTo(160, 56);
-  ctx.lineWidth = 1.8;
+  ctx.moveTo(110, 46);
+  ctx.lineTo(128, 30);
+  ctx.moveTo(142, 78);
+  ctx.lineTo(164, 96);
+  ctx.strokeStyle = 'rgba(255,255,255,0.88)';
+  ctx.lineWidth = 2;
   ctx.stroke();
 
   return Texture.from(c);
@@ -536,31 +583,41 @@ function buildLightningBolt(): Texture {
 
 function buildChainLink(): Texture {
   const [c, ctx] = makeCanvas(256, 64);
-  // Subtle fiery glow beneath chain
-  const bg = ctx.createLinearGradient(0, 12, 0, 52);
+  // Soft inner energy ribbon
+  const bg = ctx.createLinearGradient(0, 14, 0, 50);
   bg.addColorStop(0, 'rgba(255,255,255,0)');
-  bg.addColorStop(0.5, 'rgba(255,255,255,0.45)');
+  bg.addColorStop(0.5, 'rgba(255,255,255,0.42)');
   bg.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = bg;
-  ctx.fillRect(0, 12, 256, 40);
+  ctx.fillRect(14, 14, 228, 36);
 
   // Interlocking forged chain ovals
   ctx.strokeStyle = 'rgba(255,255,255,0.96)';
-  ctx.lineWidth = 5;
-  for (let x = 18; x <= 238; x += 28) {
+  ctx.lineWidth = 4.5;
+  for (let x = 24; x <= 232; x += 26) {
     ctx.beginPath();
-    ctx.ellipse(x, 32, 16, 9, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, 32, 15, 8.5, 0, 0, Math.PI * 2);
     ctx.stroke();
   }
-  // Center connector bars
   ctx.strokeStyle = 'rgba(255,255,255,1)';
-  ctx.lineWidth = 4;
-  for (let x = 32; x <= 224; x += 28) {
+  ctx.lineWidth = 3.5;
+  for (let x = 37; x <= 219; x += 26) {
     ctx.beginPath();
-    ctx.moveTo(x - 8, 32);
-    ctx.lineTo(x + 8, 32);
+    ctx.moveTo(x - 7, 32);
+    ctx.lineTo(x + 7, 32);
     ctx.stroke();
   }
+
+  // Feather both left & right ends smoothly so chains NEVER show hard box edges
+  ctx.globalCompositeOperation = 'destination-in';
+  const mask = ctx.createLinearGradient(0, 0, 256, 0);
+  mask.addColorStop(0.0, 'rgba(255,255,255,0)');
+  mask.addColorStop(0.12, 'rgba(255,255,255,1)');
+  mask.addColorStop(0.88, 'rgba(255,255,255,1)');
+  mask.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = mask;
+  ctx.fillRect(0, 0, 256, 64);
+
   return Texture.from(c);
 }
 
@@ -594,8 +651,15 @@ function buildArrowStreak(): Texture {
   return Texture.from(c);
 }
 
+const BESPOKE_VFX_URLS: Partial<Record<VfxTexKey, string>> = {
+  crescentSlash: '/assets/vfx/vfx_anime_slash.webp',
+  magicCircle: '/assets/vfx/vfx_anime_magic_seal.webp',
+  impactFlare: '/assets/vfx/vfx_anime_impact_burst.webp',
+};
+
 export class VfxTextureAtlas {
   private static instance: Record<VfxTexKey, Texture> | null = null;
+  private static bespokePromise: Promise<void> | null = null;
 
   public static get(): Record<VfxTexKey, Texture> {
     if (!this.instance) {
@@ -604,6 +668,7 @@ export class VfxTextureAtlas {
         ringHalo: buildRingHalo(),
         crescentSlash: buildCrescentSlash(),
         impactFlare: buildImpactFlare(),
+        explosionNova: buildExplosionNova(),
         energyBeam: buildEnergyBeam(),
         skyColumn: buildSkyColumn(),
         magicCircle: buildMagicCircle(),
@@ -619,5 +684,24 @@ export class VfxTextureAtlas {
       };
     }
     return this.instance;
+  }
+
+  /**
+   * Asynchronously upgrades key VFX slots with hand-painted 2K→512px Kling AI anime VFX WebPs.
+   * Safe against failures: falls back seamlessly to procedural feathered textures.
+   */
+  public static preloadBespokeTextures(): Promise<void> {
+    if (this.bespokePromise) return this.bespokePromise;
+    const atlas = this.get();
+    const entries = Object.entries(BESPOKE_VFX_URLS) as Array<[VfxTexKey, string]>;
+    this.bespokePromise = Promise.all(
+      entries.map(async ([key, url]) => {
+        const tex = await tryLoadPixiTexture(url);
+        if (tex) {
+          atlas[key] = tex;
+        }
+      }),
+    ).then(() => undefined);
+    return this.bespokePromise;
   }
 }

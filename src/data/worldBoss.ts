@@ -32,9 +32,9 @@ export const WORLD_BOSSES: WorldBossDef[] = [
     spriteAsset: '/assets/enemies/boss_raid_helios.webp',
     arenaAsset: '/assets/environments/env_world_boss_raid.webp',
     weakFactions: ['ASTRAL', 'ASHEN'],
-    signatureMechanic: 'Astral & Ashen heroes deal +35% Bonus DMG & +25% Break DMG. Each shattered HP bar grants +20 Ult Gauge & +2 SP!',
-    baseBarHp: 140000,
-    baseEnemyScale: 1.45,
+    signatureMechanic: 'Astral & Ashen heroes deal +35% Bonus DMG & +25% Break DMG. Each shattered HP bar grants +12 Ult & +1.2 SP, while Helios gains +12% ATK / +8% DEF Overdrive!',
+    baseBarHp: 280000,
+    baseEnemyScale: 1.65,
   },
   {
     id: 'nihilus',
@@ -47,9 +47,9 @@ export const WORLD_BOSSES: WorldBossDef[] = [
     spriteAsset: '/assets/enemies/boss_raid_nihilus.webp',
     arenaAsset: '/assets/environments/env_world_boss_raid.webp',
     weakFactions: ['SOLARIS', 'VERDANT'],
-    signatureMechanic: 'Solaris & Verdant heroes deal +35% Bonus DMG & +25% Break DMG. Chaining Link Bursts accelerates Bar Overdrive!',
-    baseBarHp: 148000,
-    baseEnemyScale: 1.52,
+    signatureMechanic: 'Solaris & Verdant heroes deal +35% Bonus DMG & +25% Break DMG. Each Bar Clear escalates Void Overdrive (+12% ATK / +8% DEF) — Perfect Dodge to survive!',
+    baseBarHp: 295000,
+    baseEnemyScale: 1.72,
   },
   {
     id: 'ignis',
@@ -62,9 +62,9 @@ export const WORLD_BOSSES: WorldBossDef[] = [
     spriteAsset: '/assets/enemies/boss_raid_ignis.webp',
     arenaAsset: '/assets/environments/env_world_boss_raid.webp',
     weakFactions: ['ASTRAL', 'VERDANT'],
-    signatureMechanic: 'Astral & Verdant heroes deal +35% Bonus DMG & +25% Break DMG. Break Gauge resets every Bar Clear for huge burst windows!',
-    baseBarHp: 155000,
-    baseEnemyScale: 1.58,
+    signatureMechanic: 'Astral & Verdant heroes deal +35% Bonus DMG & +25% Break DMG. Break Gauge resets every Bar Clear while Hydra Overdrive ramps +12% ATK / +8% DEF!',
+    baseBarHp: 310000,
+    baseEnemyScale: 1.78,
   },
 ];
 
@@ -82,6 +82,8 @@ export interface RaidTierConfig {
   enemyScaleMult: number;
   scoreMultiplier: number;
   color: string;
+  unlockStageId?: string;
+  unlockLabel?: string;
 }
 
 export const RAID_TIER_CONFIGS: RaidTierConfig[] = [
@@ -89,8 +91,8 @@ export const RAID_TIER_CONFIGS: RaidTierConfig[] = [
     tier: 1,
     label: 'Vanguard Raid',
     subtitle: 'Standard 1.0× Score',
-    recommendedPower: 22000,
-    enemyScaleMult: 0.72,
+    recommendedPower: 35000,
+    enemyScaleMult: 1.05,
     scoreMultiplier: 1.0,
     color: '#38e8ff',
   },
@@ -98,21 +100,34 @@ export const RAID_TIER_CONFIGS: RaidTierConfig[] = [
     tier: 2,
     label: 'Cataclysm Raid',
     subtitle: '1.35× Score Multiplier',
-    recommendedPower: 85000,
-    enemyScaleMult: 1.35,
+    recommendedPower: 110000,
+    enemyScaleMult: 2.15,
     scoreMultiplier: 1.35,
     color: '#fb923c',
+    unlockStageId: 'stage_7_12',
+    unlockLabel: 'Clear Ch.7 Boss (7-12)',
   },
   {
     tier: 3,
     label: 'Sovereign Abyss',
     subtitle: '1.85× Score Multiplier',
-    recommendedPower: 220000,
-    enemyScaleMult: 2.35,
+    recommendedPower: 260000,
+    enemyScaleMult: 3.85,
     scoreMultiplier: 1.85,
     color: '#f43f5e',
+    unlockStageId: 'hard_stage_5_12',
+    unlockLabel: 'Clear Hard Ch.5 (H 5-12)',
   },
 ];
+
+export function isRaidTierUnlocked(
+  tier: RaidDifficultyTier,
+  clearedStages: string[],
+): boolean {
+  const cfg = RAID_TIER_CONFIGS.find((t) => t.tier === tier);
+  if (!cfg || !cfg.unlockStageId) return true;
+  return clearedStages.includes(cfg.unlockStageId);
+}
 
 export interface RaidRankDef {
   id: string;
@@ -124,12 +139,12 @@ export interface RaidRankDef {
 
 export const RAID_SCORE_RANKS: RaidRankDef[] = [
   { id: 'UNRANKED', label: 'Challenger', minScore: 0, color: '#94a3b8', badgeBg: 'rgba(51,65,85,0.4)' },
-  { id: 'BRONZE', label: 'Bronze', minScore: 50000, color: '#d97706', badgeBg: 'rgba(180,83,9,0.35)' },
-  { id: 'SILVER', label: 'Silver', minScore: 150000, color: '#cbd5e1', badgeBg: 'rgba(148,163,184,0.3)' },
-  { id: 'GOLD', label: 'Gold', minScore: 400000, color: '#f5c84c', badgeBg: 'rgba(245,200,76,0.28)' },
-  { id: 'PLATINUM', label: 'Platinum', minScore: 900000, color: '#38e8ff', badgeBg: 'rgba(56,232,255,0.28)' },
-  { id: 'DIAMOND', label: 'Diamond', minScore: 2000000, color: '#e879f9', badgeBg: 'rgba(232,121,249,0.28)' },
-  { id: 'SOVEREIGN', label: 'Sovereign', minScore: 4500000, color: '#fde047', badgeBg: 'rgba(253,224,71,0.35)' },
+  { id: 'BRONZE', label: 'Bronze', minScore: 250000, color: '#d97706', badgeBg: 'rgba(180,83,9,0.35)' },
+  { id: 'SILVER', label: 'Silver', minScore: 750000, color: '#cbd5e1', badgeBg: 'rgba(148,163,184,0.3)' },
+  { id: 'GOLD', label: 'Gold', minScore: 2000000, color: '#f5c84c', badgeBg: 'rgba(245,200,76,0.28)' },
+  { id: 'PLATINUM', label: 'Platinum', minScore: 5000000, color: '#38e8ff', badgeBg: 'rgba(56,232,255,0.28)' },
+  { id: 'DIAMOND', label: 'Diamond', minScore: 12000000, color: '#e879f9', badgeBg: 'rgba(232,121,249,0.28)' },
+  { id: 'SOVEREIGN', label: 'Sovereign', minScore: 25000000, color: '#fde047', badgeBg: 'rgba(253,224,71,0.35)' },
 ];
 
 export interface RaidScoreMilestone {
@@ -141,37 +156,37 @@ export interface RaidScoreMilestone {
 
 export const WEEKLY_RAID_MILESTONES: RaidScoreMilestone[] = [
   {
-    score: 50000,
+    score: 250000,
     rankLabel: 'Bronze',
     color: '#d97706',
     reward: { crystals: 160, gold: 10000, forgeStones: 8 },
   },
   {
-    score: 150000,
+    score: 750000,
     rankLabel: 'Silver',
     color: '#cbd5e1',
     reward: { crystals: 240, starIronIngots: 4, relicFragments: 6 },
   },
   {
-    score: 400000,
+    score: 2000000,
     rankLabel: 'Gold',
     color: '#f5c84c',
     reward: { crystals: 320, astralAnvilCores: 3, starCores: 3 },
   },
   {
-    score: 900000,
+    score: 5000000,
     rankLabel: 'Platinum',
     color: '#38e8ff',
     reward: { crystals: 400, astralAnvilCores: 4, relicFragments: 10, dungeonTickets: 2 },
   },
   {
-    score: 2000000,
+    score: 12000000,
     rankLabel: 'Diamond',
     color: '#e879f9',
     reward: { crystals: 560, astralAnvilCores: 6, starCores: 6, gearCrateRarity: 'LEGENDARY' },
   },
   {
-    score: 4500000,
+    score: 25000000,
     rankLabel: 'Sovereign',
     color: '#fde047',
     reward: { crystals: 800, astralAnvilCores: 10, starCores: 8, relicFragments: 20, gearCrateRarity: 'LEGENDARY' },

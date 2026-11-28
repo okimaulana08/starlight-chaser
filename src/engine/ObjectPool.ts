@@ -286,6 +286,24 @@ export class ObjectPool {
       targetParent.addChild(item.sprite);
     }
 
+    // Keep 512x512 Retina Kling VFX textures matched 1:1 with 256px procedural world sizes
+    const normScale =
+      opts.tex === 'crescentSlash' ||
+      opts.tex === 'explosionNova' ||
+      opts.tex === 'magicCircle' ||
+      opts.tex === 'impactFlare'
+        ? 256 / Math.max(256, tex.width)
+        : 1;
+
+    const isOpaqueDebris =
+      opts.tex === 'smokePuff' ||
+      opts.tex === 'groundCrack' ||
+      opts.tex === 'petalLeaf' ||
+      opts.tex === 'iceCrystal' ||
+      opts.tex === 'chainLink' ||
+      opts.tex === 'hexDome';
+    const useAdditive = opts.additive ?? !isOpaqueDebris;
+
     item.active = true;
     item.isGround = Boolean(opts.groundLayer);
     item.delay = opts.delay ?? 0;
@@ -295,10 +313,10 @@ export class ObjectPool {
     item.vy = opts.vy ?? 0;
     item.gravity = opts.gravity ?? 0;
     item.drag = opts.drag ?? 1;
-    item.startScaleX = opts.scaleX ?? 1;
-    item.startScaleY = opts.scaleY ?? item.startScaleX;
-    item.endScaleX = opts.endScaleX ?? item.startScaleX;
-    item.endScaleY = opts.endScaleY ?? item.startScaleY;
+    item.startScaleX = (opts.scaleX ?? 1) * normScale;
+    item.startScaleY = (opts.scaleY ?? opts.scaleX ?? 1) * normScale;
+    item.endScaleX = (opts.endScaleX ?? opts.scaleX ?? 1) * normScale;
+    item.endScaleY = (opts.endScaleY ?? opts.scaleY ?? opts.endScaleX ?? opts.scaleX ?? 1) * normScale;
     item.rotation = opts.rotation ?? 0;
     item.spin = opts.spin ?? 0;
     item.startAlpha = opts.alpha ?? 1;
@@ -312,7 +330,7 @@ export class ObjectPool {
     item.sprite.texture = tex;
     item.sprite.anchor.set(ax, ay);
     item.sprite.tint = opts.tint ?? 0xffffff;
-    item.sprite.blendMode = opts.additive ? 'add' : 'normal';
+    item.sprite.blendMode = useAdditive ? 'add' : 'normal';
     item.sprite.position.set(item.x, item.y);
     item.sprite.rotation = item.rotation;
     item.sprite.scale.set(item.startScaleX, item.startScaleY);
@@ -320,14 +338,15 @@ export class ObjectPool {
     item.sprite.visible = item.delay <= 0;
 
     if (item.hasHalo) {
-      item.halo.texture = tex;
-      item.halo.anchor.set(ax, ay);
-      item.halo.tint = 0x070a18;
-      item.halo.blendMode = 'normal';
-      item.halo.position.set(item.x, item.y + 2);
+      // Soft luminous outer bloom (replaces dark normal-blend halo that caused rectangular box shadows!)
+      item.halo.texture = useAdditive ? tex : this.atlas.softGlow;
+      item.halo.anchor.set(useAdditive ? ax : 0.5, useAdditive ? ay : 0.5);
+      item.halo.tint = opts.tint ?? 0xffffff;
+      item.halo.blendMode = 'add';
+      item.halo.position.set(item.x, item.y);
       item.halo.rotation = item.rotation;
-      item.halo.scale.set(item.startScaleX * 1.14, item.startScaleY * 1.14);
-      item.halo.alpha = item.startAlpha * 0.48;
+      item.halo.scale.set(item.startScaleX * 1.18, item.startScaleY * 1.18);
+      item.halo.alpha = item.startAlpha * (useAdditive ? 0.36 : 0.22);
       item.halo.visible = item.delay <= 0;
     } else {
       item.halo.visible = false;
@@ -379,28 +398,31 @@ export class ObjectPool {
    * Soft glowing elemental burst (no more sharp polygon blocks!).
    */
   public spawnBurst(x: number, y: number, color: number, count = 14, spreadRadius = 26): void {
-    // Central soft bloom flash
+    // Organic anime plasma nova burst + crisp core starburst
     this.spawnSpriteFx({
-      tex: 'softGlow',
+      tex: 'explosionNova',
       x,
       y,
-      scaleX: 0.45,
-      endScaleX: 1.35,
+      rotation: Math.random() * Math.PI * 2,
+      spin: 1.4,
+      scaleX: 0.26,
+      endScaleX: 0.96,
       tint: color,
-      alpha: 0.82,
-      life: 0.26,
-      darkHalo: true,
+      alpha: 0.88,
+      life: 0.3,
+      additive: true,
     });
     this.spawnSpriteFx({
       tex: 'impactFlare',
       x,
       y,
       scaleX: 0.28,
-      endScaleX: 0.72,
+      endScaleX: 0.78,
       rotation: Math.random() * Math.PI,
       tint: 0xffffff,
       alpha: 0.95,
       life: 0.22,
+      additive: true,
     });
 
     const n = Math.min(28, count);

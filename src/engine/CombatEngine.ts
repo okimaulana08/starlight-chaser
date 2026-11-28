@@ -206,7 +206,10 @@ export class CombatEngine {
     this.world.addChild(this.pool.textLayer);
     this.app.stage.addChild(this.world);
 
-    await this.buildAureliaArena();
+    await Promise.all([
+      this.buildAureliaArena(),
+      VfxTextureAtlas.preloadBespokeTextures(),
+    ]);
     if (this.destroyed) return;
     this.setupCombatContext();
     this.setupPointerEvents();
@@ -1002,7 +1005,9 @@ export class CombatEngine {
             def.id === 'astral_weaver' ? 0x38e8ff : def.isBoss ? 0xc084fc : 0xd946ef;
           backRuneSprite.blendMode = 'add';
           backRuneSprite.alpha = def.isBoss ? 0.28 : 0.38;
-          backRuneSprite.scale.set(def.isBoss ? 0.92 : 0.42);
+          backRuneSprite.scale.set(
+            (def.isBoss ? 0.92 : 0.42) * (256 / Math.max(256, atlas.magicCircle.width)),
+          );
         }
 
         const hpBarGfx = new Graphics();
@@ -1438,18 +1443,22 @@ export class CombatEngine {
 
     if (enemy.hp <= 0 && enemy.alive) {
       if (activeStage.isWorldBoss && enemy.def.isBoss) {
-        // World Boss Raid Infinite-Bar Overdrive: Shatter current HP bar, escalate to next bar & reward burst energy!
+        // World Boss Raid Infinite-Bar Overdrive: Shatter current HP bar, escalate HP/ATK/DEF & reward burst energy!
         this.raidBarsCleared += 1;
-        enemy.maxHp = Math.round(enemy.maxHp * 1.15);
+        enemy.maxHp = Math.round(enemy.maxHp * 1.18);
         enemy.hp = enemy.maxHp;
+        enemy.atk = Math.round(enemy.atk * 1.12);
+        enemy.defStat = Math.round(enemy.defStat * 1.08);
         enemy.breakGauge = enemy.maxBreakGauge;
         enemy.isBroken = false;
         enemy.brokenTimer = 0;
-        this.ctx.addUltGauge(20, 1);
-        this.ctx.addSp(2.0);
+        this.ctx.addUltGauge(12, 1);
+        this.ctx.addSp(1.2);
         this.pool.spawnRingWave(enemy.x, enemy.y, 280, 0xfde047, 0.52);
         this.pool.spawnFloatingText(enemy.x, enemy.y - 95, `BAR ×${this.raidBarsCleared} SHATTERED!`, 0xfde047, true);
-        this.ctx.notifyBanner(`★ RAID BAR ×${this.raidBarsCleared} CLEARED! +20 Ult Gauge & +2.0 SP! ★`);
+        this.ctx.notifyBanner(
+          `★ RAID BAR ×${this.raidBarsCleared} CLEARED! Boss Overdrive (+12% ATK / +8% DEF) • +12 Ult & +1.2 SP ★`,
+        );
         audioManager.playSfx('ssr_reveal', 0.24);
       } else if (activeStage.isSandbox) {
         // Training Sandbox Immortal Calibration Target: instant HP reset (+ Shield/Break reset on Break Dummy!)
@@ -2498,7 +2507,8 @@ export class CombatEngine {
         h.auraSprite.alpha = powered
           ? 0.54 + Math.sin(this.elapsedSec * 7 + h.slotIndex) * 0.12
           : 0.28;
-        const aSc = (powered || h.def.tier === 'UR' ? 0.44 : 0.34) * auraPulse;
+        const auraNorm = 256 / Math.max(256, h.auraSprite.texture.width);
+        const aSc = (powered || h.def.tier === 'UR' ? 0.44 : 0.34) * auraPulse * auraNorm;
         h.auraSprite.scale.set(aSc);
 
         if (h.backRuneSprite) {
@@ -2507,7 +2517,8 @@ export class CombatEngine {
           h.backRuneSprite.visible = true;
           h.backRuneSprite.position.set(lungeX, -88 + totalLiftY * 0.75);
           h.backRuneSprite.rotation = -this.elapsedSec * (asc ? 1.8 : tr ? 1.05 : 0.65);
-          const brSc = (asc ? 0.78 : tr ? 0.62 : 0.46) * auraPulse;
+          const runeNorm = 256 / Math.max(256, h.backRuneSprite.texture.width);
+          const brSc = (asc ? 0.78 : tr ? 0.62 : 0.46) * auraPulse * runeNorm;
           h.backRuneSprite.scale.set(brSc);
           h.backRuneSprite.tint =
             asc || tr
@@ -2761,7 +2772,7 @@ export class CombatEngine {
       // Multi-Pose Action Keyframe Swap for Enemies & Bosses (synced with 2.5D Cast Shadow!)
       if (e.attackTexture && e.idleTexture) {
         const nextPose: 'IDLE' | 'ATTACK' =
-          e.alive && (swingRemain > 0.02 || windup > 0.52) ? 'ATTACK' : 'IDLE';
+          e.alive && (swingRemain > 0.02 || windup > 0.34) ? 'ATTACK' : 'IDLE';
         if (e.activePose !== nextPose) {
           e.activePose = nextPose;
           const nextTex = nextPose === 'ATTACK' ? e.attackTexture : e.idleTexture;
@@ -2875,7 +2886,8 @@ export class CombatEngine {
         e.auraSprite.rotation = this.elapsedSec * (e.enraged ? 2.1 : 0.85);
         e.auraSprite.tint = e.isBroken ? 0x38e8ff : e.enraged ? 0xf43f5e : e.phase === 2 ? 0xe879f9 : 0xc084fc;
         e.auraSprite.alpha = (e.enraged ? 0.68 : e.isBroken ? 0.65 : e.def.isBoss ? 0.44 : 0.28) * introAlpha;
-        const scBase = e.def.isBoss ? 0.98 : 0.56;
+        const scBase =
+          (e.def.isBoss ? 0.98 : 0.56) * (256 / Math.max(256, e.auraSprite.texture.width));
         e.auraSprite.scale.set(scBase * auraPulse);
       }
 
@@ -3100,7 +3112,12 @@ export class CombatEngine {
     } else {
       baseScale = Math.max(0.64, Math.min(1.05, Math.min(viewW / 1460, viewH / 840)));
     }
-    const finalScale = baseScale * this.cameraZoom;
+    // Guarantee arena background ALWAYS covers 100% of viewport (+36px shake bleed) with ZERO black edge void!
+    const minCoverScale = Math.max(
+      (viewW + 36) / ARENA_W,
+      (viewH + 36) / ARENA_H,
+    );
+    const finalScale = Math.max(minCoverScale, baseScale * this.cameraZoom);
 
     let shakeX = 0;
     let shakeY = 0;
@@ -3112,11 +3129,20 @@ export class CombatEngine {
       this.ctx.cameraShake = 0;
     }
 
+    const scaledW = ARENA_W * finalScale;
+    const scaledH = ARENA_H * finalScale;
+    const minWorldX = viewW - scaledW;
+    const maxWorldX = 0;
+    const minWorldY = viewH - scaledH;
+    const maxWorldY = 0;
+
+    const rawWorldX = viewW * 0.5 - this.cameraX * finalScale;
+    const rawWorldY = viewH * 0.52 - this.cameraY * finalScale;
+    const clampedX = Math.max(minWorldX, Math.min(maxWorldX, rawWorldX + shakeX));
+    const clampedY = Math.max(minWorldY, Math.min(maxWorldY, rawWorldY + shakeY));
+
     this.world.scale.set(finalScale);
-    this.world.position.set(
-      viewW * 0.5 - this.cameraX * finalScale + shakeX,
-      viewH * 0.52 - this.cameraY * finalScale + shakeY,
-    );
+    this.world.position.set(clampedX, clampedY);
   }
 
   private screenToWorld(clientX: number, clientY: number): { x: number; y: number } {
@@ -3538,7 +3564,7 @@ export class CombatEngine {
 
     const totalDamageAll = reportHeroes.reduce((s, r) => s + r.damageDealt, 0);
     const raidDamageScore = stage.isWorldBoss
-      ? Math.round(totalDamageAll * (stage.raidScoreMultiplier ?? 1) + this.raidBarsCleared * 15000)
+      ? Math.round(totalDamageAll * (stage.raidScoreMultiplier ?? 1) + this.raidBarsCleared * 35000)
       : undefined;
     const raidRankLabel =
       stage.isWorldBoss && raidDamageScore !== undefined
@@ -3767,7 +3793,7 @@ export class CombatEngine {
     this.raidTotalScore = activeStage.isWorldBoss
       ? Math.round(
           liveTotalDamage * (activeStage.raidScoreMultiplier ?? 1) +
-            this.raidBarsCleared * 15000,
+            this.raidBarsCleared * 35000,
         )
       : 0;
     const raidRank = getRaidRankForScore(this.raidTotalScore);

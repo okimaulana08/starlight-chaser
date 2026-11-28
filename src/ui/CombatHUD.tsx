@@ -890,7 +890,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
 
       {/* LIVE REAL-TIME DPS METER & WORLD BOSS SCORE PANEL (Top-Left Floating) */}
       {(isWorldBoss || isSandbox) && !combatResult && (
-        <div className="pointer-events-none fixed left-2.5 sm:left-3 top-[50px] sm:top-[56px] z-20 w-[212px] sm:w-[252px] flex flex-col gap-1.5">
+        <div className="pointer-events-none fixed left-2 sm:left-3 top-[106px] sm:top-[56px] z-20 w-[176px] sm:w-[252px] flex flex-col gap-1.5">
           {/* Raid Countdown + Score / Sandbox DPS Summary Card */}
           <div
             className="rounded-xl bg-[#070b1a]/88 backdrop-blur-md border px-2.5 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.75)]"

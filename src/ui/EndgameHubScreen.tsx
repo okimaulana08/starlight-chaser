@@ -7,6 +7,7 @@ import {
   Crown,
   Flame,
   Heart,
+  Lock,
   RefreshCw,
   Shield,
   Skull,
@@ -35,6 +36,7 @@ import {
   encodeWorldBossStageId,
   getFeaturedWorldBossId,
   getRaidRankForScore,
+  isRaidTierUnlocked,
 } from '../data/worldBoss';
 import { audioManager } from '../engine/AudioManager';
 import { computeHeroStats, getActivePetPower } from '../engine/CombatMath';
@@ -460,30 +462,42 @@ export const EndgameHubScreen: React.FC<EndgameHubScreenProps> = ({
                 <div className="relative z-10 mt-4 pt-3 border-t border-white/15 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="grid grid-cols-3 gap-1.5 flex-1">
                     {RAID_TIER_CONFIGS.map((t) => {
-                      const active = t.tier === selectedRaidTier;
+                      const unlocked = isRaidTierUnlocked(t.tier, player.clearedStages);
+                      const active = t.tier === selectedRaidTier && unlocked;
                       return (
                         <button
                           key={t.tier}
                           type="button"
                           onClick={() => {
                             audioManager.playSfx('button');
+                            if (!unlocked) {
+                              notify(`Locked: ${t.unlockLabel ?? 'Advance Campaign to unlock.'}`, false);
+                              return;
+                            }
                             setSelectedRaidTier(t.tier);
                           }}
                           className={`rounded-xl px-2.5 py-1.5 border text-left transition ${
-                            active
-                              ? 'bg-slate-900/95 shadow-lg'
-                              : 'bg-slate-950/75 border-white/10 opacity-75 hover:opacity-100'
+                            !unlocked
+                              ? 'bg-slate-950/60 border-white/10 opacity-55 cursor-not-allowed'
+                              : active
+                                ? 'bg-slate-900/95 shadow-lg'
+                                : 'bg-slate-950/75 border-white/10 opacity-80 hover:opacity-100'
                           }`}
                           style={{ borderColor: active ? t.color : undefined }}
                         >
-                          <div
-                            className="font-display font-black text-[10px] uppercase leading-none"
-                            style={{ color: t.color }}
-                          >
-                            {t.label}
+                          <div className="flex items-center justify-between gap-1">
+                            <span
+                              className="font-display font-black text-[10px] uppercase leading-none truncate"
+                              style={{ color: unlocked ? t.color : '#94a3b8' }}
+                            >
+                              {t.label}
+                            </span>
+                            {!unlocked && <Lock className="w-3 h-3 text-slate-400 shrink-0" />}
                           </div>
-                          <div className="font-mono text-[9px] text-slate-300 mt-0.5">
-                            {t.scoreMultiplier}× Score • PWR {(t.recommendedPower / 1000).toFixed(0)}k
+                          <div className="font-mono text-[9px] text-slate-300 mt-0.5 truncate">
+                            {unlocked
+                              ? `${t.scoreMultiplier}× Score • PWR ${(t.recommendedPower / 1000).toFixed(0)}k`
+                              : t.unlockLabel ?? 'Locked'}
                           </div>
                         </button>
                       );
