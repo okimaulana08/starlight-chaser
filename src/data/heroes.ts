@@ -288,7 +288,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_vaelen_card.webp',
       standing: '/assets/standing/standing_vaelen.webp',
-      sprite: '/assets/heroes/hero_vaelen_card.webp',
+      sprite: '/assets/sprites/battle_vaelen.webp',
       cutIn: '/assets/cutins/cutin_vaelen.webp',
       cutInVideo: '/assets/cutins/cutin_vaelen.mp4',
     },
@@ -372,7 +372,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_seraphina_card.webp',
       standing: '/assets/standing/standing_seraphina.webp',
-      sprite: '/assets/heroes/hero_seraphina_card.webp',
+      sprite: '/assets/sprites/battle_seraphina.webp',
       cutIn: '/assets/cutins/cutin_seraphina.webp',
       cutInVideo: '/assets/cutins/cutin_seraphina.mp4',
     },
@@ -456,7 +456,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_draven_card.webp',
       standing: '/assets/standing/standing_draven.webp',
-      sprite: '/assets/heroes/hero_draven_card.webp',
+      sprite: '/assets/sprites/battle_draven.webp',
       cutIn: '/assets/cutins/cutin_draven.webp',
       cutInVideo: '/assets/cutins/cutin_draven.mp4',
     },
@@ -540,7 +540,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_elara_card.webp',
       standing: '/assets/standing/standing_elara.webp',
-      sprite: '/assets/heroes/hero_elara_card.webp',
+      sprite: '/assets/sprites/battle_elara.webp',
       cutIn: '/assets/cutins/cutin_elara.webp',
       cutInVideo: '/assets/cutins/cutin_elara.mp4',
     },
@@ -790,7 +790,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_garrick_card.webp',
       standing: '/assets/standing/standing_garrick.webp',
-      sprite: '/assets/heroes/hero_garrick_card.webp',
+      sprite: '/assets/sprites/battle_garrick.webp',
       cutIn: '/assets/cutins/cutin_garrick.webp',
     },
   },
@@ -871,7 +871,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_lyra_card.webp',
       standing: '/assets/standing/standing_lyra.webp',
-      sprite: '/assets/heroes/hero_lyra_card.webp',
+      sprite: '/assets/sprites/battle_lyra.webp',
       cutIn: '/assets/cutins/cutin_lyra.webp',
     },
   },
@@ -953,7 +953,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_raze_card.webp',
       standing: '/assets/standing/standing_raze.webp',
-      sprite: '/assets/heroes/hero_raze_card.webp',
+      sprite: '/assets/sprites/battle_raze.webp',
       cutIn: '/assets/cutins/cutin_raze.webp',
     },
   },
@@ -1036,7 +1036,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_orion_card.webp',
       standing: '/assets/standing/standing_orion.webp',
-      sprite: '/assets/heroes/hero_orion_card.webp',
+      sprite: '/assets/sprites/battle_orion.webp',
       cutIn: '/assets/cutins/cutin_orion.webp',
     },
   },
@@ -1121,7 +1121,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_kael_card.webp',
       standing: '/assets/standing/standing_kael.webp',
-      sprite: '/assets/heroes/hero_kael_card.webp',
+      sprite: '/assets/sprites/battle_kael.webp',
       cutIn: '/assets/cutins/cutin_kael.webp',
     },
   },
@@ -1203,7 +1203,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_nyx_card.webp',
       standing: '/assets/standing/standing_nyx.webp',
-      sprite: '/assets/heroes/hero_nyx_card.webp',
+      sprite: '/assets/sprites/battle_nyx.webp',
       cutIn: '/assets/cutins/cutin_nyx.webp',
     },
   },
@@ -1285,7 +1285,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_titus_card.webp',
       standing: '/assets/standing/standing_titus.webp',
-      sprite: '/assets/heroes/hero_titus_card.webp',
+      sprite: '/assets/sprites/battle_titus.webp',
       cutIn: '/assets/cutins/cutin_titus.webp',
     },
   },
@@ -1366,7 +1366,7 @@ export const HEROES: HeroDef[] = [
     assets: {
       card: '/assets/heroes/hero_clara_card.webp',
       standing: '/assets/standing/standing_clara.webp',
-      sprite: '/assets/heroes/hero_clara_card.webp',
+      sprite: '/assets/sprites/battle_clara.webp',
       cutIn: '/assets/cutins/cutin_clara.webp',
     },
   },
