@@ -7,6 +7,7 @@ export const DEFAULT_GAME_SETTINGS: GameSettings = {
   bgmVolume: 0.28,
   sfxVolume: 0.45,
   muted: false,
+  enableUltCutIn: true,
   enableUltVideo: true,
   enableScreenShake: true,
   enableDamageNumbers: true,
@@ -21,6 +22,7 @@ interface SettingsStore extends GameSettings {
   setSfxVolume: (volume: number) => void;
   setMuted: (muted: boolean) => void;
   toggleMuted: () => boolean;
+  setEnableUltCutIn: (on: boolean) => void;
   setEnableUltVideo: (on: boolean) => void;
   setEnableScreenShake: (on: boolean) => void;
   setEnableDamageNumbers: (on: boolean) => void;
@@ -60,6 +62,7 @@ export const useSettingsStore = create<SettingsStore>()(
         return next;
       },
 
+      setEnableUltCutIn: (enableUltCutIn) => set({ enableUltCutIn }),
       setEnableUltVideo: (enableUltVideo) => set({ enableUltVideo }),
       setEnableScreenShake: (enableScreenShake) => set({ enableScreenShake }),
       setEnableDamageNumbers: (enableDamageNumbers) => set({ enableDamageNumbers }),
@@ -87,7 +90,11 @@ export const useSettingsStore = create<SettingsStore>()(
             lobbySceneId: prev.lobbySceneId ?? 'CITADEL',
           };
         }
-        return { ...DEFAULT_GAME_SETTINGS, ...prev };
+        return {
+          ...DEFAULT_GAME_SETTINGS,
+          ...prev,
+          enableUltCutIn: prev.enableUltCutIn ?? true,
+        };
       },
       onRehydrateStorage: () => (state) => {
         if (state) {

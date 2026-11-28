@@ -650,8 +650,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     {[
                       {
-                        label: 'SSR 1080p Animated Ultimate Video Cut-Ins',
-                        desc: 'Turn OFF for instant lightweight static Cut-Ins during fast farming',
+                        label: 'Ultimate Cut-In Animation',
+                        desc: 'Turn OFF to skip full-screen Ultimate Cut-Ins and display a fast left-side callout banner like normal skills',
+                        value: settings.enableUltCutIn ?? true,
+                        onToggle: () => settings.setEnableUltCutIn(!(settings.enableUltCutIn ?? true)),
+                      },
+                      {
+                        label: 'SSR / UR 1080p Animated Ultimate Video Cut-Ins',
+                        desc: 'When Ultimate Cut-In is ON, turn OFF for lighter static Cut-Ins during fast farming',
                         value: settings.enableUltVideo,
                         onToggle: () => settings.setEnableUltVideo(!settings.enableUltVideo),
                       },

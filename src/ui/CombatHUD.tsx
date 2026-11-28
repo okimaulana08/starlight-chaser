@@ -82,7 +82,7 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
   const engineRef = useRef<CombatEngine | null>(null);
   const [runSeed, setRunSeed] = useState(0);
   const [showCombatSettings, setShowCombatSettings] = useState(false);
-  const { muted, toggleMuted } = useSettingsStore();
+  const { muted, toggleMuted, enableUltCutIn, setEnableUltCutIn } = useSettingsStore();
   const clearedStages = usePlayerStore((s) => s.clearedStages);
   const squadIds = usePlayerStore((s) => s.squadIds);
   const roster = usePlayerStore((s) => s.roster);
@@ -306,6 +306,25 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
               >
                 <span className="sm:hidden">SKILL {autoSkill ? 'ON' : 'OFF'}</span>
                 <span className="hidden sm:inline">AUTO SKILL {autoSkill ? 'ON' : 'OFF'}</span>
+              </button>
+              <button
+                onClick={() => {
+                  audioManager.playSfx('button');
+                  setEnableUltCutIn(!(enableUltCutIn ?? true));
+                }}
+                title={
+                  (enableUltCutIn ?? true)
+                    ? 'Ultimate Cut-In ON (click to switch to fast left-side callout banner)'
+                    : 'Ultimate Cut-In OFF (showing fast left-side callout banner)'
+                }
+                className={`px-2 sm:px-2.5 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-wider border transition whitespace-nowrap ${
+                  (enableUltCutIn ?? true)
+                    ? 'bg-slate-950/95 border-fuchsia-300 text-fuchsia-200 shadow-[0_0_12px_rgba(232,121,249,0.4)]'
+                    : 'bg-slate-950/90 border-slate-700 text-slate-400 hover:text-white'
+                }`}
+              >
+                <span className="sm:hidden">CUT {(enableUltCutIn ?? true) ? 'ON' : 'OFF'}</span>
+                <span className="hidden sm:inline">CUT-IN {(enableUltCutIn ?? true) ? 'ON' : 'OFF'}</span>
               </button>
               <button
                 onClick={() => toggleMuted()}

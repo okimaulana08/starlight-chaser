@@ -1,4 +1,5 @@
 import { useCombatStore } from '../store/useCombatStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { audioManager } from './AudioManager';
 import type { CombatContext, HeroUnit } from './CombatTypes';
 import type { SkillDef } from '../types/game';
@@ -34,6 +35,21 @@ export class UltimateDirector {
     ty: number,
     onExecutePayload: (hero: HeroUnit, skill: SkillDef, tx: number, ty: number) => void,
   ): void {
+    const enableUltCutIn = useSettingsStore.getState().enableUltCutIn ?? true;
+
+    // Fast Non-Blocking Mode when Ultimate Cut-In is OFF:
+    // Show left-side Ultimate callout strip (just like normal skills) & fire payload immediately!
+    if (!enableUltCutIn) {
+      this.active = false;
+      ctx.ultActive = false;
+      audioManager.playSfx('ult_chime', 0);
+      audioManager.playSfx('ult_impact', 0.04);
+      ctx.triggerShake(9);
+      ctx.triggerSkillCallout(hero, skill.name, 'ULT');
+      onExecutePayload(hero, skill, tx, ty);
+      return;
+    }
+
     this.active = true;
     this.elapsed = 0;
     this.hero = hero;
@@ -61,7 +77,7 @@ export class UltimateDirector {
       themeColor: hero.def.themeColor,
       cutInAsset: hero.def.assets.cutIn,
       cutInVideo: hero.def.assets.cutInVideo,
-      cardAsset: hero.def.assets.card,
+      cardAsset: hero.resolvedCardAsset ?? hero.def.assets.card,
       phase: 'FREEZE',
     });
   }
@@ -100,7 +116,7 @@ export class UltimateDirector {
         themeColor: this.hero.def.themeColor,
         cutInAsset: this.hero.def.assets.cutIn,
         cutInVideo: this.hero.def.assets.cutInVideo,
-        cardAsset: this.hero.def.assets.card,
+        cardAsset: this.hero.resolvedCardAsset ?? this.hero.def.assets.card,
         phase: 'CUTIN',
       });
     }

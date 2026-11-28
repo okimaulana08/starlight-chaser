@@ -369,10 +369,10 @@ export class SkillExecutor {
           endX: tx,
           endY: ty,
           elapsed: 0,
-          duration: 0.18,
+          duration: 0.26,
           color,
           ghostTimer: 0,
-          arcHeight: 38,
+          arcHeight: 42,
         };
         hero.atkSpdBuffTimer = 4.0;
         hero.atkSpdBuffValue = 0.35;
@@ -388,10 +388,10 @@ export class SkillExecutor {
         endX: tx,
         endY: ty,
         elapsed: 0,
-        duration: 0.15,
+        duration: 0.24,
         color,
         ghostTimer: 0,
-        arcHeight: 12,
+        arcHeight: 16,
       };
       const hitEnemies = this.findEnemiesInShape(ctx, 'LINE', originX, originY, tx, ty, radius, angle);
       for (const e of hitEnemies) {
@@ -628,13 +628,49 @@ export class SkillExecutor {
       hero.dmgReduceTimer = 6.0;
       hero.dmgReduceValue = 0.3;
     } else if (skill.id === 'garrick_s1') {
-      // Garrick leaps onto target zone
-      hero.x = tx;
-      hero.y = ty;
+      // Garrick leaps smoothly in a heroic shield-slam arc instead of snapping instantly!
+      const dist = Math.hypot(tx - hero.x, ty - hero.y);
+      const stopBack = Math.min(36, dist * 0.25);
+      const landX = Math.max(
+        ctx.bounds.minX + 45,
+        Math.min(ctx.bounds.maxX - 45, tx - Math.cos(angle) * stopBack),
+      );
+      const landY = Math.max(
+        ctx.bounds.minY + 45,
+        Math.min(ctx.bounds.maxY - 45, ty - Math.sin(angle) * stopBack),
+      );
+      hero.dashState = {
+        startX: hero.x,
+        startY: hero.y,
+        endX: landX,
+        endY: landY,
+        elapsed: 0,
+        duration: 0.28,
+        color,
+        ghostTimer: 0,
+        arcHeight: 54,
+      };
     } else if (skill.id === 'kael_s2') {
-      // Backstep Volley leaps backward slightly
-      hero.x = Math.max(ctx.bounds.minX + 45, hero.x - Math.cos(angle) * 65);
-      hero.y = Math.max(ctx.bounds.minY + 45, hero.y - Math.sin(angle) * 45);
+      // Backstep Volley vaults smoothly backward in a readable arc instead of teleporting!
+      const backX = Math.max(
+        ctx.bounds.minX + 45,
+        Math.min(ctx.bounds.maxX - 45, hero.x - Math.cos(angle) * 65),
+      );
+      const backY = Math.max(
+        ctx.bounds.minY + 45,
+        Math.min(ctx.bounds.maxY - 45, hero.y - Math.sin(angle) * 45),
+      );
+      hero.dashState = {
+        startX: hero.x,
+        startY: hero.y,
+        endX: backX,
+        endY: backY,
+        elapsed: 0,
+        duration: 0.22,
+        color,
+        ghostTimer: 0,
+        arcHeight: 28,
+      };
     }
 
     const hitCount = skill.hitCount ?? 1;
@@ -765,8 +801,25 @@ export class SkillExecutor {
         }
         if (skill.effects.includes('PULL')) {
           if (enemy.def.isBoss) {
-            hero.x = enemy.x - Math.cos(angle) * (enemy.def.radius + 45);
-            hero.y = enemy.y - Math.sin(angle) * (enemy.def.radius + 35);
+            const pullEndX = Math.max(
+              ctx.bounds.minX + 45,
+              Math.min(ctx.bounds.maxX - 45, enemy.x - Math.cos(angle) * (enemy.def.radius + 45)),
+            );
+            const pullEndY = Math.max(
+              ctx.bounds.minY + 45,
+              Math.min(ctx.bounds.maxY - 45, enemy.y - Math.sin(angle) * (enemy.def.radius + 35)),
+            );
+            hero.dashState = {
+              startX: hero.x,
+              startY: hero.y,
+              endX: pullEndX,
+              endY: pullEndY,
+              elapsed: 0,
+              duration: 0.24,
+              color: hexToNum(hero.def.themeColor),
+              ghostTimer: 0,
+              arcHeight: 18,
+            };
           } else {
             enemy.x = hero.x + Math.cos(angle) * 72;
             enemy.y = hero.y + Math.sin(angle) * 58;

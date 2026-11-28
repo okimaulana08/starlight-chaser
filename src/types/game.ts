@@ -15,6 +15,7 @@ export interface GameSettings {
   bgmVolume: number; // 0..1
   sfxVolume: number; // 0..1
   muted: boolean;
+  enableUltCutIn: boolean;
   enableUltVideo: boolean;
   enableScreenShake: boolean;
   enableDamageNumbers: boolean;

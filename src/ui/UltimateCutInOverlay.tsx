@@ -64,22 +64,28 @@ export const UltimateCutInOverlay: React.FC = () => {
         </div>
       )}
 
-      {/* NON-BLOCKING ANIME SKILL CALLOUT STRIP (Slides smoothly on S1 / S2 casts!) */}
+      {/* NON-BLOCKING ANIME SKILL & FAST-ULTIMATE CALLOUT STRIP (Slides smoothly on S1 / S2 & Cut-In-OFF Ultimates!) */}
       {skillCallout && !activeCutIn && (
         <div
           key={skillCallout.id}
           className="absolute left-3 sm:left-5 top-[22%] sm:top-[20%] z-40 animate-skill-callout"
         >
           <div
-            className="flex items-center gap-2.5 pr-5 pl-1.5 py-1.5 rounded-r-full rounded-l-full bg-slate-950/95 border-2 backdrop-blur-md shadow-[0_8px_28px_rgba(0,0,0,0.85)]"
+            className={`flex items-center gap-2.5 pr-5 pl-1.5 py-1.5 rounded-r-full rounded-l-full border-2 backdrop-blur-md shadow-[0_8px_28px_rgba(0,0,0,0.85)] ${
+              skillCallout.isUlt
+                ? 'bg-gradient-to-r from-[#1c1028]/95 via-slate-950/95 to-[#161a32]/95'
+                : 'bg-slate-950/95'
+            }`}
             style={{
-              borderColor: skillCallout.themeColor,
-              boxShadow: `0 0 24px ${skillCallout.themeColor}66, 0 8px 24px rgba(0,0,0,0.85)`,
+              borderColor: skillCallout.isUlt ? '#fde047' : skillCallout.themeColor,
+              boxShadow: skillCallout.isUlt
+                ? `0 0 32px ${skillCallout.themeColor}aa, 0 0 18px rgba(253,224,71,0.55), 0 8px 24px rgba(0,0,0,0.9)`
+                : `0 0 24px ${skillCallout.themeColor}66, 0 8px 24px rgba(0,0,0,0.85)`,
             }}
           >
             <div
               className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border-2 shrink-0 bg-slate-900"
-              style={{ borderColor: skillCallout.themeColor }}
+              style={{ borderColor: skillCallout.isUlt ? '#fde047' : skillCallout.themeColor }}
             >
               <img
                 src={skillCallout.cardAsset}
@@ -90,9 +96,11 @@ export const UltimateCutInOverlay: React.FC = () => {
             <div className="leading-tight">
               <div
                 className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.22em]"
-                style={{ color: skillCallout.themeColor }}
+                style={{ color: skillCallout.isUlt ? '#fde047' : skillCallout.themeColor }}
               >
-                {skillCallout.heroName} SKILL!
+                {skillCallout.isUlt
+                  ? `✦ ${skillCallout.heroName} ULTIMATE!`
+                  : `${skillCallout.heroName} SKILL!`}
               </div>
               <div className="font-display text-sm sm:text-lg font-black uppercase tracking-wider text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.95)]">
                 {skillCallout.skillName}

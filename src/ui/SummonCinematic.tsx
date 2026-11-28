@@ -311,28 +311,101 @@ export const SummonCinematic: React.FC<SummonCinematicProps> = ({
           />
         )}
 
-        {/* UR EXCLUSIVE PRISMATIC ASTROLABE FRACTURE HALO DURING CLIMAX */}
-        {highestTier === 'UR' && climaxProgress > 0.05 && (
+        {/* UR EXCLUSIVE: SSR-TO-UR PRISMATIC SHATTER FAKEOUT + TWIN ASTROLABE RINGS + 6 FIFTH-PILLAR CRESTS */}
+        {highestTier === 'UR' && climaxProgress > 0.04 && (
           <div
             className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
-            style={{ opacity: Math.min(1, climaxProgress * 1.15) }}
+            style={{ opacity: Math.min(1, climaxProgress * 1.2) }}
           >
+            {/* Expanding Prismatic Conic Supernova Rays */}
             <div
-              className="w-[140vmax] h-[140vmax] animate-spin"
+              className="w-[155vmax] h-[155vmax] animate-spin"
               style={{
-                animationDuration: '8s',
+                animationDuration: '7s',
                 background:
-                  'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.38) 0deg 4deg, rgba(56,232,255,0.34) 4deg 8deg, rgba(232,121,249,0.42) 8deg 12deg, transparent 12deg 24deg)',
+                  'repeating-conic-gradient(from 0deg, rgba(253,224,71,0.46) 0deg 3.5deg, rgba(56,232,255,0.42) 3.5deg 7deg, rgba(232,121,249,0.5) 7deg 11deg, transparent 11deg 22deg)',
                 mixBlendMode: 'screen',
               }}
             />
+
+            {/* Radial Dimensional Shatter Fracture Beams (triggers right when gold cracks into UR!) */}
+            {elapsed >= 3.45 && (
+              <svg
+                viewBox="0 0 1000 1000"
+                className="absolute w-[110vmax] h-[110vmax] opacity-85"
+                style={{
+                  mixBlendMode: 'screen',
+                  transform: `scale(${(0.75 + burstProgress * 0.45).toFixed(3)})`,
+                }}
+              >
+                {[
+                  'M500 500 L120 140 L40 90',
+                  'M500 500 L880 150 L960 70',
+                  'M500 500 L930 520 L1000 540',
+                  'M500 500 L820 880 L910 960',
+                  'M500 500 L180 860 L90 950',
+                  'M500 500 L60 470 L0 440',
+                  'M500 500 L515 90 L530 0',
+                  'M500 500 L485 910 L470 1000',
+                ].map((d, idx) => (
+                  <path
+                    key={idx}
+                    d={d}
+                    fill="none"
+                    stroke={idx % 3 === 0 ? '#ffffff' : idx % 3 === 1 ? '#e879f9' : '#38e8ff'}
+                    strokeWidth={idx % 2 === 0 ? 4 : 2.5}
+                    strokeLinecap="round"
+                    opacity={Math.min(1, (elapsed - 3.45) * 2.2)}
+                  />
+                ))}
+              </svg>
+            )}
+
+            {/* Outer Counter-Rotating Prismatic Sovereign Astrolabe Ring */}
             <div
-              className="absolute w-72 h-72 sm:w-[440px] sm:h-[440px] rounded-full border-2 border-amber-200/80 border-dashed animate-spin"
+              className="absolute w-80 h-80 sm:w-[500px] sm:h-[500px] rounded-full border-2 border-amber-200/85 border-dashed animate-spin"
               style={{
                 animationDuration: '6s',
-                boxShadow: '0 0 64px rgba(232,121,249,0.75), inset 0 0 42px rgba(56,232,255,0.55)',
+                boxShadow:
+                  '0 0 74px rgba(232,121,249,0.85), inset 0 0 48px rgba(56,232,255,0.65)',
               }}
             />
+
+            {/* Inner Reverse-Spinning Celestial Halo + 6 Orbiting Fifth-Pillar Star Diamonds */}
+            <div
+              className="absolute w-52 h-52 sm:w-80 sm:h-80 rounded-full border-2 border-cyan-200/80 animate-spin"
+              style={{
+                animationDuration: '4.2s',
+                animationDirection: 'reverse',
+                boxShadow: '0 0 42px rgba(253,224,71,0.75)',
+              }}
+            >
+              {[0, 60, 120, 180, 240, 300].map((deg) => (
+                <span
+                  key={deg}
+                  className="absolute left-1/2 top-1/2 text-base sm:text-xl font-black text-amber-200 drop-shadow-[0_0_12px_rgba(255,255,255,0.95)]"
+                  style={{
+                    transform: `translate(-50%, -50%) rotate(${deg}deg) translateY(-132px)`,
+                  }}
+                >
+                  ❖
+                </span>
+              ))}
+            </div>
+
+            {/* Dramatic Center Sovereign Edict Awakening Crest (3.7s–5.45s) */}
+            {elapsed >= 3.7 && whiteoutProgress < 0.75 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.72 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+                className="relative z-10 px-6 py-2.5 rounded-full border-2 border-amber-200/90 bg-slate-950/75 backdrop-blur-md shadow-[0_0_50px_rgba(232,121,249,0.9),0_0_24px_rgba(253,224,71,0.8)]"
+              >
+                <div className="font-display text-sm sm:text-2xl font-black uppercase tracking-[0.28em] text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-white to-fuchsia-200 whitespace-nowrap">
+                  ❖ SOVEREIGN UR AWAKENING ❖
+                </div>
+              </motion.div>
+            )}
           </div>
         )}
 

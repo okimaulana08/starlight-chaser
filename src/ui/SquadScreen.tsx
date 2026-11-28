@@ -968,24 +968,50 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
               <div className="space-y-1.5 overflow-y-auto pr-1 flex-1">
                 {candidateGear.map((eq) => {
                   const isEquippedHere = eq.uid === equippedUidForSlot;
+                  const wearerHero = eq.equippedHeroId ? HERO_MAP[eq.equippedHeroId] : null;
+                  const wearerOwned = eq.equippedHeroId ? roster[eq.equippedHeroId] : null;
+                  const wornByOther = Boolean(wearerHero && !isEquippedHere);
                   const salvage = getSalvageYield(eq);
                   return (
                     <div
                       key={eq.uid}
-                      className="rounded-xl p-2.5 bg-slate-950/80 border border-slate-700/70 hover:border-amber-400/45 transition flex items-center justify-between gap-2"
+                      className={`rounded-xl p-2.5 border transition flex items-center justify-between gap-2 ${
+                        isEquippedHere
+                          ? 'bg-emerald-950/25 border-emerald-400/60 shadow-[0_0_14px_rgba(52,211,153,0.14)]'
+                          : wornByOther
+                            ? 'bg-cyan-950/20 border-cyan-400/45 hover:border-cyan-300/80'
+                            : 'bg-slate-950/80 border-slate-700/70 hover:border-amber-400/45'
+                      }`}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div
-                          className="w-10 h-10 rounded-xl bg-slate-900 border flex items-center justify-center shrink-0"
+                          className="relative w-10 h-10 rounded-xl bg-slate-900 border flex items-center justify-center shrink-0"
                           style={{
                             borderColor: `${RARITY_COLORS[eq.rarity]}88`,
                             boxShadow: `inset 0 0 10px ${RARITY_COLORS[eq.rarity]}28`,
                           }}
                         >
                           <EquipIcon slot={eq.slot} className="w-8 h-8" />
+                          {wearerHero && (
+                            <div
+                              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full overflow-hidden border-[1.5px] bg-slate-950 shadow-md"
+                              style={{
+                                borderColor: isEquippedHere ? '#34d399' : wearerHero.themeColor,
+                              }}
+                              title={`Equipped by ${wearerHero.name}`}
+                            >
+                              <ArtImage
+                                kind="HERO"
+                                id={wearerHero.id}
+                                src={resolveHeroVisuals(wearerHero, wearerOwned).card}
+                                alt={wearerHero.name}
+                                className="w-full h-full object-cover object-top"
+                              />
+                            </div>
+                          )}
                         </div>
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span
                               className="text-xs font-bold truncate"
                               style={{ color: RARITY_COLORS[eq.rarity] }}
@@ -996,14 +1022,36 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                               {EQUIPMENT_SETS[eq.setId].name.replace(' Set', '')}
                             </span>
                           </div>
-                          <div className="text-xs font-mono font-bold text-amber-200">
-                            {formatStatValue(eq.mainStat.stat, getEnhancedMainStatValue(eq))}
+                          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                            <span className="text-xs font-mono font-bold text-amber-200">
+                              {formatStatValue(eq.mainStat.stat, getEnhancedMainStatValue(eq))}
+                            </span>
+                            {wearerHero && (
+                              <span
+                                className={`inline-flex items-center gap-1 pl-0.5 pr-2 py-0.5 rounded-full text-[9px] font-display font-black uppercase tracking-wider border ${
+                                  isEquippedHere
+                                    ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200'
+                                    : 'bg-cyan-500/20 border-cyan-400/65 text-cyan-200'
+                                }`}
+                              >
+                                <span
+                                  className="w-3.5 h-3.5 rounded-full overflow-hidden border shrink-0 bg-slate-950"
+                                  style={{ borderColor: wearerHero.themeColor }}
+                                >
+                                  <ArtImage
+                                    kind="HERO"
+                                    id={wearerHero.id}
+                                    src={resolveHeroVisuals(wearerHero, wearerOwned).card}
+                                    alt={wearerHero.name}
+                                    className="w-full h-full object-cover object-top"
+                                  />
+                                </span>
+                                <span>
+                                  {isEquippedHere ? `On ${wearerHero.name}` : `Used by ${wearerHero.name}`}
+                                </span>
+                              </span>
+                            )}
                           </div>
-                          {eq.equippedHeroId && eq.equippedHeroId !== heroDef.id && (
-                            <div className="text-[10px] text-cyan-300">
-                              Worn by {HERO_MAP[eq.equippedHeroId]?.name}
-                            </div>
-                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -1024,14 +1072,19 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                         </button>
                         {!isEquippedHere ? (
                           <RpgButton
-                            variant="cyan"
+                            variant={wornByOther ? 'gold' : 'cyan'}
                             size="xs"
+                            title={
+                              wearerHero
+                                ? `Transfer from ${wearerHero.name} to ${heroDef.name}`
+                                : `Equip on ${heroDef.name}`
+                            }
                             onClick={() => {
                               equipGear(heroDef.id, activeSlot, eq.uid);
                               audioManager.playSfx('button');
                             }}
                           >
-                            Equip
+                            {wornByOther ? 'Swap' : 'Equip'}
                           </RpgButton>
                         ) : (
                           <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/45 text-emerald-300 text-[10px] font-black">
@@ -1098,6 +1151,11 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                   const r = RELIC_MAP[rid];
                   if (!r) return null;
                   const equippedHere = ownedHero.equippedRelicId === rid;
+                  const wearerId =
+                    Object.keys(roster).find((hid) => roster[hid]?.equippedRelicId === rid) ?? null;
+                  const wearerHero = wearerId ? HERO_MAP[wearerId] : null;
+                  const wearerOwned = wearerId ? roster[wearerId] : null;
+                  const wornByOther = Boolean(wearerHero && !equippedHere);
                   const rank = relicRanks[rid] ?? 1;
                   const rankPct = (rank - 1) * 15;
                   return (
@@ -1106,7 +1164,9 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                       className={`rounded-xl p-3 border flex gap-3 items-center transition ${
                         equippedHere
                           ? 'bg-amber-500/15 border-amber-400 shadow-[0_0_16px_rgba(245,200,76,0.2)]'
-                          : 'bg-slate-950/80 border-slate-700/75 hover:border-amber-400/40'
+                          : wornByOther
+                            ? 'bg-cyan-950/25 border-cyan-400/55 hover:border-cyan-300'
+                            : 'bg-slate-950/80 border-slate-700/75 hover:border-amber-400/40'
                       }`}
                     >
                       <div className="relative w-16 aspect-[3/4] rounded-lg overflow-hidden border border-white/20 shrink-0">
@@ -1117,6 +1177,23 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                           alt={r.name}
                           className="w-full h-full object-cover"
                         />
+                        {wearerHero && (
+                          <div
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full overflow-hidden border-2 bg-slate-950 shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                            style={{
+                              borderColor: equippedHere ? '#fde047' : wearerHero.themeColor,
+                            }}
+                            title={`Equipped by ${wearerHero.name}`}
+                          >
+                            <ArtImage
+                              kind="HERO"
+                              id={wearerHero.id}
+                              src={resolveHeroVisuals(wearerHero, wearerOwned).card}
+                              alt={wearerHero.name}
+                              className="w-full h-full object-cover object-top"
+                            />
+                          </div>
+                        )}
                         <span className="absolute bottom-0 inset-x-0 bg-black/85 text-[9px] font-mono font-black text-center text-cyan-300">
                           R{rank}/{MAX_RELIC_RANK}
                         </span>
@@ -1135,10 +1212,39 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                             </span>
                           )}
                         </div>
+                        {wearerHero && (
+                          <div className="mt-1">
+                            <span
+                              className={`inline-flex items-center gap-1.5 pl-0.5 pr-2 py-0.5 rounded-full text-[9px] font-display font-black uppercase tracking-wider border ${
+                                equippedHere
+                                  ? 'bg-emerald-500/20 border-emerald-400/60 text-emerald-200'
+                                  : 'bg-cyan-500/20 border-cyan-400/65 text-cyan-200'
+                              }`}
+                            >
+                              <span
+                                className="w-4 h-4 rounded-full overflow-hidden border shrink-0 bg-slate-950"
+                                style={{ borderColor: wearerHero.themeColor }}
+                              >
+                                <ArtImage
+                                  kind="HERO"
+                                  id={wearerHero.id}
+                                  src={resolveHeroVisuals(wearerHero, wearerOwned).card}
+                                  alt={wearerHero.name}
+                                  className="w-full h-full object-cover object-top"
+                                />
+                              </span>
+                              <span>
+                                {equippedHere
+                                  ? `Equipped on ${wearerHero.name}`
+                                  : `Used by ${wearerHero.name}`}
+                              </span>
+                            </span>
+                          </div>
+                        )}
                         <p className="text-xs text-slate-300 mt-1 leading-snug">{r.passiveDesc}</p>
                         <div className="mt-2">
                           <RpgButton
-                            variant={equippedHere ? 'rose' : 'gold'}
+                            variant={equippedHere ? 'rose' : wornByOther ? 'cyan' : 'gold'}
                             size="xs"
                             onClick={() => {
                               equipRelic(heroDef.id, equippedHere ? null : rid);
@@ -1146,7 +1252,11 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                             }}
                             className="uppercase font-display font-black"
                           >
-                            {equippedHere ? 'Unequip' : 'Equip Relic'}
+                            {equippedHere
+                              ? 'Unequip'
+                              : wearerHero
+                                ? `Swap from ${wearerHero.name}`
+                                : 'Equip Relic'}
                           </RpgButton>
                         </div>
                       </div>
