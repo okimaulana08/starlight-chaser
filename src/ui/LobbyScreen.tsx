@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
+  CalendarDays,
   ClipboardList,
   Crown,
   Download,
@@ -43,6 +44,7 @@ import { CODEX_MILESTONES, DAILY_SUPPLY_COOLDOWN_MS, usePlayerStore } from '../s
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { DungeonId, Faction, ScreenId } from '../types/game';
 import { ArtImage } from './ArtImage';
+import { CheckInModal } from './CheckInModal';
 import { CommissionsModal } from './CommissionsModal';
 import { GameIcon } from './GameIcon';
 import { Live2DLobbyStage } from './Live2DLobbyStage';
@@ -107,8 +109,12 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     dungeonEntriesUsed,
     dungeonResetDay,
     spireHighestFloor,
+    checkInCycle,
+    checkInClaimedDays,
+    checkInLastClaimDate,
     getDungeonEntriesLeft,
     getClaimableCommissionsCount,
+    getCheckInStatus,
     claimDailySupply,
   } = usePlayerStore();
 
@@ -117,6 +123,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   const [showMap, setShowMap] = useState(false);
   const [showPartyModal, setShowPartyModal] = useState(false);
   const [showCommissions, setShowCommissions] = useState(false);
+  const [showCheckIn, setShowCheckIn] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showDialogue, setShowDialogue] = useState(true);
   const [lineIndex, setLineIndex] = useState(0);
@@ -179,6 +186,10 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     [squadIds, roster, activePetId, petsMap],
   );
   const claimableCommissions = getClaimableCommissionsCount();
+  void checkInCycle;
+  void checkInClaimedDays;
+  void checkInLastClaimDate;
+  const checkInStatus = getCheckInStatus();
   const claimableCodex = CODEX_MILESTONES.some(
     (m) => unlockedCodexIds.length >= m.threshold && !claimedCodexMilestones.includes(m.threshold),
   );
@@ -530,6 +541,26 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               <span className="hidden md:inline">{dailySupplyReady ? 'Daily Supply' : 'Supply'}</span>
               {dailySupplyReady && (
                 <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse" />
+              )}
+            </button>
+            <button
+              onClick={() => {
+                audioManager.playSfx('button');
+                setShowCheckIn(true);
+              }}
+              className={`relative rpg-panel-subtle px-2 sm:px-3 py-1 sm:py-1.5 text-[10px] sm:text-xs font-display font-black uppercase tracking-wider flex items-center gap-1 transition ${
+                checkInStatus.canClaimToday
+                  ? 'border-amber-300/90 text-amber-200 hover:bg-amber-400/20 shadow-[0_0_16px_rgba(245,200,76,0.35)]'
+                  : 'text-slate-200 hover:border-amber-400/70 hover:text-amber-200'
+              }`}
+              title="7-Day Starfall Check-In Calendar"
+            >
+              <CalendarDays className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden md:inline">Check-In</span>
+              {checkInStatus.canClaimToday && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 border border-amber-200 text-white text-[9px] font-mono font-black flex items-center justify-center shadow-[0_0_10px_rgba(244,63,94,0.9)] animate-pulse">
+                  D{checkInStatus.nextClaimableDay}
+                </span>
               )}
             </button>
             <button
@@ -1010,6 +1041,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
       <PartyManagerModal open={showPartyModal} onClose={() => setShowPartyModal(false)} />
       <CommissionsModal open={showCommissions} onClose={() => setShowCommissions(false)} />
+      <CheckInModal open={showCheckIn} onClose={() => setShowCheckIn(false)} />
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
 
       {showMap && (

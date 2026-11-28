@@ -577,7 +577,14 @@ export interface PlayerSaveState {
   dailyCommissionProgress: Record<string, number>;
   claimedDailyCommissions: string[];
   claimedActivityMilestones: number[];
+  weeklyCommissionResetKey?: string;
+  weeklyCommissionProgress?: Record<string, number>;
+  claimedWeeklyCommissions?: string[];
+  claimedWeeklyMilestones?: number[];
   claimedPermanentCommissions: string[];
+  checkInCycle?: number;
+  checkInClaimedDays?: number[];
+  checkInLastClaimDate?: string;
   lifetimeLinkBursts: number;
   lastManualSaveAt: number;
 }

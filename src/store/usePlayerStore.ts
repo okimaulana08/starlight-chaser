@@ -4,9 +4,18 @@ import {
   DAILY_ACTIVITY_MILESTONES,
   DAILY_COMMISSIONS,
   PERMANENT_COMMISSIONS,
+  WEEKLY_ACTIVITY_MILESTONES,
+  WEEKLY_COMMISSIONS,
   computeDailyActivityPoints,
+  computeWeeklyActivityPoints,
+  getCurrentWeekKey,
   type CommissionReward,
 } from '../data/commissions';
+import {
+  STARFALL_CHECKIN_DAYS,
+  resolveCheckInStatus,
+  type CheckInDayDef,
+} from '../data/checkIn';
 import {
   MAX_CONSTELLATION_LEVEL,
   getConstellationNodeCost,
@@ -45,7 +54,9 @@ import { computeHeroStats } from '../engine/CombatMath';
 import {
   enhanceEquipmentItem,
   getEnhanceCost,
+  getReforgeCost,
   getSalvageYield,
+  rollReforgedSubStats,
 } from '../systems/ForgeSystem';
 import { executeGachaPulls, isURBanner } from '../systems/GachaSystem';
 import type {
@@ -59,6 +70,7 @@ import type {
   EquipmentRarity,
   EquipmentSetId,
   EquipmentSlot,
+  EquipmentSubStat,
   Faction,
   GachaPullResult,
   HeroBattleExpResult,
@@ -206,7 +218,14 @@ export function buildDefaultSaveState(): PlayerSaveState {
     dailyCommissionProgress: {},
     claimedDailyCommissions: [],
     claimedActivityMilestones: [],
+    weeklyCommissionResetKey: getCurrentWeekKey(),
+    weeklyCommissionProgress: {},
+    claimedWeeklyCommissions: [],
+    claimedWeeklyMilestones: [],
     claimedPermanentCommissions: [],
+    checkInCycle: 1,
+    checkInClaimedDays: [],
+    checkInLastClaimDate: '',
     lifetimeLinkBursts: 0,
     lastManualSaveAt: 0,
   };
@@ -263,7 +282,7 @@ interface PlayerStore extends PlayerSaveState {
     powerAfter: number;
     message: string;
   };
-  batchSalvageGear: (maxRarity: 'COMMON' | 'RARE') => {
+  batchSalvageGear: (maxRarity: 'COMMON' | 'RARE' | 'EPIC') => {
     ok: boolean;
     count: number;
     gold: number;
@@ -273,6 +292,18 @@ interface PlayerStore extends PlayerSaveState {
     message: string;
   };
   enhanceGear: (uid: string) => { ok: boolean; succeeded: boolean; message: string };
+  rollGearReforge: (
+    uid: string,
+    lockedIndex?: number | null,
+  ) => {
+    ok: boolean;
+    message: string;
+    candidateSubStats?: EquipmentSubStat[];
+  };
+  applyGearReforge: (
+    uid: string,
+    nextSubStats: EquipmentSubStat[],
+  ) => { ok: boolean; message: string };
   salvageGear: (uid: string) => void;
   buyShopItem: (offerId: string) => { ok: boolean; message: string; droppedGear?: EquipmentInstance };
   buyHeroShards: (heroId: string) => { ok: boolean; message: string };
@@ -310,9 +341,24 @@ interface PlayerStore extends PlayerSaveState {
   };
   claimDailyCommission: (id: string) => { ok: boolean; message: string };
   claimActivityMilestone: (points: number) => { ok: boolean; message: string };
+  claimWeeklyCommission: (id: string) => { ok: boolean; message: string };
+  claimWeeklyActivityMilestone: (points: number) => { ok: boolean; message: string };
   claimPermanentCommission: (id: string) => { ok: boolean; message: string };
   claimAllCommissions: () => { ok: boolean; count: number; message: string };
   getClaimableCommissionsCount: () => number;
+  getCheckInStatus: () => {
+    activeCycle: number;
+    claimedInCycle: number[];
+    claimedToday: boolean;
+    nextClaimableDay: number | null;
+    canClaimToday: boolean;
+  };
+  claimDailyCheckIn: () => {
+    ok: boolean;
+    message: string;
+    dayDef?: CheckInDayDef;
+    droppedGear?: EquipmentInstance;
+  };
   resetSave: () => void;
 }
 
@@ -382,6 +428,9 @@ function applyCommissionReward(
   if (reward.expPotions) patch.expPotions = state.expPotions + reward.expPotions;
   if (reward.forgeStones) patch.forgeStones = state.forgeStones + reward.forgeStones;
   if (reward.starIronIngots) patch.starIronIngots = state.starIronIngots + reward.starIronIngots;
+  if (reward.astralAnvilCores) {
+    patch.astralAnvilCores = state.astralAnvilCores + reward.astralAnvilCores;
+  }
   if (reward.starCores) patch.starCores = state.starCores + reward.starCores;
   if (reward.relicFragments) patch.relicFragments = state.relicFragments + reward.relicFragments;
   if (reward.bondGifts) patch.bondGifts = state.bondGifts + reward.bondGifts;
@@ -415,6 +464,36 @@ function bumpDailyProgress(
     dailyCommissionProgress: progress,
     claimedDailyCommissions: claimedDaily,
     claimedActivityMilestones: claimedMilestones,
+  };
+}
+
+function bumpWeeklyProgress(
+  state: PlayerSaveState,
+  increments: Record<string, number>,
+): Pick<
+  PlayerSaveState,
+  | 'weeklyCommissionResetKey'
+  | 'weeklyCommissionProgress'
+  | 'claimedWeeklyCommissions'
+  | 'claimedWeeklyMilestones'
+> {
+  const weekKey = getCurrentWeekKey();
+  const sameWeek = state.weeklyCommissionResetKey === weekKey;
+  const progress: Record<string, number> = sameWeek
+    ? { ...(state.weeklyCommissionProgress ?? {}) }
+    : {};
+  const claimedWeekly = sameWeek ? [...(state.claimedWeeklyCommissions ?? [])] : [];
+  const claimedMilestones = sameWeek ? [...(state.claimedWeeklyMilestones ?? [])] : [];
+  for (const [k, delta] of Object.entries(increments)) {
+    if (delta > 0) {
+      progress[k] = (progress[k] ?? 0) + delta;
+    }
+  }
+  return {
+    weeklyCommissionResetKey: weekKey,
+    weeklyCommissionProgress: progress,
+    claimedWeeklyCommissions: claimedWeekly,
+    claimedWeeklyMilestones: claimedMilestones,
   };
 }
 
@@ -535,7 +614,7 @@ export const usePlayerStore = create<PlayerStore>()(
         state.squadIds.forEach((hid, idx) => {
           const own = state.roster[hid];
           if (!own) return;
-          const levelCap = getHeroLevelCap(own.awakening);
+          const levelCap = getHeroLevelCap(own.awakening, Boolean(own.transcended));
           const prevLevel = own.level;
           const prevExp = own.exp ?? 0;
           const expGained = Math.round(baseHeroExp * (idx === 1 ? 1.15 : 1.0));
@@ -1464,6 +1543,7 @@ export const usePlayerStore = create<PlayerStore>()(
           roster: nextRoster,
           equipmentInventory: nextInv,
           ...bumpDailyProgress(state, { daily_forge_gear: 1 }),
+          ...bumpWeeklyProgress(state, { weekly_forge_mastery: 1 }),
         });
         const powerAfter = computeHeroStats(
           def,
@@ -1485,15 +1565,24 @@ export const usePlayerStore = create<PlayerStore>()(
 
       batchSalvageGear: (maxRarity) => {
         const state = get();
-        const allowed =
-          maxRarity === 'COMMON'
-            ? new Set<EquipmentRarity>(['COMMON'])
-            : new Set<EquipmentRarity>(['COMMON', 'RARE']);
-
-        const targets = state.equipmentInventory.filter(
-          (item) => !item.equippedHeroId && !item.locked && allowed.has(item.rarity),
-        );
+        const targets = state.equipmentInventory.filter((item) => {
+          if (item.equippedHeroId || item.locked) return false;
+          if (maxRarity === 'COMMON') return item.rarity === 'COMMON';
+          if (maxRarity === 'RARE') return item.rarity === 'COMMON' || item.rarity === 'RARE';
+          // EPIC mode: include Common/Rare + unenhanced (+0) Epic gear so leveled Epic pieces stay safe!
+          return (
+            item.rarity === 'COMMON' ||
+            item.rarity === 'RARE' ||
+            (item.rarity === 'EPIC' && item.enhanceLevel === 0)
+          );
+        });
         if (targets.length === 0) {
+          const label =
+            maxRarity === 'COMMON'
+              ? 'Common'
+              : maxRarity === 'RARE'
+                ? 'Common/Rare'
+                : 'Common/Rare/Epic (+0)';
           return {
             ok: false,
             count: 0,
@@ -1501,7 +1590,7 @@ export const usePlayerStore = create<PlayerStore>()(
             forgeStones: 0,
             starIronIngots: 0,
             astralAnvilCores: 0,
-            message: `No unlocked, unequipped ${maxRarity === 'COMMON' ? 'Common' : 'Common/Rare'} gear to salvage.`,
+            message: `No unlocked, unequipped ${label} gear to salvage.`,
           };
         }
 
@@ -1577,6 +1666,7 @@ export const usePlayerStore = create<PlayerStore>()(
           astralAnvilCores: state.astralAnvilCores - cost.astralAnvilCores,
           equipmentInventory: nextInv,
           ...bumpDailyProgress(state, { daily_forge_gear: 1 }),
+          ...bumpWeeklyProgress(state, { weekly_forge_mastery: 1 }),
         });
 
         if (!succeeded) {
@@ -1598,6 +1688,61 @@ export const usePlayerStore = create<PlayerStore>()(
             ? `Enhanced to +${updated.enhanceLevel}! (${upgradedSubStat})`
             : `Enhanced to +${updated.enhanceLevel}!`,
         };
+      },
+
+      rollGearReforge: (uid, lockedIndex = null) => {
+        const state = get();
+        const target = state.equipmentInventory.find((i) => i.uid === uid);
+        if (!target) return { ok: false, message: 'Equipment not found.' };
+        const cost = getReforgeCost(target, lockedIndex);
+        if (!cost.eligible) {
+          return { ok: false, message: cost.reason ?? 'Cannot reforge this equipment.' };
+        }
+        if (state.gold < cost.gold) {
+          return { ok: false, message: `Need ${cost.gold.toLocaleString()} Gold.` };
+        }
+        if (state.forgeStones < cost.forgeStones) {
+          return { ok: false, message: `Need ${cost.forgeStones} Forge Stones.` };
+        }
+        if (state.starIronIngots < cost.starIronIngots) {
+          return { ok: false, message: `Need ${cost.starIronIngots} Star-Iron Ingots.` };
+        }
+        if (state.astralAnvilCores < cost.astralAnvilCores) {
+          return {
+            ok: false,
+            message: `Need ${cost.astralAnvilCores} Astral Anvil Cores (Ferrum Foundry TVII–TX / Boss / Shop).`,
+          };
+        }
+
+        const candidateSubStats = rollReforgedSubStats(target, lockedIndex);
+        set({
+          gold: state.gold - cost.gold,
+          forgeStones: state.forgeStones - cost.forgeStones,
+          starIronIngots: state.starIronIngots - cost.starIronIngots,
+          astralAnvilCores: state.astralAnvilCores - cost.astralAnvilCores,
+          ...bumpDailyProgress(state, { daily_forge_gear: 1 }),
+          ...bumpWeeklyProgress(state, { weekly_forge_mastery: 1 }),
+        });
+        return {
+          ok: true,
+          message: 'Substats reforged! Review and apply your preferred roll.',
+          candidateSubStats,
+        };
+      },
+
+      applyGearReforge: (uid, nextSubStats) => {
+        const state = get();
+        const target = state.equipmentInventory.find((i) => i.uid === uid);
+        if (!target) return { ok: false, message: 'Equipment not found.' };
+        if (!Array.isArray(nextSubStats) || nextSubStats.length === 0) {
+          return { ok: false, message: 'Invalid substat roll.' };
+        }
+        set({
+          equipmentInventory: state.equipmentInventory.map((item) =>
+            item.uid === uid ? { ...item, subStats: nextSubStats.map((s) => ({ ...s })) } : item,
+          ),
+        });
+        return { ok: true, message: `Applied new substats to ${target.name} +${target.enhanceLevel}!` };
       },
 
       salvageGear: (uid) => {
@@ -1888,6 +2033,7 @@ export const usePlayerStore = create<PlayerStore>()(
           relicRanks: nextRelicRanks,
           unlockedCodexIds: nextCodex,
           ...bumpDailyProgress(state, { daily_summon_or_supply: 1 }),
+          ...bumpWeeklyProgress(state, { weekly_summon_dispatch: 1 }),
         });
 
         return { ok: true, results: out.results };
@@ -2120,6 +2266,12 @@ export const usePlayerStore = create<PlayerStore>()(
           daily_link_burst: linkBurstsEarned,
           daily_spire_ascent: summary.isSpire ? 1 : 0,
         });
+        const weeklyBump = bumpWeeklyProgress(state, {
+          weekly_clear_battles: 1,
+          weekly_dungeon_runs: summary.isDungeon ? 1 : 0,
+          weekly_spire_climbs: summary.isSpire ? 1 : 0,
+          weekly_tactical_combos: bossBreaksEarned + linkBurstsEarned,
+        });
 
         set({
           gold: state.gold + summary.goldEarned,
@@ -2145,6 +2297,7 @@ export const usePlayerStore = create<PlayerStore>()(
           spireHighestFloor: nextSpireHighest,
           lifetimeLinkBursts: (state.lifetimeLinkBursts ?? 0) + linkBurstsEarned,
           ...dailyBump,
+          ...weeklyBump,
         });
       },
 
@@ -2176,6 +2329,7 @@ export const usePlayerStore = create<PlayerStore>()(
           },
           lastDailySupplyAt: now,
           ...bumpDailyProgress(state, { daily_summon_or_supply: 1 }),
+          ...bumpWeeklyProgress(state, { weekly_summon_dispatch: 1 }),
         });
         return {
           ok: true,
@@ -2212,6 +2366,7 @@ export const usePlayerStore = create<PlayerStore>()(
           astralAnvilCores: state.astralAnvilCores + rewards.astralAnvilCores,
           spireLastSweepDay: today,
           ...bumpDailyProgress(state, { daily_spire_ascent: 1, daily_clear_battles: 1 }),
+          ...bumpWeeklyProgress(state, { weekly_spire_climbs: 1, weekly_clear_battles: 1 }),
         });
         return {
           ok: true,
@@ -2263,6 +2418,55 @@ export const usePlayerStore = create<PlayerStore>()(
         return { ok: true, message: `Opened ${def.label} (${points} pts)!` };
       },
 
+      claimWeeklyCommission: (id) => {
+        const state = get();
+        const def = WEEKLY_COMMISSIONS.find((c) => c.id === id);
+        if (!def) return { ok: false, message: 'Weekly commission not found.' };
+        const weekKey = getCurrentWeekKey();
+        const sameWeek = state.weeklyCommissionResetKey === weekKey;
+        const progress = sameWeek ? (state.weeklyCommissionProgress?.[id] ?? 0) : 0;
+        const claimed = sameWeek ? (state.claimedWeeklyCommissions ?? []) : [];
+        if (claimed.includes(id)) return { ok: false, message: 'Already claimed this week!' };
+        if (progress < def.target) {
+          return { ok: false, message: `Progress ${progress}/${def.target} not complete yet.` };
+        }
+
+        const rewardPatch = applyCommissionReward(state, def.reward);
+        set({
+          ...rewardPatch,
+          weeklyCommissionResetKey: weekKey,
+          weeklyCommissionProgress: sameWeek ? { ...(state.weeklyCommissionProgress ?? {}) } : {},
+          claimedWeeklyCommissions: [...claimed, id],
+          claimedWeeklyMilestones: sameWeek ? [...(state.claimedWeeklyMilestones ?? [])] : [],
+        });
+        return { ok: true, message: `Claimed Weekly: ${def.title} (+${def.activityPoints} Weekly Pts)!` };
+      },
+
+      claimWeeklyActivityMilestone: (points) => {
+        const state = get();
+        const def = WEEKLY_ACTIVITY_MILESTONES.find((m) => m.points === points);
+        if (!def) return { ok: false, message: 'Weekly activity chest not found.' };
+        const weekKey = getCurrentWeekKey();
+        const sameWeek = state.weeklyCommissionResetKey === weekKey;
+        const claimedWeekly = sameWeek ? (state.claimedWeeklyCommissions ?? []) : [];
+        const claimedMilestones = sameWeek ? (state.claimedWeeklyMilestones ?? []) : [];
+        const currentPts = computeWeeklyActivityPoints(claimedWeekly);
+        if (claimedMilestones.includes(points)) {
+          return { ok: false, message: 'Weekly chest already claimed!' };
+        }
+        if (currentPts < points) {
+          return { ok: false, message: `Need ${points} Weekly Points (Current: ${currentPts}).` };
+        }
+
+        const rewardPatch = applyCommissionReward(state, def.reward);
+        set({
+          ...rewardPatch,
+          weeklyCommissionResetKey: weekKey,
+          claimedWeeklyMilestones: [...claimedMilestones, points],
+        });
+        return { ok: true, message: `Opened ${def.label} (${points} Weekly Pts)!` };
+      },
+
       claimPermanentCommission: (id) => {
         const state = get();
         const def = PERMANENT_COMMISSIONS.find((c) => c.id === id);
@@ -2283,6 +2487,7 @@ export const usePlayerStore = create<PlayerStore>()(
       claimAllCommissions: () => {
         let count = 0;
         const today = getTodayKey();
+        const weekKey = getCurrentWeekKey();
         for (const c of DAILY_COMMISSIONS) {
           const st = get();
           const sameDay = st.commissionResetDay === today;
@@ -2301,6 +2506,24 @@ export const usePlayerStore = create<PlayerStore>()(
             if (get().claimActivityMilestone(m.points).ok) count += 1;
           }
         }
+        for (const w of WEEKLY_COMMISSIONS) {
+          const st = get();
+          const sameWeek = st.weeklyCommissionResetKey === weekKey;
+          const prog = sameWeek ? (st.weeklyCommissionProgress?.[w.id] ?? 0) : 0;
+          const claimed = sameWeek ? (st.claimedWeeklyCommissions ?? []) : [];
+          if (prog >= w.target && !claimed.includes(w.id)) {
+            if (get().claimWeeklyCommission(w.id).ok) count += 1;
+          }
+        }
+        for (const m of WEEKLY_ACTIVITY_MILESTONES) {
+          const st = get();
+          const sameWeek = st.weeklyCommissionResetKey === weekKey;
+          const claimedWeekly = sameWeek ? (st.claimedWeeklyCommissions ?? []) : [];
+          const claimedMs = sameWeek ? (st.claimedWeeklyMilestones ?? []) : [];
+          if (computeWeeklyActivityPoints(claimedWeekly) >= m.points && !claimedMs.includes(m.points)) {
+            if (get().claimWeeklyActivityMilestone(m.points).ok) count += 1;
+          }
+        }
         for (const p of PERMANENT_COMMISSIONS) {
           const st = get();
           if (
@@ -2317,9 +2540,13 @@ export const usePlayerStore = create<PlayerStore>()(
       getClaimableCommissionsCount: () => {
         const st = get();
         const today = getTodayKey();
+        const weekKey = getCurrentWeekKey();
         const sameDay = st.commissionResetDay === today;
         const claimedDaily = sameDay ? (st.claimedDailyCommissions ?? []) : [];
         const claimedMs = sameDay ? (st.claimedActivityMilestones ?? []) : [];
+        const sameWeek = st.weeklyCommissionResetKey === weekKey;
+        const claimedWeekly = sameWeek ? (st.claimedWeeklyCommissions ?? []) : [];
+        const claimedWMs = sameWeek ? (st.claimedWeeklyMilestones ?? []) : [];
         let total = 0;
         for (const c of DAILY_COMMISSIONS) {
           const prog = sameDay ? (st.dailyCommissionProgress?.[c.id] ?? 0) : 0;
@@ -2328,6 +2555,14 @@ export const usePlayerStore = create<PlayerStore>()(
         const pts = computeDailyActivityPoints(claimedDaily);
         for (const m of DAILY_ACTIVITY_MILESTONES) {
           if (pts >= m.points && !claimedMs.includes(m.points)) total += 1;
+        }
+        for (const w of WEEKLY_COMMISSIONS) {
+          const prog = sameWeek ? (st.weeklyCommissionProgress?.[w.id] ?? 0) : 0;
+          if (prog >= w.target && !claimedWeekly.includes(w.id)) total += 1;
+        }
+        const wPts = computeWeeklyActivityPoints(claimedWeekly);
+        for (const m of WEEKLY_ACTIVITY_MILESTONES) {
+          if (wPts >= m.points && !claimedWMs.includes(m.points)) total += 1;
         }
         for (const p of PERMANENT_COMMISSIONS) {
           if (
@@ -2338,6 +2573,63 @@ export const usePlayerStore = create<PlayerStore>()(
           }
         }
         return total;
+      },
+
+      getCheckInStatus: () => {
+        const st = get();
+        return resolveCheckInStatus(
+          st.checkInCycle,
+          st.checkInClaimedDays,
+          st.checkInLastClaimDate,
+          getTodayKey(),
+        );
+      },
+
+      claimDailyCheckIn: () => {
+        const st = get();
+        const today = getTodayKey();
+        const status = resolveCheckInStatus(
+          st.checkInCycle,
+          st.checkInClaimedDays,
+          st.checkInLastClaimDate,
+          today,
+        );
+        if (!status.canClaimToday || status.nextClaimableDay === null) {
+          return { ok: false, message: 'Today’s Starfall Check-In already claimed! Return tomorrow.' };
+        }
+        const dayDef = STARFALL_CHECKIN_DAYS.find((d) => d.day === status.nextClaimableDay);
+        if (!dayDef) {
+          return { ok: false, message: 'Check-In reward not found.' };
+        }
+
+        const rewardPatch = applyCommissionReward(st, dayDef.reward);
+        let droppedGear: EquipmentInstance | undefined;
+        if (dayDef.reward.gearCrateRarity && rewardPatch.equipmentInventory) {
+          droppedGear = rewardPatch.equipmentInventory[0];
+        }
+
+        if (dayDef.allFactionEssences && dayDef.allFactionEssences > 0) {
+          const q = dayDef.allFactionEssences;
+          rewardPatch.factionEssences = {
+            SOLARIS: (st.factionEssences.SOLARIS ?? 0) + q,
+            ASTRAL: (st.factionEssences.ASTRAL ?? 0) + q,
+            VERDANT: (st.factionEssences.VERDANT ?? 0) + q,
+            ASHEN: (st.factionEssences.ASHEN ?? 0) + q,
+          };
+        }
+
+        set({
+          ...rewardPatch,
+          checkInCycle: status.activeCycle,
+          checkInClaimedDays: [...status.claimedInCycle, dayDef.day],
+          checkInLastClaimDate: today,
+        });
+        return {
+          ok: true,
+          message: `Day ${dayDef.day} Check-In Claimed — ${dayDef.title}!`,
+          dayDef,
+          droppedGear,
+        };
       },
 
       resetSave: () => set(buildDefaultSaveState()),

@@ -4,6 +4,7 @@ import {
   Crown,
   Heart,
   Lock,
+  RefreshCw,
   ShoppingBag,
   Sparkles,
   Star,
@@ -48,6 +49,7 @@ import type { DungeonId, EquipmentSlot, Faction } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { ConstellationModal } from './ConstellationModal';
 import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
+import { GearReforgeModal } from './GearReforgeModal';
 import { AwakenModal, LevelUpModal, TranscendModal } from './HeroGrowthModals';
 import { PartyManagerModal } from './PartyManagerModal';
 import {
@@ -118,6 +120,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
   const [showTranscendModal, setShowTranscendModal] = useState(false);
   const [showConstellationModal, setShowConstellationModal] = useState(false);
+  const [reforgeTargetUid, setReforgeTargetUid] = useState<string | null>(null);
 
   const showNotice = (text: string, tone: 'ok' | 'warn' = 'ok') => {
     setStatusMessage({ text, tone });
@@ -187,6 +190,25 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
         (e) => !e.equippedHeroId && !e.locked && (e.rarity === 'COMMON' || e.rarity === 'RARE'),
       ).length,
     [equipmentInventory],
+  );
+  const salvageableEpicZeroCount = useMemo(
+    () =>
+      equipmentInventory.filter(
+        (e) =>
+          !e.equippedHeroId &&
+          !e.locked &&
+          (e.rarity === 'COMMON' ||
+            e.rarity === 'RARE' ||
+            (e.rarity === 'EPIC' && e.enhanceLevel === 0)),
+      ).length,
+    [equipmentInventory],
+  );
+  const reforgeTargetItem = useMemo(
+    () =>
+      reforgeTargetUid
+        ? equipmentInventory.find((e) => e.uid === reforgeTargetUid) ?? null
+        : null,
+    [reforgeTargetUid, equipmentInventory],
   );
   const recommendedSetLabel =
     heroDef.role === 'TANK'
@@ -822,16 +844,16 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                   }`}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Batch Salvage ({salvageableLowCount})</span>
+                  <span>Batch Salvage ({salvageableEpicZeroCount})</span>
                 </button>
               </div>
 
               {showBatchSalvage && (
                 <div className="rounded-xl bg-rose-950/35 border border-rose-500/45 p-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                   <span className="text-rose-200/90 font-semibold">
-                    Locked &amp; equipped items are always protected:
+                    Locked, equipped &amp; enhanced (+1+) Epic gear are protected:
                   </span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <RpgButton
                       variant="slate"
                       size="xs"
@@ -857,6 +879,19 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                       }}
                     >
                       Common + Rare ({salvageableLowCount})
+                    </RpgButton>
+                    <RpgButton
+                      variant="rose"
+                      size="xs"
+                      disabled={salvageableEpicZeroCount === 0}
+                      onClick={() => {
+                        const res = batchSalvageGear('EPIC');
+                        audioManager.playSfx(res.ok ? 'forge' : 'button');
+                        showNotice(res.message, res.ok ? 'ok' : 'warn');
+                        if (res.ok) setShowBatchSalvage(false);
+                      }}
+                    >
+                      Up to Epic +0 ({salvageableEpicZeroCount})
                     </RpgButton>
                   </div>
                 </div>
@@ -931,18 +966,36 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                     </div>
 
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <RpgButton
-                        variant="gold"
-                        size="sm"
-                        disabled={equippedItemForSlot.enhanceLevel >= 15}
-                        onClick={() => handleEnhance(equippedItemForSlot.uid)}
-                        className="font-display font-black uppercase"
-                      >
-                        <GameIcon name="forge" className="w-4 h-4" />
-                        {equippedItemForSlot.enhanceLevel >= 15
-                          ? 'MAX +15'
-                          : `Forge +${equippedItemForSlot.enhanceLevel + 1}`}
-                      </RpgButton>
+                      <div className="flex items-center gap-1.5">
+                        {(equippedItemForSlot.rarity === 'EPIC' ||
+                          equippedItemForSlot.rarity === 'LEGENDARY') && (
+                          <RpgButton
+                            variant="cyan"
+                            size="sm"
+                            onClick={() => {
+                              audioManager.playSfx('button');
+                              setReforgeTargetUid(equippedItemForSlot.uid);
+                            }}
+                            title="Reforge Substats using Astral Anvil Cores (Lock up to 1 stat)"
+                            className="font-display font-black uppercase"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Reforge</span>
+                          </RpgButton>
+                        )}
+                        <RpgButton
+                          variant="gold"
+                          size="sm"
+                          disabled={equippedItemForSlot.enhanceLevel >= 15}
+                          onClick={() => handleEnhance(equippedItemForSlot.uid)}
+                          className="font-display font-black uppercase"
+                        >
+                          <GameIcon name="forge" className="w-4 h-4" />
+                          {equippedItemForSlot.enhanceLevel >= 15
+                            ? 'MAX +15'
+                            : `Forge +${equippedItemForSlot.enhanceLevel + 1}`}
+                        </RpgButton>
+                      </div>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -1107,6 +1160,19 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
+                        {(eq.rarity === 'EPIC' || eq.rarity === 'LEGENDARY') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              audioManager.playSfx('button');
+                              setReforgeTargetUid(eq.uid);
+                            }}
+                            title="Reforge Substats"
+                            className="p-1.5 rounded-lg border bg-cyan-950/60 border-cyan-400/55 text-cyan-300 hover:border-cyan-200 hover:text-white transition"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -1526,6 +1592,16 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
           showNotice(msg, 'ok');
         }}
         onOpenShop={onOpenShop}
+      />
+
+      <GearReforgeModal
+        open={Boolean(reforgeTargetItem)}
+        item={reforgeTargetItem}
+        onClose={() => setReforgeTargetUid(null)}
+        onApplied={(msg) => {
+          triggerUpgradeFx('✦ SUBSTATS REFORGED!', '#38e8ff');
+          showNotice(msg, 'ok');
+        }}
       />
     </div>
   );

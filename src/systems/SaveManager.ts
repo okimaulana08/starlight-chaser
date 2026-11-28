@@ -1,6 +1,7 @@
+import { SPIRE_MAX_FLOOR } from '../data/spire';
 import { buildDefaultSaveState, usePlayerStore } from '../store/usePlayerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import type { PlayerSaveState } from '../types/game';
+import type { CampaignDifficulty, PlayerSaveState } from '../types/game';
 
 export const SAVE_STORAGE_KEY = 'starlight-chasers-save-v3';
 export const BACKUP_STORAGE_KEY = 'starlight-chasers-manual-backup-v3';
@@ -85,22 +86,32 @@ export function extractPlayerSaveState(raw: PlayerSaveState): PlayerSaveState {
       ASHEN: Math.max(0, Math.round(raw.factionEssences?.ASHEN ?? base.factionEssences.ASHEN)),
     },
     bondGifts: Number.isFinite(raw.bondGifts) ? Math.max(0, Math.round(raw.bondGifts)) : base.bondGifts,
+    pityCounterUR: Number.isFinite(raw.pityCounterUR) ? Math.max(0, Math.round(raw.pityCounterUR as number)) : 0,
     pityCounterHero: Number.isFinite(raw.pityCounterHero) ? Math.max(0, raw.pityCounterHero) : 0,
     pityCounterRelic: Number.isFinite(raw.pityCounterRelic) ? Math.max(0, raw.pityCounterRelic) : 0,
+    pityCounterPet: Number.isFinite(raw.pityCounterPet) ? Math.max(0, Math.round(raw.pityCounterPet as number)) : 0,
+    guaranteedFeaturedUR: Boolean(raw.guaranteedFeaturedUR),
     guaranteedFeaturedHero: Boolean(raw.guaranteedFeaturedHero),
     guaranteedFeaturedRelic: Boolean(raw.guaranteedFeaturedRelic),
+    guaranteedFeaturedPet: Boolean(raw.guaranteedFeaturedPet),
     squadIds: Array.isArray(raw.squadIds) && raw.squadIds.length === 4 ? (raw.squadIds as [string, string, string, string]) : base.squadIds,
     partyPresets: Array.isArray(raw.partyPresets) && raw.partyPresets.length === 3 ? raw.partyPresets : base.partyPresets,
     activePresetIndex: raw.activePresetIndex === 1 || raw.activePresetIndex === 2 ? raw.activePresetIndex : 0,
     roster: raw.roster && typeof raw.roster === 'object' && Object.keys(raw.roster).length > 0 ? raw.roster : base.roster,
     ownedRelics: Array.isArray(raw.ownedRelics) ? raw.ownedRelics : [],
     relicRanks: raw.relicRanks && typeof raw.relicRanks === 'object' ? raw.relicRanks : {},
+    ownedPets: raw.ownedPets && typeof raw.ownedPets === 'object' ? raw.ownedPets : {},
+    activePetId: typeof raw.activePetId === 'string' && raw.ownedPets?.[raw.activePetId] ? raw.activePetId : null,
     equipmentInventory: Array.isArray(raw.equipmentInventory) ? raw.equipmentInventory : base.equipmentInventory,
     unlockedCodexIds: Array.isArray(raw.unlockedCodexIds) ? raw.unlockedCodexIds : base.unlockedCodexIds,
     claimedCodexMilestones: Array.isArray(raw.claimedCodexMilestones) ? raw.claimedCodexMilestones : [],
     claimedRegionChests: Array.isArray(raw.claimedRegionChests) ? raw.claimedRegionChests : [],
     clearedStages: Array.isArray(raw.clearedStages) ? raw.clearedStages : [],
     selectedStageId: typeof raw.selectedStageId === 'string' ? raw.selectedStageId : base.selectedStageId,
+    selectedDifficulty:
+      raw.selectedDifficulty === 'HARD' || raw.selectedDifficulty === 'HELL'
+        ? (raw.selectedDifficulty as CampaignDifficulty)
+        : 'NORMAL',
     shopPurchases: raw.shopPurchases && typeof raw.shopPurchases === 'object' ? raw.shopPurchases : {},
     shopResetDay: typeof raw.shopResetDay === 'string' ? raw.shopResetDay : base.shopResetDay,
     lastDailySupplyAt: Number.isFinite(raw.lastDailySupplyAt) ? raw.lastDailySupplyAt : 0,
@@ -108,7 +119,9 @@ export function extractPlayerSaveState(raw: PlayerSaveState): PlayerSaveState {
     dungeonEntriesUsed: raw.dungeonEntriesUsed && typeof raw.dungeonEntriesUsed === 'object' ? raw.dungeonEntriesUsed : {},
     dungeonResetDay: typeof raw.dungeonResetDay === 'string' ? raw.dungeonResetDay : base.dungeonResetDay,
     dungeonBestStars: raw.dungeonBestStars && typeof raw.dungeonBestStars === 'object' ? raw.dungeonBestStars : {},
-    spireHighestFloor: Number.isFinite(raw.spireHighestFloor) ? Math.max(0, Math.min(50, Math.round(raw.spireHighestFloor))) : 0,
+    spireHighestFloor: Number.isFinite(raw.spireHighestFloor)
+      ? Math.max(0, Math.min(SPIRE_MAX_FLOOR, Math.round(raw.spireHighestFloor)))
+      : 0,
     spireLastSweepDay: typeof raw.spireLastSweepDay === 'string' ? raw.spireLastSweepDay : '',
     commissionResetDay: typeof raw.commissionResetDay === 'string' ? raw.commissionResetDay : base.commissionResetDay,
     dailyCommissionProgress:
@@ -117,7 +130,22 @@ export function extractPlayerSaveState(raw: PlayerSaveState): PlayerSaveState {
         : {},
     claimedDailyCommissions: Array.isArray(raw.claimedDailyCommissions) ? raw.claimedDailyCommissions : [],
     claimedActivityMilestones: Array.isArray(raw.claimedActivityMilestones) ? raw.claimedActivityMilestones : [],
+    weeklyCommissionResetKey:
+      typeof raw.weeklyCommissionResetKey === 'string'
+        ? raw.weeklyCommissionResetKey
+        : base.weeklyCommissionResetKey,
+    weeklyCommissionProgress:
+      raw.weeklyCommissionProgress && typeof raw.weeklyCommissionProgress === 'object'
+        ? raw.weeklyCommissionProgress
+        : {},
+    claimedWeeklyCommissions: Array.isArray(raw.claimedWeeklyCommissions) ? raw.claimedWeeklyCommissions : [],
+    claimedWeeklyMilestones: Array.isArray(raw.claimedWeeklyMilestones) ? raw.claimedWeeklyMilestones : [],
     claimedPermanentCommissions: Array.isArray(raw.claimedPermanentCommissions) ? raw.claimedPermanentCommissions : [],
+    checkInCycle: Number.isFinite(raw.checkInCycle) ? Math.max(1, Math.round(raw.checkInCycle as number)) : 1,
+    checkInClaimedDays: Array.isArray(raw.checkInClaimedDays)
+      ? raw.checkInClaimedDays.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7)
+      : [],
+    checkInLastClaimDate: typeof raw.checkInLastClaimDate === 'string' ? raw.checkInLastClaimDate : '',
     lifetimeLinkBursts: Number.isFinite(raw.lifetimeLinkBursts) ? Math.max(0, Math.round(raw.lifetimeLinkBursts)) : 0,
     lastManualSaveAt: Number.isFinite(raw.lastManualSaveAt) ? raw.lastManualSaveAt : Date.now(),
   };

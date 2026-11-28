@@ -154,3 +154,117 @@ export function enhanceEquipmentItem(item: EquipmentInstance): {
     upgradedSubStat,
   };
 }
+
+export interface ReforgeCost {
+  eligible: boolean;
+  reason?: string;
+  gold: number;
+  forgeStones: number;
+  starIronIngots: number;
+  astralAnvilCores: number;
+}
+
+/**
+ * Endgame Substat Reforge Cost (Epic & Legendary Equipment):
+ * - Allows rerolling substats without losing enhanceLevel (+0..+15) or earned upgrade rolls!
+ * - Optional Lock-1-Substat keeps your favorite roll intact for +1 Astral Anvil Core & +50% Gold.
+ */
+export function getReforgeCost(
+  item: EquipmentInstance,
+  lockedIndex: number | null = null,
+): ReforgeCost {
+  if (item.rarity !== 'EPIC' && item.rarity !== 'LEGENDARY') {
+    return {
+      eligible: false,
+      reason: 'Only Epic & Legendary gear can be Reforged.',
+      gold: 0,
+      forgeStones: 0,
+      starIronIngots: 0,
+      astralAnvilCores: 0,
+    };
+  }
+  const hasLock =
+    lockedIndex !== null && lockedIndex >= 0 && lockedIndex < item.subStats.length;
+  const isLeg = item.rarity === 'LEGENDARY';
+  const baseGold = isLeg ? 5000 : 2500;
+  return {
+    eligible: true,
+    gold: hasLock ? Math.round(baseGold * 1.5) : baseGold,
+    forgeStones: isLeg ? 5 : 3,
+    starIronIngots: isLeg ? 2 : 1,
+    astralAnvilCores: (isLeg ? 2 : 1) + (hasLock ? 1 : 0),
+  };
+}
+
+/**
+ * Generates a fresh set of non-duplicate substats for an EPIC or LEGENDARY item,
+ * optionally preserving 1 locked substat line and redistributing the item's
+ * earned enhancement bonus rolls (+3/+6/+9/+12/+15) cleanly across unlocked lines.
+ */
+export function rollReforgedSubStats(
+  item: EquipmentInstance,
+  lockedIndex: number | null = null,
+): EquipmentInstance['subStats'] {
+  const maxSubs = item.rarity === 'LEGENDARY' ? 3 : 3;
+  const targetCount = Math.min(
+    maxSubs,
+    Math.max(item.subStats.length, item.rarity === 'LEGENDARY' ? 3 : 2),
+  );
+  const validLock =
+    lockedIndex !== null && lockedIndex >= 0 && lockedIndex < item.subStats.length
+      ? lockedIndex
+      : null;
+
+  const result: Array<{ stat: SubStatKey; value: number }> = [];
+  const used = new Set<SubStatKey>();
+
+  if (validLock !== null) {
+    const locked = item.subStats[validLock];
+    used.add(locked.stat);
+  }
+
+  const baseScale = item.rarity === 'LEGENDARY' ? 1.18 : 1.0;
+
+  for (let i = 0; i < targetCount; i++) {
+    if (validLock !== null && i === validLock) {
+      result.push({ ...item.subStats[validLock] });
+      continue;
+    }
+    const pool = ALL_SUBSTATS.filter((k) => !used.has(k));
+    const pick = pool[Math.floor(Math.random() * pool.length)] ?? 'ATK_PCT';
+    used.add(pick);
+    const baseMin = pick === 'CRIT_DMG' ? 0.055 : 0.028;
+    const baseMax = pick === 'CRIT_DMG' ? 0.085 : 0.046;
+    const rolled = (baseMin + Math.random() * (baseMax - baseMin)) * baseScale;
+    result.push({
+      stat: pick,
+      value: Math.round(rolled * 1000) / 1000,
+    });
+  }
+
+  // Redistribute earned +3/+6/+9/+12/+15 substat upgrade rolls onto unlocked lines
+  // (accounting for any extra lines already unlocked at +3 on Epic items)
+  const initialBaseLines = item.rarity === 'LEGENDARY' ? 3 : 2;
+  const unlockStepsConsumed = Math.max(0, targetCount - initialBaseLines);
+  const totalEnhanceProcs = Math.max(
+    0,
+    Math.floor(item.enhanceLevel / 3) - unlockStepsConsumed,
+  );
+  const unlockedIndices = result
+    .map((_, idx) => idx)
+    .filter((idx) => idx !== validLock);
+
+  if (unlockedIndices.length > 0) {
+    // If a substat was locked, keep roughly proportional rolls on the unlocked pool
+    const procsToApply =
+      validLock !== null ? Math.max(1, Math.ceil(totalEnhanceProcs * 0.7)) : totalEnhanceProcs;
+    for (let r = 0; r < procsToApply; r++) {
+      const idx = unlockedIndices[Math.floor(Math.random() * unlockedIndices.length)];
+      const entry = result[idx];
+      const bump = entry.stat === 'CRIT_DMG' ? 0.045 : 0.022;
+      entry.value = Math.round((entry.value + bump) * 1000) / 1000;
+    }
+  }
+
+  return result;
+}
