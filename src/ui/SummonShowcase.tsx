@@ -630,8 +630,9 @@ export const SummonSpotlight: React.FC<SummonSpotlightProps> = ({
                 ) : (
                   <span className="px-2.5 py-0.5 rounded-full bg-fuchsia-950/90 border border-fuchsia-400/60 text-fuchsia-200 font-mono font-bold text-[10px]">
                     {pet && result.petNewRank ? `RANK R${result.petNewRank} • ` : ''}
-                    {result.shardsGained > 0 ? `+${result.shardsGained} Shards • ` : ''}+
-                    {result.starDustGained} Star Dust
+                    {result.isMaxConstellationSurplus
+                      ? `C6 MAX 2× • +${result.starDustGained} Star Dust`
+                      : `${result.shardsGained > 0 ? `+${result.shardsGained} Shards • ` : ''}+${result.starDustGained} Star Dust`}
                   </span>
                 )}
               </div>
@@ -953,10 +954,15 @@ export const SummonResultsStage: React.FC<SummonResultsStageProps> = ({
                 interactive={false}
                 footerExtra={
                   !res.isNew ? (
-                    <div className="text-[10px] text-fuchsia-200 font-mono font-bold">
+                    <div
+                      className={`text-[10px] font-mono font-bold ${
+                        res.isMaxConstellationSurplus ? 'text-amber-300' : 'text-fuchsia-200'
+                      }`}
+                    >
                       {res.kind === 'PET' && res.petNewRank ? `R${res.petNewRank} • ` : ''}
-                      {res.shardsGained > 0 ? `+${res.shardsGained} Shards • ` : ''}+
-                      {res.starDustGained} Dust
+                      {res.isMaxConstellationSurplus
+                        ? `C6 2× • +${res.starDustGained} Dust`
+                        : `${res.shardsGained > 0 ? `+${res.shardsGained} Shards • ` : ''}+${res.starDustGained} Dust`}
                     </div>
                   ) : undefined
                 }

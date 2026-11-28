@@ -463,7 +463,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({ initialTab = 'GROWTH', o
                   Chaser Shard Exchange (Star Dust)
                 </h2>
                 <p className="text-[11px] text-slate-300">
-                  Convert surplus Gacha Star Dust into +5 Hero Shards for any owned Chaser (shortcut for Awakening ★1–★6).
+                  Convert surplus Gacha Star Dust into +5 Hero Shards for any owned Chaser (used for Starlight Constellation C1–C6 upgrades).
                 </p>
               </div>
               <span className="px-2.5 py-1 rounded-lg bg-fuchsia-950/70 border border-fuchsia-400/45 font-mono text-xs font-bold text-fuchsia-200">

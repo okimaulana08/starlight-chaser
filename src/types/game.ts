@@ -491,6 +491,7 @@ export interface GachaPullResult {
   isNew: boolean;
   shardsGained: number;
   starDustGained: number;
+  isMaxConstellationSurplus?: boolean;
   petNewRank?: number;
   assetCard: string;
   themeColor: string;
@@ -502,6 +503,7 @@ export interface OwnedHeroState {
   level: number;
   exp?: number; // current EXP progress toward next level
   awakening: number; // 0 - 6
+  constellation?: number; // 0 - 6 (Starlight Constellation upgraded with Hero Shards)
   transcended?: boolean;
   useTranscendedVisual?: boolean;
   shards: number;

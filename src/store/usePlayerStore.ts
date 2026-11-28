@@ -8,6 +8,10 @@ import {
   type CommissionReward,
 } from '../data/commissions';
 import {
+  MAX_CONSTELLATION_LEVEL,
+  getConstellationNodeCost,
+} from '../data/constellations';
+import {
   DAILY_DUNGEON_FREE_ENTRIES,
   buildDungeonStageDef,
   getDungeonTierStarKey,
@@ -92,6 +96,7 @@ function createOwnedHero(heroId: string, level = 1): OwnedHeroState {
     level,
     exp: 0,
     awakening: 0,
+    constellation: 0,
     shards: 0,
     bondLevel: 1,
     equippedRelicId: null,
@@ -238,8 +243,11 @@ interface PlayerStore extends PlayerSaveState {
   swapPresetSlots: (presetIndex: 0 | 1 | 2, slotA: number, slotB: number) => void;
   autoFillPreset: (presetIndex: 0 | 1 | 2) => void;
   levelUpHero: (heroId: string, levels?: number) => { ok: boolean; message?: string };
-  awakenHero: (heroId: string, mode?: 'MATERIALS' | 'SHARDS') => { ok: boolean; message?: string };
-  transcendHero: (heroId: string, mode?: 'MATERIALS' | 'SHARDS') => { ok: boolean; message: string };
+  awakenHero: (heroId: string) => { ok: boolean; message?: string };
+  upgradeConstellation: (
+    heroId: string,
+  ) => { ok: boolean; newLevel?: number; message: string };
+  transcendHero: (heroId: string) => { ok: boolean; message: string };
   toggleHeroTranscendedVisual: (heroId: string) => void;
   equipPet: (petId: string | null) => void;
   levelUpPet: (petId: string, levels?: number) => { ok: boolean; message: string };
@@ -1050,7 +1058,7 @@ export const usePlayerStore = create<PlayerStore>()(
         return { ok: true, message: `Leveled up to Lv.${hero.level + cost.actualLevels}!` };
       },
 
-      awakenHero: (heroId, mode) => {
+      awakenHero: (heroId) => {
         const state = get();
         const hero = state.roster[heroId];
         const def = HERO_MAP[heroId];
@@ -1058,46 +1066,11 @@ export const usePlayerStore = create<PlayerStore>()(
         const cost = getAwakeningCost(hero.awakening, def.tier);
         if (!cost) return { ok: false, message: 'Already Max Awakening ★6!' };
 
-        const canUseShards = hero.shards >= cost.shardAltCost && state.gold >= cost.shardAltGold;
         const ownedEssence = state.factionEssences[def.faction] ?? 0;
         const canUseMaterials =
           ownedEssence >= cost.essences &&
           state.starCores >= cost.starCores &&
           state.gold >= cost.gold;
-
-        // Auto-pick preferred available path if mode not forced
-        const useShards =
-          mode === 'SHARDS'
-            ? true
-            : mode === 'MATERIALS'
-              ? false
-              : canUseShards
-                ? true
-                : false;
-
-        if (useShards) {
-          if (!canUseShards) {
-            return {
-              ok: false,
-              message: `Need ${cost.shardAltCost} Shards & ${cost.shardAltGold.toLocaleString()} Gold.`,
-            };
-          }
-          set({
-            gold: state.gold - cost.shardAltGold,
-            roster: {
-              ...state.roster,
-              [heroId]: {
-                ...hero,
-                awakening: hero.awakening + 1,
-                shards: hero.shards - cost.shardAltCost,
-              },
-            },
-          });
-          return {
-            ok: true,
-            message: `Awakened ★${cost.nextStar}! Max Lv.${cost.nextLevelCap} unlocked!`,
-          };
-        }
 
         if (!canUseMaterials) {
           if (ownedEssence < cost.essences) {
@@ -1136,7 +1109,47 @@ export const usePlayerStore = create<PlayerStore>()(
         };
       },
 
-      transcendHero: (heroId, mode) => {
+      upgradeConstellation: (heroId) => {
+        const state = get();
+        const hero = state.roster[heroId];
+        const def = HERO_MAP[heroId];
+        if (!hero || !def) return { ok: false, message: 'Hero not found.' };
+        const current = hero.constellation ?? 0;
+        if (current >= MAX_CONSTELLATION_LEVEL) {
+          return { ok: false, message: `${def.name} is already at Max Constellation C6!` };
+        }
+        const nextLevel = current + 1;
+        const cost = getConstellationNodeCost(def.tier, nextLevel);
+        if (!cost) return { ok: false, message: 'Constellation node unavailable.' };
+        if (hero.shards < cost.shards) {
+          return {
+            ok: false,
+            message: `Need ${cost.shards} ${def.name} Shards (Have ${hero.shards}).`,
+          };
+        }
+        if (state.gold < cost.gold) {
+          return { ok: false, message: `Need ${cost.gold.toLocaleString()} Gold.` };
+        }
+
+        set({
+          gold: state.gold - cost.gold,
+          roster: {
+            ...state.roster,
+            [heroId]: {
+              ...hero,
+              shards: hero.shards - cost.shards,
+              constellation: nextLevel,
+            },
+          },
+        });
+        return {
+          ok: true,
+          newLevel: nextLevel,
+          message: `${def.name} ignited Constellation C${nextLevel}!`,
+        };
+      },
+
+      transcendHero: (heroId) => {
         const state = get();
         const hero = state.roster[heroId];
         const def = HERO_MAP[heroId];
@@ -1157,40 +1170,11 @@ export const usePlayerStore = create<PlayerStore>()(
         if (!cost) return { ok: false, message: 'Transcendence unavailable.' };
 
         const ownedEssence = state.factionEssences[def.faction] ?? 0;
-        const canUseShards = hero.shards >= cost.shardAltCost && state.gold >= cost.shardAltGold;
         const canUseMaterials =
           ownedEssence >= cost.essences &&
           state.starCores >= cost.starCores &&
           state.astralAnvilCores >= cost.astralAnvilCores &&
           state.gold >= cost.gold;
-
-        const useShards =
-          mode === 'SHARDS' ? true : mode === 'MATERIALS' ? false : canUseShards;
-
-        if (useShards) {
-          if (!canUseShards) {
-            return {
-              ok: false,
-              message: `Need ${cost.shardAltCost} ${def.name} Shards & ${cost.shardAltGold.toLocaleString()} Gold.`,
-            };
-          }
-          set({
-            gold: state.gold - cost.shardAltGold,
-            roster: {
-              ...state.roster,
-              [heroId]: {
-                ...hero,
-                shards: hero.shards - cost.shardAltCost,
-                transcended: true,
-                useTranscendedVisual: true,
-              },
-            },
-          });
-          return {
-            ok: true,
-            message: `${def.name} TRANSCENDED into ${def.transcendence.formTitle}! Max Lv.${def.transcendence.maxLevelCap} unlocked!`,
-          };
-        }
 
         if (!canUseMaterials) {
           if (ownedEssence < cost.essences) {
@@ -1822,17 +1806,26 @@ export const usePlayerStore = create<PlayerStore>()(
 
         for (const res of out.results) {
           if (!nextCodex.includes(res.id)) nextCodex.push(res.id);
-          dustGain += res.starDustGained;
           if (res.kind === 'HERO') {
             if (!nextRoster[res.id]) {
               nextRoster[res.id] = createOwnedHero(res.id, 1);
+              dustGain += res.starDustGained;
+            } else if ((nextRoster[res.id].constellation ?? 0) >= MAX_CONSTELLATION_LEVEL) {
+              // Maxed C6 Surplus Dupe Conversion: 2× Star Dust to fuel SSR/UR Shard purchases in Shop!
+              const bonusDust = res.starDustGained * 2;
+              res.starDustGained = bonusDust;
+              res.shardsGained = 0;
+              res.isMaxConstellationSurplus = true;
+              dustGain += bonusDust;
             } else {
               nextRoster[res.id] = {
                 ...nextRoster[res.id],
                 shards: nextRoster[res.id].shards + res.shardsGained,
               };
+              dustGain += res.starDustGained;
             }
           } else if (res.kind === 'PET') {
+            dustGain += res.starDustGained;
             const cur = nextPets[res.id];
             if (!cur) {
               nextPets[res.id] = { petId: res.id, level: 1, rank: 1 };
@@ -1844,6 +1837,7 @@ export const usePlayerStore = create<PlayerStore>()(
               res.petNewRank = nextRank;
             }
           } else {
+            dustGain += res.starDustGained;
             const added = addRelicToState(
               nextRelics,
               nextRelicRanks,

@@ -1217,8 +1217,8 @@ export class CombatEngine {
       }
     }
 
-    // Situational damage bonuses
-    let dmgBonus = opts.bonusDmgMult ?? 0;
+    // Situational damage bonuses + Constellation C6 Final DMG
+    let dmgBonus = (opts.bonusDmgMult ?? 0) + (attacker.stats.finalDmgBonus ?? 0);
     if (opts.isSkill) dmgBonus += attacker.stats.skillDmgBonus;
     if (opts.isUlt) dmgBonus += attacker.stats.ultDmgBonus;
     if (enemy.lunarTraceTimer > 0) dmgBonus += 0.12;

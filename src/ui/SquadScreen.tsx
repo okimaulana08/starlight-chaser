@@ -14,6 +14,10 @@ import {
   Wand2,
 } from 'lucide-react';
 import {
+  MAX_CONSTELLATION_LEVEL,
+  getConstellationNodeCost,
+} from '../data/constellations';
+import {
   EQUIPMENT_SETS,
   EQUIPMENT_SLOTS,
   RARITY_COLORS,
@@ -42,6 +46,7 @@ import { MAX_RELIC_RANK, usePlayerStore } from '../store/usePlayerStore';
 import { getEnhanceCost, getSalvageYield } from '../systems/ForgeSystem';
 import type { DungeonId, EquipmentSlot, Faction } from '../types/game';
 import { ArtImage } from './ArtImage';
+import { ConstellationModal } from './ConstellationModal';
 import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
 import { AwakenModal, LevelUpModal, TranscendModal } from './HeroGrowthModals';
 import { PartyManagerModal } from './PartyManagerModal';
@@ -112,6 +117,7 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
   const [showAwakenModal, setShowAwakenModal] = useState(false);
   const [showLevelUpModal, setShowLevelUpModal] = useState(false);
   const [showTranscendModal, setShowTranscendModal] = useState(false);
+  const [showConstellationModal, setShowConstellationModal] = useState(false);
 
   const showNotice = (text: string, tone: 'ok' | 'warn' = 'ok') => {
     setStatusMessage({ text, tone });
@@ -215,20 +221,23 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
       starCores >= awakenCost.starCores &&
       gold >= awakenCost.gold,
   );
-  const canAwakenWithShards = Boolean(
-    awakenCost && ownedHero.shards >= awakenCost.shardAltCost && gold >= awakenCost.shardAltGold,
-  );
-  const canAwakenReady = canAwakenWithMats || canAwakenWithShards;
+  const canAwakenReady = canAwakenWithMats;
   const canTranscendReady = Boolean(
     !ownedHero.transcended &&
       ownedHero.awakening >= 6 &&
       heroDef.transcendence?.enabled &&
       transcendCost &&
-      ((ownedHeroEssence >= transcendCost.essences &&
-        starCores >= transcendCost.starCores &&
-        astralAnvilCores >= transcendCost.astralAnvilCores &&
-        gold >= transcendCost.gold) ||
-        (ownedHero.shards >= transcendCost.shardAltCost && gold >= transcendCost.shardAltGold)),
+      ownedHeroEssence >= transcendCost.essences &&
+      starCores >= transcendCost.starCores &&
+      astralAnvilCores >= transcendCost.astralAnvilCores &&
+      gold >= transcendCost.gold,
+  );
+  const constellationLevel = ownedHero.constellation ?? 0;
+  const nextConstellationCost = getConstellationNodeCost(heroDef.tier, constellationLevel + 1);
+  const canConstellationReady = Boolean(
+    nextConstellationCost &&
+      ownedHero.shards >= nextConstellationCost.shards &&
+      gold >= nextConstellationCost.gold,
   );
   const showTranscendButton =
     ownedHero.awakening >= 6 && (heroDef.tier === 'UR' || heroDef.tier === 'SSR');
@@ -418,7 +427,14 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                   </span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-bold text-white truncate">{h.name}</div>
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="text-xs font-bold text-white truncate">{h.name}</div>
+                    {(own.constellation ?? 0) > 0 && (
+                      <span className="shrink-0 px-1 py-[1px] rounded bg-cyan-500/20 border border-cyan-300/55 text-[8px] font-mono font-black text-cyan-200">
+                        C{own.constellation}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[10px] font-mono text-amber-300">
                     Lv.{own.level} • ★{own.awakening}
                   </div>
@@ -549,10 +565,27 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                   Lv.{ownedHero.level}/{levelCap}
                 </span>
               </div>
-              <div className="flex items-center gap-2 mt-0.5">
+              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                 <div className="text-[11px] font-extrabold text-amber-300">
                   PWR <AnimatedNumber value={computed.powerRating} className="text-sm font-bold text-amber-200" />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    audioManager.playSfx('button');
+                    setShowConstellationModal(true);
+                  }}
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-display font-black uppercase tracking-wider transition ${
+                    constellationLevel >= MAX_CONSTELLATION_LEVEL
+                      ? 'bg-amber-400/20 border-amber-300/80 text-amber-200 shadow-[0_0_10px_rgba(253,224,71,0.35)]'
+                      : canConstellationReady
+                        ? 'bg-cyan-500/25 border-cyan-300/85 text-cyan-100 shadow-[0_0_10px_rgba(56,232,255,0.45)] animate-pulse'
+                        : 'bg-slate-900/90 border-cyan-400/45 text-cyan-200 hover:bg-cyan-500/20'
+                  }`}
+                  title="Open Starlight Constellation Altar (Hero Shards)"
+                >
+                  <span>✦ C{constellationLevel}/{MAX_CONSTELLATION_LEVEL}</span>
+                </button>
                 {ownedHero.transcended && heroDef.transcendence?.enabled && (
                   <button
                     type="button"
@@ -627,8 +660,8 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
               </div>
             </div>
 
-            {/* Growth Action Buttons (Popup Modals for Level Up & Awakening!) */}
-            <div className="grid grid-cols-3 gap-2">
+            {/* Growth Action Buttons (2x2 Grid: Level Up, Awaken/Transcend, Constellation, Bond) */}
+            <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
               <RpgButton
                 variant="emerald"
                 size="sm"
@@ -683,6 +716,25 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
                   )}
                 </RpgButton>
               )}
+              <RpgButton
+                variant={constellationLevel >= MAX_CONSTELLATION_LEVEL ? 'gold' : 'cyan'}
+                size="sm"
+                onClick={() => {
+                  audioManager.playSfx('button');
+                  setShowConstellationModal(true);
+                }}
+                className="relative font-display font-black uppercase tracking-wider"
+              >
+                <span className="text-xs leading-none">✦</span>
+                <span>
+                  {constellationLevel >= MAX_CONSTELLATION_LEVEL
+                    ? `Constellation C${MAX_CONSTELLATION_LEVEL}`
+                    : `Constellation C${constellationLevel}/${MAX_CONSTELLATION_LEVEL}`}
+                </span>
+                {canConstellationReady && (
+                  <span className="w-2 h-2 rounded-full bg-amber-300 shadow-[0_0_9px_rgba(253,224,71,0.95)] animate-pulse" />
+                )}
+              </RpgButton>
               <RpgButton
                 variant="rose"
                 size="sm"
@@ -1462,6 +1514,18 @@ export const SquadScreen: React.FC<SquadScreenProps> = ({
         }}
         onOpenShop={onOpenShop}
         onOpenDungeon={onOpenDungeon}
+      />
+
+      <ConstellationModal
+        open={showConstellationModal}
+        hero={heroDef}
+        owned={ownedHero}
+        onClose={() => setShowConstellationModal(false)}
+        onUpgraded={(newLevel, msg) => {
+          triggerUpgradeFx(`✦ CONSTELLATION C${newLevel}!`, '#38e8ff');
+          showNotice(msg, 'ok');
+        }}
+        onOpenShop={onOpenShop}
       />
     </div>
   );

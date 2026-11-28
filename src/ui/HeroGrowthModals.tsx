@@ -114,6 +114,9 @@ export const AwakenModal: React.FC<AwakenModalProps> = ({
     starCores,
     factionEssences,
     squadIds,
+    roster,
+    activePetId,
+    ownedPets,
     equipmentInventory,
     unlockedCodexIds,
     relicRanks,
@@ -125,17 +128,7 @@ export const AwakenModal: React.FC<AwakenModalProps> = ({
   const essenceKey = factionToEssenceKey(hero.faction);
   const essenceMeta = MATERIAL_META[essenceKey];
   const ownedEssence = factionEssences[hero.faction] ?? 0;
-
-  const [mode, setMode] = useState<'MATERIALS' | 'SHARDS'>('MATERIALS');
-
-  useEffect(() => {
-    if (!open || !cost) return;
-    if (owned.shards >= cost.shardAltCost && gold >= cost.shardAltGold) {
-      setMode('SHARDS');
-    } else {
-      setMode('MATERIALS');
-    }
-  }, [open, hero.id, owned.awakening]); // eslint-disable-line react-hooks/exhaustive-deps
+  const activeOwnedPet = activePetId && ownedPets?.[activePetId] ? ownedPets[activePetId] : null;
 
   const currentStats = useMemo(
     () =>
@@ -146,8 +139,9 @@ export const AwakenModal: React.FC<AwakenModalProps> = ({
         squadIds,
         unlockedCodexIds.length,
         relicRanks,
+        { roster, activePet: activeOwnedPet },
       ),
-    [hero, owned, equipmentInventory, squadIds, unlockedCodexIds.length, relicRanks],
+    [hero, owned, equipmentInventory, squadIds, unlockedCodexIds.length, relicRanks, roster, activeOwnedPet],
   );
 
   const nextStats = useMemo(() => {
@@ -159,8 +153,9 @@ export const AwakenModal: React.FC<AwakenModalProps> = ({
       squadIds,
       unlockedCodexIds.length,
       relicRanks,
+      { roster, activePet: activeOwnedPet },
     );
-  }, [hero, owned, cost, currentStats, equipmentInventory, squadIds, unlockedCodexIds.length, relicRanks]);
+  }, [hero, owned, cost, currentStats, equipmentInventory, squadIds, unlockedCodexIds.length, relicRanks, roster, activeOwnedPet]);
 
   const matsMet = Boolean(
     cost &&
@@ -168,14 +163,11 @@ export const AwakenModal: React.FC<AwakenModalProps> = ({
       starCores >= cost.starCores &&
       gold >= cost.gold,
   );
-  const shardsMet = Boolean(
-    cost && owned.shards >= cost.shardAltCost && gold >= cost.shardAltGold,
-  );
-  const canAwakenNow = Boolean(cost && (mode === 'MATERIALS' ? matsMet : shardsMet));
+  const canAwakenNow = Boolean(cost && matsMet);
 
   const handleConfirm = () => {
     if (!cost || !canAwakenNow) return;
-    const res = awakenHero(hero.id, mode);
+    const res = awakenHero(hero.id);
     if (res.ok) {
       audioManager.playSfx('ssr_reveal');
       onAwakened(cost.nextStar, res.message ?? `Awakened ★${cost.nextStar}!`);
@@ -351,100 +343,43 @@ export const AwakenModal: React.FC<AwakenModalProps> = ({
                   )}
                 </div>
 
-                {/* Method Toggle (Biome Materials vs Hero Shards) */}
-                <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-950/90 border border-slate-800">
-                  <button
-                    onClick={() => {
-                      setMode('MATERIALS');
-                      audioManager.playSfx('button');
-                    }}
-                    className={`py-1.5 rounded-lg text-[11px] font-display font-black uppercase tracking-wider transition ${
-                      mode === 'MATERIALS'
-                        ? 'bg-fuchsia-500/25 border border-fuchsia-400 text-fuchsia-200'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Biome Materials
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMode('SHARDS');
-                      audioManager.playSfx('button');
-                    }}
-                    className={`py-1.5 rounded-lg text-[11px] font-display font-black uppercase tracking-wider transition ${
-                      mode === 'SHARDS'
-                        ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-200'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Hero Shards ({owned.shards}/{cost.shardAltCost})
-                  </button>
-                </div>
-
-                {/* Required Materials Grid with Green/Red Ratios */}
+                {/* Required Materials Grid with Green/Red Ratios (Pure Material Farming!) */}
                 <div>
-                  <div className="text-[10px] font-display font-black uppercase tracking-[0.2em] text-slate-400 mb-2">
-                    Required Materials
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[10px] font-display font-black uppercase tracking-[0.2em] text-slate-400">
+                      Required Awakening Materials
+                    </span>
+                    <span className="text-[9px] text-cyan-300/85 font-semibold">
+                      ✦ Hero Shards are used for Constellation C1–C6
+                    </span>
                   </div>
-                  {mode === 'MATERIALS' ? (
-                    <div className="grid grid-cols-3 gap-2.5">
-                      <RequirementCard
-                        icon={<MaterialIcon material={essenceKey} className="w-9 h-9" />}
-                        label={essenceMeta.name}
-                        sublabel={FACTIONS[hero.faction].name.split(' ')[0]}
-                        owned={ownedEssence}
-                        required={cost.essences}
-                        accentColor={essenceMeta.color}
-                      />
-                      <RequirementCard
-                        icon={<MaterialIcon material="starCores" className="w-9 h-9" />}
-                        label="Starlight Core"
-                        sublabel="Mini-Boss / Boss"
-                        owned={starCores}
-                        required={cost.starCores}
-                        accentColor="#e879f9"
-                      />
-                      <RequirementCard
-                        icon={<GameIcon name="gold" className="w-9 h-9" />}
-                        label="Gold"
-                        sublabel="Campaign & Shop"
-                        owned={gold}
-                        required={cost.gold}
-                        accentColor="#f5c84c"
-                        formatNumbers
-                      />
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <RequirementCard
-                        icon={
-                          <div className="w-9 h-9 rounded-lg overflow-hidden border border-cyan-300/70">
-                            <ArtImage
-                              kind="HERO"
-                              id={hero.id}
-                              src={hero.assets.card}
-                              alt={hero.name}
-                              className="w-full h-full object-cover object-top"
-                            />
-                          </div>
-                        }
-                        label={`${hero.name} Shards`}
-                        sublabel="Summon Dupes / Shop"
-                        owned={owned.shards}
-                        required={cost.shardAltCost}
-                        accentColor="#38e8ff"
-                      />
-                      <RequirementCard
-                        icon={<GameIcon name="gold" className="w-9 h-9" />}
-                        label="Gold"
-                        sublabel="50% Gold Discount"
-                        owned={gold}
-                        required={cost.shardAltGold}
-                        accentColor="#f5c84c"
-                        formatNumbers
-                      />
-                    </div>
-                  )}
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <RequirementCard
+                      icon={<MaterialIcon material={essenceKey} className="w-9 h-9" />}
+                      label={essenceMeta.name}
+                      sublabel={FACTIONS[hero.faction].name.split(' ')[0]}
+                      owned={ownedEssence}
+                      required={cost.essences}
+                      accentColor={essenceMeta.color}
+                    />
+                    <RequirementCard
+                      icon={<MaterialIcon material="starCores" className="w-9 h-9" />}
+                      label="Starlight Core"
+                      sublabel="Mini-Boss / Boss"
+                      owned={starCores}
+                      required={cost.starCores}
+                      accentColor="#e879f9"
+                    />
+                    <RequirementCard
+                      icon={<GameIcon name="gold" className="w-9 h-9" />}
+                      label="Gold"
+                      sublabel="Campaign & Shop"
+                      owned={gold}
+                      required={cost.gold}
+                      accentColor="#f5c84c"
+                      formatNumbers
+                    />
+                  </div>
                 </div>
 
                 {/* Dungeon & Shop Shortcut when Missing Materials */}
@@ -934,17 +869,11 @@ export const TranscendModal: React.FC<TranscendModalProps> = ({
   const ownedEssence = factionEssences[hero.faction] ?? 0;
   const activeOwnedPet = activePetId && ownedPets?.[activePetId] ? ownedPets[activePetId] : null;
 
-  const [mode, setMode] = useState<'MATERIALS' | 'SHARDS'>('MATERIALS');
   const [showCelebration, setShowCelebration] = useState(false);
 
   useEffect(() => {
     if (!open || !cost) return;
     setShowCelebration(false);
-    if (owned.shards >= cost.shardAltCost && gold >= cost.shardAltGold) {
-      setMode('SHARDS');
-    } else {
-      setMode('MATERIALS');
-    }
   }, [open, hero.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentStats = useMemo(
@@ -985,20 +914,17 @@ export const TranscendModal: React.FC<TranscendModalProps> = ({
       astralAnvilCores >= cost.astralAnvilCores &&
       gold >= cost.gold,
   );
-  const shardsMet = Boolean(
-    cost && owned.shards >= cost.shardAltCost && gold >= cost.shardAltGold,
-  );
   const canTranscendNow = Boolean(
     tr?.enabled &&
       owned.awakening >= 6 &&
       !owned.transcended &&
       cost &&
-      (mode === 'MATERIALS' ? matsMet : shardsMet),
+      matsMet,
   );
 
   const handleConfirm = () => {
     if (!canTranscendNow) return;
-    const res = transcendHero(hero.id, mode);
+    const res = transcendHero(hero.id);
     if (res.ok) {
       audioManager.playSfx('ssr_reveal');
       audioManager.playSfx('ult_impact', 0.08);
@@ -1260,37 +1186,15 @@ export const TranscendModal: React.FC<TranscendModalProps> = ({
                     </div>
                   ) : cost && (
                     <>
-                      {/* Dual Path Selector */}
-                      <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-slate-950/90 border border-slate-800">
-                        <button
-                          onClick={() => {
-                            setMode('MATERIALS');
-                            audioManager.playSfx('button');
-                          }}
-                          className={`py-1.5 rounded-lg text-[11px] font-display font-black uppercase tracking-wider transition ${
-                            mode === 'MATERIALS'
-                              ? 'bg-amber-400/25 border border-amber-300 text-amber-200'
-                              : 'text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          Endgame Materials
-                        </button>
-                        <button
-                          onClick={() => {
-                            setMode('SHARDS');
-                            audioManager.playSfx('button');
-                          }}
-                          className={`py-1.5 rounded-lg text-[11px] font-display font-black uppercase tracking-wider transition ${
-                            mode === 'SHARDS'
-                              ? 'bg-cyan-500/25 border border-cyan-400 text-cyan-200'
-                              : 'text-slate-400 hover:text-white'
-                          }`}
-                        >
-                          Hero Shards ({owned.shards}/{cost.shardAltCost})
-                        </button>
-                      </div>
-
-                      {mode === 'MATERIALS' ? (
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[10px] font-display font-black uppercase tracking-[0.2em] text-amber-200/90">
+                            Required Transcendence Materials
+                          </span>
+                          <span className="text-[9px] text-cyan-300/85 font-semibold">
+                            ✦ Hero Shards are used for Constellation C1–C6
+                          </span>
+                        </div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <RequirementCard
                             icon={<MaterialIcon material={essenceKey} className="w-8 h-8" />}
@@ -1322,37 +1226,7 @@ export const TranscendModal: React.FC<TranscendModalProps> = ({
                             formatNumbers
                           />
                         </div>
-                      ) : (
-                        <div className="grid grid-cols-2 gap-2.5">
-                          <RequirementCard
-                            icon={
-                              <div className="w-9 h-9 rounded-lg overflow-hidden border border-cyan-300/70">
-                                <ArtImage
-                                  kind="HERO"
-                                  id={hero.id}
-                                  src={hero.assets.card}
-                                  alt={hero.name}
-                                  className="w-full h-full object-cover object-top"
-                                />
-                              </div>
-                            }
-                            label={`${hero.name} Shards`}
-                            sublabel="Summon Dupes / Shop"
-                            owned={owned.shards}
-                            required={cost.shardAltCost}
-                            accentColor="#38e8ff"
-                          />
-                          <RequirementCard
-                            icon={<GameIcon name="gold" className="w-9 h-9" />}
-                            label="Gold"
-                            sublabel="50% Gold Discount"
-                            owned={gold}
-                            required={cost.shardAltGold}
-                            accentColor="#f5c84c"
-                            formatNumbers
-                          />
-                        </div>
-                      )}
+                      </div>
 
                       {!canTranscendNow && (
                         <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-950/35 border border-amber-400/35 text-[11px]">

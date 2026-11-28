@@ -1,3 +1,8 @@
+import {
+  TIER_STAT_MULTIPLIER,
+  computeConstellationAccountBonus,
+  computeHeroConstellationBonuses,
+} from '../data/constellations';
 import { FACTIONS, HARMONY_RESONANCE } from '../data/factions';
 import { HERO_MAP } from '../data/heroes';
 import { PET_MAP, computePetAura } from '../data/pets';
@@ -40,6 +45,7 @@ export interface ComputedHeroStats {
   healBonus: number;
   skillDmgBonus: number;
   ultDmgBonus: number;
+  finalDmgBonus: number;
   shieldPower: number;
   defIgnore: number;
   spRegenBonus: number;
@@ -193,46 +199,56 @@ export function computeHeroStats(
     activePet?: OwnedPetState | null;
   },
 ): ComputedHeroStats {
-  // Balanced RPG growth: Stat(L) = BaseStat * (1 + 0.072 * (L - 1)) * AwakeningMult * TranscendMult * BondMult
+  // Balanced RPG growth: Stat(L) = BaseStat * TierMult * LevelMult * AwakeningMult * ConstellationMult * TranscendMult * BondMult
+  const tierMult = TIER_STAT_MULTIPLIER[heroDef.tier] ?? 1.0;
   const levelMult = 1 + 0.072 * (owned.level - 1);
   const awakeningMult = 1 + 0.1 * owned.awakening;
+  const constBonuses = computeHeroConstellationBonuses(heroDef, owned.constellation ?? 0);
+  const constellationMult = 1 + constBonuses.baseStatMultBonus;
   const isTranscended = Boolean(heroDef.transcendence?.enabled && owned.transcended);
   const transcendMult =
     isTranscended && heroDef.transcendence
       ? 1 + heroDef.transcendence.statSurge.baseStatMultBonus
       : 1;
   const bondMult = 1 + 0.015 * Math.max(0, owned.bondLevel - 1);
-  // Codex Global Account Bonus: +1% ATK / +1% HP per 5 unlocked entries
+  // Codex Global Account Bonus (+1% per 5 entries) + Global C6 Constellation Mastery Account Bonus
   const codexSteps = Math.floor(codexCount / 5);
   const codexBonus = codexSteps * 0.01;
+  const c6AccountBonus = computeConstellationAccountBonus(options?.roster).totalPct;
 
-  let flatHp = heroDef.baseStats.hp * levelMult * awakeningMult * transcendMult * bondMult;
-  let flatAtk = heroDef.baseStats.atk * levelMult * awakeningMult * transcendMult * bondMult;
-  let flatDef = heroDef.baseStats.def * levelMult * awakeningMult * transcendMult * bondMult;
+  let flatHp =
+    heroDef.baseStats.hp * tierMult * levelMult * awakeningMult * constellationMult * transcendMult * bondMult;
+  let flatAtk =
+    heroDef.baseStats.atk * tierMult * levelMult * awakeningMult * constellationMult * transcendMult * bondMult;
+  let flatDef =
+    heroDef.baseStats.def * tierMult * levelMult * awakeningMult * constellationMult * transcendMult * bondMult;
 
-  let hpPct = codexBonus;
-  let atkPct = codexBonus;
+  let hpPct = codexBonus + c6AccountBonus;
+  let atkPct = codexBonus + c6AccountBonus;
   let defPct = 0;
   let critRate =
     heroDef.baseStats.critRate +
+    constBonuses.critRateBonus +
     (isTranscended && heroDef.transcendence ? heroDef.transcendence.statSurge.critRateBonus : 0);
   let critDmg =
     (heroDef.baseStats.critDmg ?? 1.5) +
+    constBonuses.critDmgBonus +
     (isTranscended && heroDef.transcendence ? heroDef.transcendence.statSurge.critDmgBonus : 0);
   let atkSpeedBonus = 0;
-  let cdr = 0;
-  let healBonus = 0;
-  // Awakening Milestone Bonuses: ★3 (+10% Skill DMG), ★6 (+15% Ult DMG)
-  let skillDmgBonus = owned.awakening >= 3 ? 0.1 : 0;
-  let ultDmgBonus = owned.awakening >= 6 ? 0.15 : 0;
-  let shieldPower = 1.0;
+  let cdr = constBonuses.cdrBonus;
+  let healBonus = constBonuses.healShieldBonus;
+  // Awakening Milestone Bonuses: ★3 (+10% Skill DMG), ★6 (+15% Ult DMG) + Constellation Perks
+  let skillDmgBonus = (owned.awakening >= 3 ? 0.1 : 0) + constBonuses.skillDmgBonus;
+  let ultDmgBonus = (owned.awakening >= 6 ? 0.15 : 0) + constBonuses.ultDmgBonus;
+  const finalDmgBonus = constBonuses.finalDmgBonus;
+  let shieldPower = 1.0 + constBonuses.healShieldBonus;
   let defIgnore = 0;
   let spRegenBonus = 0;
-  let ultGaugeBonus = 0;
+  let ultGaugeBonus = constBonuses.ultGaugeBonus;
   let startingGauge = 0;
   let aoeRadiusBonus = 0;
   let dmgBonusVsDebuffed = 0;
-  let breakDmgBonus = 0;
+  let breakDmgBonus = constBonuses.breakDmgBonus;
   let startShieldRatio = 0;
 
   // 1. Equipped 4-slot gear + Set count
@@ -395,6 +411,11 @@ export function computeHeroStats(
       sovTranscended && up ? up.squadFinalDmgBonus : sovereign.sovereignAura.squadFinalDmgBonus;
     critDmg +=
       sovTranscended && up ? up.squadCritDmgBonus : sovereign.sovereignAura.squadCritDmgBonus;
+    // UR C6 Pinnacle Squad-Wide Resonance (+4% ATK & HP to entire squad!)
+    if ((sovereignOwned?.constellation ?? 0) >= 6) {
+      atkPct += 0.04;
+      hpPct += 0.04;
+    }
   }
 
   // 4C. Active Companion Pet Squad Aura!
@@ -424,6 +445,7 @@ export function computeHeroStats(
       clampedCrit * 950 +
       critDmg * 280 +
       owned.awakening * 480 +
+      constBonuses.powerBonus +
       (isTranscended ? 1800 : 0) +
       (owned.equippedRelicId ? 450 * (relicRanks[owned.equippedRelicId] ?? 1) : 0),
   );
@@ -441,6 +463,7 @@ export function computeHeroStats(
     healBonus,
     skillDmgBonus,
     ultDmgBonus,
+    finalDmgBonus,
     shieldPower,
     defIgnore,
     spRegenBonus,
