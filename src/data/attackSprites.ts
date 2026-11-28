@@ -20,6 +20,14 @@ export const HERO_ATTACK_SPRITES: Partial<Record<string, AttackSpriteConfig>> = 
     url: '/assets/sprites/battle_velaris_atk.webp',
     scaleBoost: 1.18,
   },
+  malakhia: {
+    url: '/assets/sprites/battle_malakhia_atk.webp',
+    scaleBoost: 1.15,
+  },
+  sylvaris: {
+    url: '/assets/sprites/battle_sylvaris_atk.webp',
+    scaleBoost: 1.12,
+  },
   vespera: {
     url: '/assets/sprites/battle_vespera_atk.webp',
     scaleBoost: 1.14,

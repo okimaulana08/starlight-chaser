@@ -474,7 +474,12 @@ export class SkillExecutor {
               skill.id === 'clara_s2' || skill.id === 'aurelia_s2'
                 ? Math.round(hero.stats.atk * skill.multiplier * hero.stats.shieldPower)
                 : calculateShieldAmount(hero.maxHp, skill.multiplier, hero.stats.shieldPower);
-            ctx.grantShield(hero, ally, shieldAmt, skill.id === 'draven_s2' || skill.id === 'bram_s2');
+            ctx.grantShield(
+              hero,
+              ally,
+              shieldAmt,
+              skill.id === 'draven_s2' || skill.id === 'bram_s2' || skill.id === 'malakhia_s2',
+            );
           }
         }
 
@@ -619,6 +624,50 @@ export class SkillExecutor {
       hero.critBuffValue = Math.max(hero.critBuffValue, 0.25);
       const shAmt = Math.round(hero.maxHp * 0.18 * hero.stats.shieldPower);
       ctx.grantShield(hero, hero, shAmt, false);
+    } else if (skill.id === 'malakhia_s1') {
+      // Shattered Halo Cleave wraps Malakhia in a 16% Max HP Cinder Shield
+      const shAmt = Math.round(hero.maxHp * 0.16 * hero.stats.shieldPower);
+      ctx.grantShield(hero, hero, shAmt, true);
+    } else if (skill.id === 'malakhia_ult') {
+      // UR ASHEN ECLIPSE DOMAIN (8s, or 11s when Transcended!) + SERAPHIC OVERDRIVE!
+      const domDur = hero.transcended ? 11.0 : 8.0;
+      hero.overdriveTimer = Math.max(hero.overdriveTimer, domDur);
+      hero.atkSpdBuffTimer = Math.max(hero.atkSpdBuffTimer, domDur);
+      hero.atkSpdBuffValue = Math.max(hero.atkSpdBuffValue, 0.2);
+      hero.dmgReduceTimer = Math.max(hero.dmgReduceTimer, domDur);
+      hero.dmgReduceValue = Math.max(hero.dmgReduceValue, 0.22);
+      ctx.addZone({
+        id: `ashen_eclipse_domain_${Date.now()}`,
+        kind: 'CELESTIAL_DOMAIN',
+        ownerHeroId: hero.heroId,
+        x: tx,
+        y: ty,
+        radius: hero.transcended ? 430 : 385,
+        remaining: domDur,
+        maxDuration: domDur,
+        tickTimer: hero.transcended ? 0.9 : 1.2,
+        color: hero.transcended ? 0xfbbf24 : 0xff3355,
+      });
+      ctx.notifyBanner(
+        hero.transcended
+          ? '❖ APOTHEOSIS OF THE CRIMSON ECLIPSE — SERAPHIC OVERDRIVE! ❖'
+          : '❖ ASHEN ECLIPSE DOMAIN — JUDGMENT OF THE FALLEN SERAPH! ❖',
+      );
+    } else if (skill.id === 'sylvaris_ult') {
+      // Awakening of Sylva blooms a 6s Verdant Sanctuary Zone (HP & SP regen!)
+      ctx.addZone({
+        id: `verdant_sanctuary_${Date.now()}`,
+        kind: 'VERDANT_SANCTUARY',
+        ownerHeroId: hero.heroId,
+        x: tx,
+        y: ty,
+        radius: effectiveRadius + 40,
+        remaining: 6.0,
+        maxDuration: 6.0,
+        tickTimer: 0.4,
+        color: 0x34d399,
+      });
+      ctx.notifyBanner('✿ AWAKENING OF SYLVA — VERDANT SANCTUARY (+HP & +SP)! ✿');
     } else if (skill.id === 'vaelen_ult') {
       ctx.addZone({
         id: `rift_${Date.now()}`,
@@ -861,11 +910,20 @@ export class SkillExecutor {
           enemy.provokeTargetHeroId = hero.heroId;
         }
         if (skill.effects.includes('DEF_SHRED')) {
-          enemy.defShredTimer = 5.0;
+          enemy.defShredTimer = skill.id === 'malakhia_ult' ? 7.0 : 5.0;
           enemy.defShredValue = Math.max(
             enemy.defShredValue,
-            skill.id === 'seraphina_s1' ? 0.2 : skill.id === 'ignis_s1' || skill.id === 'ignis_ult' ? 0.18 : 0.12,
+            skill.id === 'malakhia_ult'
+              ? 0.25
+              : skill.id === 'seraphina_s1'
+                ? 0.2
+                : skill.id === 'ignis_s1' || skill.id === 'ignis_ult'
+                  ? 0.18
+                  : 0.12,
           );
+        }
+        if (hero.heroId === 'sylvaris') {
+          enemy.verdantBloomTimer = 6.0;
         }
         if (skill.effects.includes('FREEZE') && !enemy.def.isBoss) {
           enemy.freezeTimer = Math.max(enemy.freezeTimer, 2.5);

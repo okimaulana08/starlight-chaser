@@ -18,6 +18,18 @@ const HERO_EXTRA_LINES: Record<string, string[]> = {
     'Four rift-blades already track the Boss’s pulse. Once its guard breaks, reality splits in five slashes.',
     'Stand beside me on the event horizon—no eclipse can swallow a vanguard that refuses to blink.',
   ],
+  malakhia: [
+    'My halo shattered so this realm might endure. Kneel before the ash!',
+    'Let the World Boss strike my chains first—every blow only feeds my Ember Vow.',
+    'Fallen angel, demon queen… call me what they will, Commander. Nobody touches your squad while I stand in front.',
+    'When my Sanctuary of Cinders ignites, even volcanic gods learn the weight of a Sovereign.',
+  ],
+  sylvaris: [
+    'Listen closely—the ancient roots remember where every fallen star sleeps.',
+    'My forest wisps have already tangled their ankles, Commander. Strike while Verdant Bloom shines!',
+    'Aurelia heals the body, and my emerald spores keep the whole squad’s starlight SP flowing.',
+    'The twilight canopy whispers good fortune tonight—shall we explore the Starlight Labyrinth?',
+  ],
   vespera: [
     'Target locked at four hundred meters. Once the magma coils peak, nothing walks away.',
     'Tell Draven to keep them burning—my Ember Cluster Barrage loves a hot target.',

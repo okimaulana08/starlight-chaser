@@ -39,6 +39,113 @@ export function playHeroSkillVfx(
     ctx.triggerShake(16);
 
     switch (hero.heroId) {
+      case 'malakhia': {
+        // MALAKHIA UR ULT: JUDGMENT OF THE FALLEN SERAPH — Crimson-Gold Eclipse Seal + Chained Hellfire Pillars + Supernova Blast!
+        ctx.triggerArenaDim(0x28060d, 2.0, 0.54);
+        fx({
+          tex: 'magicCircle',
+          x: tx,
+          y: ty,
+          spin: 1.5,
+          scaleX: 1.15,
+          scaleY: 0.72,
+          endScaleX: 2.85,
+          endScaleY: 1.78,
+          tint: hero.transcended ? 0xfbbf24 : 0xff3355,
+          alpha: 1,
+          life: 1.45,
+          groundLayer: true,
+        });
+        fx({
+          tex: 'explosionNova',
+          x: tx,
+          y: ty - 28,
+          spin: -1.6,
+          scaleX: 0.45,
+          endScaleX: 2.35,
+          tint: 0xff3355,
+          alpha: 0.96,
+          life: 0.72,
+          delay: 0.14,
+          additive: true,
+        });
+        const fireCols = [0xff3355, 0xfbbf24, 0xf97316];
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI * 2) / 6;
+          const dist = i === 0 ? 0 : 95;
+          const lx = tx + Math.cos(a) * dist;
+          const ly = ty + Math.sin(a) * dist * 0.58;
+          ctx.spawnSkyPillar(lx, ly, 86, fireCols[i % 3], true);
+          fx({
+            tex: 'chainLink',
+            x: tx,
+            y: ty - 24,
+            rotation: a,
+            scaleX: 1.25,
+            scaleY: 0.72,
+            endScaleX: 1.85,
+            endScaleY: 0.35,
+            tint: 0xfbbf24,
+            alpha: 0.94,
+            life: 0.56,
+            delay: i * 0.06,
+          });
+        }
+        ctx.spawnSlashArc(tx, ty - 26, angle, effectiveRadius * 1.12, 0xff3355);
+        ctx.spawnBurst(tx, ty - 26, 0xfbbf24, 28, 105);
+        return;
+      }
+
+      case 'sylvaris': {
+        // SYLVARIS SR ULT: AWAKENING OF SYLVA — Bioluminescent World-Tree Magic Seal + Emerald Spirit Nova + Cascading Petals!
+        ctx.triggerArenaDim(0x052019, 1.35, 0.44);
+        fx({
+          tex: 'magicCircle',
+          x: tx,
+          y: ty,
+          spin: 1.35,
+          scaleX: 0.95,
+          scaleY: 0.6,
+          endScaleX: 2.45,
+          endScaleY: 1.54,
+          tint: 0x34d399,
+          alpha: 0.98,
+          life: 1.3,
+          groundLayer: true,
+        });
+        fx({
+          tex: 'explosionNova',
+          x: tx,
+          y: ty - 22,
+          spin: 1.1,
+          scaleX: 0.38,
+          endScaleX: 1.9,
+          tint: 0x34d399,
+          alpha: 0.9,
+          life: 0.65,
+          additive: true,
+        });
+        for (let i = 0; i < 16; i++) {
+          const a = (i * Math.PI * 2) / 16;
+          fx({
+            tex: 'petalLeaf',
+            x: tx + Math.cos(a) * (effectiveRadius * 0.48),
+            y: ty + Math.sin(a) * (effectiveRadius * 0.3),
+            vx: Math.cos(a) * 85,
+            vy: -95 - Math.random() * 65,
+            spin: (Math.random() - 0.5) * 6,
+            scaleX: 0.42,
+            endScaleX: 0.14,
+            tint: i % 2 === 0 ? 0xa7f3d0 : 0xfde047,
+            life: 0.85,
+            delay: (i % 4) * 0.06,
+          });
+        }
+        ctx.spawnSkyPillar(tx, ty, 108, 0x34d399, true);
+        ctx.spawnRingWave(tx, ty, effectiveRadius, 0xa7f3d0, 0.65);
+        return;
+      }
+
       case 'astraea': {
         // ASTRAEA UR ULT: EDICT OF THE SHATTERED SKY — Almighty Prismatic Astrolabe + 8 Constellation Sky-Lances + Rainbow Nova!
         ctx.triggerArenaDim(0x160836, 2.2, 0.56);
@@ -1423,6 +1530,111 @@ export function playHeroSkillVfx(
         life: 0.28,
         darkHalo: true,
       });
+      return;
+    }
+    case 'malakhia_s1': {
+      // Shattered Halo Cleave: blazing crimson-gold chained slash arc + magma explosion
+      ctx.spawnSlashArc(hero.x + Math.cos(angle) * 28, hero.y - 24, angle, effectiveRadius * 1.05, 0xff3355);
+      ctx.spawnSlashArc(hero.x + Math.cos(angle) * 34, hero.y - 24, angle + 0.14, effectiveRadius * 0.85, 0xfbbf24);
+      fx({
+        tex: 'chainLink',
+        x: hero.x + Math.cos(angle) * 64,
+        y: hero.y - 20 + Math.sin(angle) * 40,
+        rotation: angle,
+        scaleX: 1.15,
+        scaleY: 0.6,
+        endScaleX: 1.45,
+        endScaleY: 0.28,
+        tint: 0xfbbf24,
+        life: 0.38,
+      });
+      ctx.spawnBurst(tx, ty - 22, 0xff3355, 16, 48);
+      return;
+    }
+    case 'malakhia_s2': {
+      // Sanctuary of Cinders: molten gold protective seal + crimson barrier halo
+      fx({
+        tex: 'magicCircle',
+        x: hero.x,
+        y: hero.y,
+        spin: 1.6,
+        scaleX: 0.8,
+        scaleY: 0.5,
+        endScaleX: 1.95,
+        endScaleY: 1.22,
+        tint: 0xfbbf24,
+        alpha: 0.95,
+        life: 0.72,
+        groundLayer: true,
+      });
+      fx({
+        tex: 'hexDome',
+        x: hero.x,
+        y: hero.y - 28,
+        scaleX: 0.55,
+        endScaleX: 1.45,
+        tint: 0xff3355,
+        alpha: 0.75,
+        life: 0.58,
+      });
+      ctx.spawnRingWave(hero.x, hero.y, effectiveRadius, 0xfbbf24, 0.55);
+      return;
+    }
+    case 'sylvaris_s1': {
+      // Briar Star-Bind: converging emerald magic seal + swirling forest petals
+      fx({
+        tex: 'magicCircle',
+        x: tx,
+        y: ty,
+        spin: -2.2,
+        scaleX: 1.55,
+        scaleY: 0.96,
+        endScaleX: 0.42,
+        endScaleY: 0.26,
+        tint: 0x34d399,
+        alpha: 0.96,
+        life: 0.54,
+        groundLayer: true,
+      });
+      for (let i = 0; i < 10; i++) {
+        const a = (i * Math.PI * 2) / 10;
+        fx({
+          tex: 'petalLeaf',
+          x: tx + Math.cos(a) * effectiveRadius * 0.55,
+          y: ty + Math.sin(a) * effectiveRadius * 0.35,
+          vx: -Math.cos(a) * 120,
+          vy: -Math.sin(a) * 75 - 35,
+          spin: 4.5,
+          scaleX: 0.36,
+          endScaleX: 0.12,
+          tint: i % 2 === 0 ? 0x34d399 : 0xfde047,
+          life: 0.52,
+        });
+      }
+      ctx.spawnRingWave(tx, ty, effectiveRadius, 0x34d399, 0.48);
+      return;
+    }
+    case 'sylvaris_s2': {
+      // Moonspore Tempest: 4 cascading glowing jade bursts + emerald starburst
+      for (let i = 0; i < 4; i++) {
+        const a = (i * Math.PI * 2) / 4;
+        const sx = tx + Math.cos(a) * 44;
+        const sy = ty + Math.sin(a) * 28;
+        fx({
+          tex: 'explosionNova',
+          x: sx,
+          y: sy - 18,
+          spin: 1.8,
+          scaleX: 0.28,
+          endScaleX: 0.92,
+          tint: i % 2 === 0 ? 0x34d399 : 0xa7f3d0,
+          alpha: 0.88,
+          life: 0.42,
+          delay: i * 0.08,
+          additive: true,
+        });
+      }
+      ctx.spawnRingWave(tx, ty, effectiveRadius, 0xa7f3d0, 0.52);
       return;
     }
     case 'astraea_s1': {

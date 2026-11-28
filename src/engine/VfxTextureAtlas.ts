@@ -720,6 +720,7 @@ function buildTelegraphLane(): Texture {
 
 const BESPOKE_VFX_URLS: Partial<Record<VfxTexKey, string>> = {
   crescentSlash: '/assets/vfx/vfx_anime_slash.webp',
+  explosionNova: '/assets/vfx/vfx_anime_explosion.webp',
   magicCircle: '/assets/vfx/vfx_anime_magic_seal.webp',
   impactFlare: '/assets/vfx/vfx_anime_impact_burst.webp',
 };

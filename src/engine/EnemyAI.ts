@@ -175,6 +175,8 @@ export class EnemyAI {
       if (enemy.provokeTimer <= 0) enemy.provokeTargetHeroId = null;
       enemy.starfallMarkTimer = Math.max(0, enemy.starfallMarkTimer - dt);
       enemy.lunarTraceTimer = Math.max(0, enemy.lunarTraceTimer - dt);
+      enemy.verdantBloomTimer = Math.max(0, enemy.verdantBloomTimer - dt);
+      enemy.verdantBloomSpCd = Math.max(0, enemy.verdantBloomSpCd - dt);
       enemy.defShredTimer = Math.max(0, enemy.defShredTimer - dt);
       if (enemy.defShredTimer <= 0) enemy.defShredValue = 0;
       enemy.atkDownTimer = Math.max(0, enemy.atkDownTimer - dt);

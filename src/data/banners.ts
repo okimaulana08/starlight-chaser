@@ -5,17 +5,40 @@ import { HEROES } from './heroes';
  * Active Event Banners displayed under the Summon > EVENT tab (with sub-tabs).
  * Any hero featured here (UR or SSR rate-up) is automatically excluded from the permanent Hero Summon pool!
  */
+export const HERO_BANNER_UR_MALAKHIA: BannerDef = {
+  id: 'banner_hero_shattered_halo_ur',
+  type: 'HERO',
+  name: 'Sovereign of the Shattered Halo',
+  eventSubTabLabel: '❖ UR • Shattered Halo',
+  subtitle:
+    'NEW LIMITED UR EVENT — Featured: Malakhia (UR Ashen Fallen Seraph Tank • Boss-Breaker & Transcendence) + New SR Sylvaris (High-Elf Archdruidess)',
+  featuredIds: ['malakhia'],
+  poolUR: ['malakhia'],
+  poolSSR: ['vespera', 'aurelia', 'zephyrion', 'vaelen', 'seraphina', 'draven', 'elara'],
+  poolSR: ['sylvaris', 'ignis', 'garrick', 'lyra', 'raze', 'orion'],
+  poolR: ['bram', 'kael', 'nyx', 'titus', 'clara'],
+  isLimitedEvent: true,
+  urBaseRate: 0.006,
+  softPity: 70,
+  hardPity: 100,
+  singleCost: 160,
+  tenCost: 1600,
+  sparkCost: 160,
+  accentColor: '#ff3355',
+  backgroundAsset: '/assets/banners/bg_summon_malakhia_ur.webp',
+};
+
 export const HERO_BANNER_UR_VELARIS: BannerDef = {
   id: 'banner_hero_zero_meridian_ur',
   type: 'HERO',
   name: 'Sovereign of the Zero Meridian',
   eventSubTabLabel: '❖ UR • Zero Meridian',
   subtitle:
-    'NEW LIMITED UR EVENT — Featured: Velaris (UR Astral Assault Sovereign • Boss-Slayer & Empyrean Transcendence)',
+    'LIMITED UR EVENT — Featured: Velaris (UR Astral Assault Sovereign • Boss-Slayer & Empyrean Transcendence)',
   featuredIds: ['velaris'],
   poolUR: ['velaris'],
   poolSSR: ['vespera', 'aurelia', 'zephyrion', 'vaelen', 'seraphina', 'draven', 'elara'],
-  poolSR: ['ignis', 'garrick', 'lyra', 'raze', 'orion'],
+  poolSR: ['sylvaris', 'ignis', 'garrick', 'lyra', 'raze', 'orion'],
   poolR: ['bram', 'kael', 'nyx', 'titus', 'clara'],
   isLimitedEvent: true,
   urBaseRate: 0.006,
@@ -38,7 +61,7 @@ export const HERO_BANNER_UR: BannerDef = {
   featuredIds: ['astraea', 'vespera'],
   poolUR: ['astraea'],
   poolSSR: ['vespera', 'aurelia', 'zephyrion', 'vaelen', 'seraphina', 'draven', 'elara'],
-  poolSR: ['ignis', 'garrick', 'lyra', 'raze', 'orion'],
+  poolSR: ['sylvaris', 'ignis', 'garrick', 'lyra', 'raze', 'orion'],
   poolR: ['bram', 'kael', 'nyx', 'titus', 'clara'],
   isLimitedEvent: true,
   urBaseRate: 0.006,
@@ -59,7 +82,7 @@ export const HERO_BANNER_EVENT_SSR: BannerDef = {
   subtitle: 'LIMITED SSR EVENT — Featured: Aurelia (Saintess of the World-Tree) & Zephyrion (Chrono Eclipse Blade)',
   featuredIds: ['aurelia', 'zephyrion'],
   poolSSR: ['aurelia', 'zephyrion', 'vespera', 'vaelen', 'seraphina', 'draven', 'elara'],
-  poolSR: ['ignis', 'garrick', 'lyra', 'raze', 'orion'],
+  poolSR: ['sylvaris', 'ignis', 'garrick', 'lyra', 'raze', 'orion'],
   poolR: ['bram', 'kael', 'nyx', 'titus', 'clara'],
   isLimitedEvent: true,
   softPity: 60,
@@ -75,6 +98,7 @@ export const HERO_BANNER_EVENT_SSR: BannerDef = {
 export const HERO_BANNER_NEW = HERO_BANNER_EVENT_SSR;
 
 export const EVENT_HERO_BANNERS: BannerDef[] = [
+  HERO_BANNER_UR_MALAKHIA,
   HERO_BANNER_UR_VELARIS,
   HERO_BANNER_UR,
   HERO_BANNER_EVENT_SSR,

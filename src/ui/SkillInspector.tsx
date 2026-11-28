@@ -492,7 +492,11 @@ export const SkillInspector: React.FC<SkillInspectorProps> = ({ hero, owned }) =
                     ? selected === 'PASSIVE'
                       ? '2-Hit Singularity Edge (240% True Slash + Boss Break)'
                       : '12s Empyrean Zero Meridian Rift (0.9s True Blade Echoes)'
-                    : hero.transcendence.summary}
+                    : hero.id === 'malakhia'
+                      ? selected === 'PASSIVE'
+                        ? '4-Stack Infernal Counter-Wave (220% DEF AoE + Burn + ATK↓)'
+                        : '11s Empyrean Ashen Eclipse Domain (0.9s Chained Hellfire Pillars)'
+                      : hero.transcendence.summary}
               </span>
             </div>
           )}

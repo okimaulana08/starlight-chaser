@@ -614,6 +614,7 @@ export class CombatEngine {
         ascensionTimer: 0,
         heatRounds: 0,
         heatStacks: 0,
+        emberVowStacks: 0,
         tailwindStacks: 0,
         tailwindTimer: 0,
         eclipseCritStacks: 0,
@@ -1096,6 +1097,8 @@ export class CombatEngine {
           provokeTargetHeroId: null,
           starfallMarkTimer: 0,
           lunarTraceTimer: 0,
+          verdantBloomTimer: 0,
+          verdantBloomSpCd: 0,
           defShredTimer: 0,
           defShredValue: 0,
           atkDownTimer: 0,
@@ -1263,6 +1266,13 @@ export class CombatEngine {
     if (opts.isSkill) dmgBonus += attacker.stats.skillDmgBonus;
     if (opts.isUlt) dmgBonus += attacker.stats.ultDmgBonus;
     if (enemy.lunarTraceTimer > 0) dmgBonus += 0.12;
+    if (enemy.verdantBloomTimer > 0) {
+      dmgBonus += 0.1;
+      if (enemy.verdantBloomSpCd <= 0) {
+        enemy.verdantBloomSpCd = 1.0;
+        this.ctx.addSp(0.15);
+      }
+    }
     const isRaidWeakness = Boolean(
       activeStage.isWorldBoss && activeStage.raidWeakFactions?.includes(attacker.def.faction),
     );
@@ -1543,6 +1553,45 @@ export class CombatEngine {
       }
     }
 
+    // Malakhia UR Passive: Cinder Retribution (5 Ember Vow stacks, 4 when Transcended -> Infernal Counter-Wave!)
+    if (hero.heroId === 'malakhia') {
+      hero.emberVowStacks += 1;
+      const cap = hero.transcended ? 4 : 5;
+      if (hero.emberVowStacks >= cap) {
+        hero.emberVowStacks = 0;
+        this.pool.spawnSpriteFx({
+          tex: 'explosionNova',
+          x: hero.x,
+          y: hero.y - 24,
+          spin: 1.8,
+          scaleX: 0.45,
+          endScaleX: 1.55,
+          tint: hero.transcended ? 0xfbbf24 : 0xff3355,
+          alpha: 0.94,
+          life: 0.42,
+          additive: true,
+        });
+        this.pool.spawnRingWave(hero.x, hero.y, 225, hero.transcended ? 0xfbbf24 : 0xff3355, 0.48);
+        this.pool.spawnFloatingText(hero.x, hero.y - 64, 'EMBER VOW!', 0xff3355, true);
+        this.ctx.triggerShake(8);
+        for (const e of this.ctx.enemies) {
+          if (e.alive && Math.hypot(e.x - hero.x, e.y - hero.y) <= 230) {
+            e.burnStacks = Math.min(5, e.burnStacks + 2);
+            e.burnTimer = 6.0;
+            e.burnSourceAtk = Math.max(e.burnSourceAtk, hero.stats.atk);
+            e.atkDownTimer = Math.max(e.atkDownTimer, 5.0);
+            e.atkDownValue = Math.max(e.atkDownValue, 0.15);
+            this.handleDamageEnemy(hero, e, {
+              multiplier: hero.transcended ? 2.2 : 1.85,
+              scalesWithDef: true,
+              isSkill: true,
+              breakDamage: 22,
+            });
+          }
+        }
+      }
+    }
+
     // Absorb with Shield first
     let shieldBroke = false;
     if (hero.shield > 0) {
@@ -1760,46 +1809,88 @@ export class CombatEngine {
               this.handleDamageEnemy(owner, e, { multiplier: 0.4, isSkill: true });
             }
           }
+        } else if (z.kind === 'VERDANT_SANCTUARY') {
+          this.ctx.addSp(0.35);
+          for (const h of this.ctx.heroes) {
+            if (h.alive && Math.hypot(h.x - z.x, h.y - z.y) <= z.radius + 60) {
+              const amt = Math.round(h.maxHp * 0.06 * (1 + owner.stats.healBonus));
+              this.handleHealHero(owner, h, amt, false);
+            }
+          }
+          this.pool.spawnSpriteFx({
+            tex: 'petalLeaf',
+            x: z.x + (Math.random() - 0.5) * z.radius,
+            y: z.y + (Math.random() - 0.5) * z.radius * 0.5,
+            vy: -65,
+            spin: 3.2,
+            scaleX: 0.35,
+            endScaleX: 0.12,
+            tint: 0x34d399,
+            life: 0.65,
+          });
         } else if (z.kind === 'CELESTIAL_DOMAIN') {
-          // Every 1.2s (0.9s when Transcended!): Astraea rains prismatic orbital star-lances; Velaris unleashes True DMG Meridian Blade Echoes!
+          // Every 1.2s (0.9s when Transcended!): Astraea rains prismatic orbital star-lances; Velaris unleashes True DMG Meridian Blade Echoes; Malakhia erupts Chained Hellfire Pillars!
           z.tickTimer = owner.transcended ? 0.9 : 1.2;
           const isVelarisRift = owner.heroId === 'velaris';
+          const isMalakhiaEclipse = owner.heroId === 'malakhia';
           const aliveFoes = this.ctx.enemies.filter((e) => e.alive);
-          const targets = isVelarisRift
-            ? [...aliveFoes].sort((a, b) => (b.def.isBoss ? 1 : 0) - (a.def.isBoss ? 1 : 0)).slice(0, owner.transcended ? 3 : 2)
-            : aliveFoes.slice(0, owner.transcended ? 4 : 3);
-          const cols = isVelarisRift
+          const targets =
+            isVelarisRift || isMalakhiaEclipse
+              ? [...aliveFoes].sort((a, b) => (b.def.isBoss ? 1 : 0) - (a.def.isBoss ? 1 : 0)).slice(0, owner.transcended ? 3 : 2)
+              : aliveFoes.slice(0, owner.transcended ? 4 : 3);
+          const cols = isMalakhiaEclipse
             ? owner.transcended
-              ? [0xfde047, 0xa855f7, 0x38e8ff]
-              : [0x818cf8, 0x38e8ff, 0xf43f5e]
-            : [0xfde047, 0x38e8ff, 0xe879f9];
+              ? [0xfbbf24, 0xff3355, 0xf97316]
+              : [0xff3355, 0xf97316, 0xfbbf24]
+            : isVelarisRift
+              ? owner.transcended
+                ? [0xfde047, 0xa855f7, 0x38e8ff]
+                : [0x818cf8, 0x38e8ff, 0xf43f5e]
+              : [0xfde047, 0x38e8ff, 0xe879f9];
+          if (isMalakhiaEclipse && owner.alive) {
+            this.handleHealHero(owner, owner, Math.round(owner.maxHp * 0.04), false);
+          }
           targets.forEach((e, idx) => {
             const col = cols[idx % cols.length];
             if (isVelarisRift) {
               this.pool.spawnBeam(e.x - 56, e.y - 68, e.x + 56, e.y + 12, col, owner.transcended ? 11 : 9);
               this.pool.spawnRingWave(e.x, e.y, owner.transcended ? 84 : 68, col, 0.34);
             } else {
-              this.pool.spawnSkyPillar(e.x, e.y, owner.transcended ? 78 : 68, col, false);
+              this.pool.spawnSkyPillar(e.x, e.y, owner.transcended ? 82 : 70, col, false);
             }
             this.pool.spawnBurst(e.x, e.y - 26, col, 10, 36);
+            if (isMalakhiaEclipse) {
+              e.burnStacks = Math.min(5, e.burnStacks + 1);
+              e.burnTimer = 6.0;
+              e.burnSourceAtk = Math.max(e.burnSourceAtk, owner.stats.atk);
+            }
             this.handleDamageEnemy(owner, e, {
-              multiplier: isVelarisRift
+              multiplier: isMalakhiaEclipse
                 ? owner.transcended
-                  ? 1.05
-                  : 0.85
-                : owner.transcended
-                  ? 0.92
-                  : 0.75,
+                  ? 1.25
+                  : 1.0
+                : isVelarisRift
+                  ? owner.transcended
+                    ? 1.05
+                    : 0.85
+                  : owner.transcended
+                    ? 0.92
+                    : 0.75,
+              scalesWithDef: isMalakhiaEclipse,
               isSkill: true,
               isTrueDamage: isVelarisRift,
-              hitShieldHits: isVelarisRift ? 2 : 1,
-              breakDamage: isVelarisRift
+              hitShieldHits: isVelarisRift || isMalakhiaEclipse ? 2 : 1,
+              breakDamage: isMalakhiaEclipse
                 ? owner.transcended
-                  ? 14
-                  : 10
-                : owner.transcended
-                  ? 8
-                  : 6,
+                  ? 18
+                  : 14
+                : isVelarisRift
+                  ? owner.transcended
+                    ? 14
+                    : 10
+                  : owner.transcended
+                    ? 8
+                    : 6,
             });
           });
         }
@@ -3681,6 +3772,9 @@ export class CombatEngine {
         const triggerEvery = h.transcended ? 2 : 3;
         stacksLabel = h.overdriveTimer > 0 ? 'ECLIPSE' : 'RIFT';
         stacksCount = h.overdriveTimer > 0 ? Math.ceil(h.overdriveTimer) : h.basicCount % triggerEvery;
+      } else if (h.heroId === 'malakhia') {
+        stacksLabel = h.overdriveTimer > 0 ? 'SERAPH' : 'VOW';
+        stacksCount = h.overdriveTimer > 0 ? Math.ceil(h.overdriveTimer) : h.emberVowStacks;
       } else if (h.heroId === 'vespera') {
         stacksLabel = 'HEAT';
         stacksCount = h.heatRounds;

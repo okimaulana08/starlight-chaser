@@ -75,6 +75,7 @@ export interface HeroUnit {
   ascensionTimer: number; // Astraea UR Ascension Form (9s)
   heatRounds: number; // Vespera SSR (0-5)
   heatStacks: number; // Draven (0-10)
+  emberVowStacks: number; // Malakhia UR (0-5; 0-4 Transcended)
   tailwindStacks: number; // Kael (0-3)
   tailwindTimer: number;
   eclipseCritStacks: number; // Blade of First Eclipse (0-5)
@@ -183,6 +184,8 @@ export interface EnemyUnit {
   provokeTargetHeroId: string | null;
   starfallMarkTimer: number; // Vaelen
   lunarTraceTimer: number; // Elara (+12% dmg taken)
+  verdantBloomTimer: number; // Sylvaris (+10% dmg & +0.15 SP on hit)
+  verdantBloomSpCd: number;
   defShredTimer: number;
   defShredValue: number;
   atkDownTimer: number;
@@ -258,7 +261,13 @@ export interface EnemyUnit {
 
 export interface GroundZone {
   id: string;
-  kind: 'STARLIGHT_RIFT' | 'LAVA_CALDERA' | 'SANCTUARY_BLOOM' | 'ASTRAL_BEACON' | 'CELESTIAL_DOMAIN';
+  kind:
+    | 'STARLIGHT_RIFT'
+    | 'LAVA_CALDERA'
+    | 'SANCTUARY_BLOOM'
+    | 'VERDANT_SANCTUARY'
+    | 'ASTRAL_BEACON'
+    | 'CELESTIAL_DOMAIN';
   ownerHeroId: string;
   x: number;
   y: number;
