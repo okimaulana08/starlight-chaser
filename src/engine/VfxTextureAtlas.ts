@@ -18,7 +18,8 @@ export type VfxTexKey =
   | 'lightningBolt'
   | 'chainLink'
   | 'arrowStreak'
-  | 'ringHalo';
+  | 'ringHalo'
+  | 'telegraphLane';
 
 function makeCanvas(w: number, h: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const c = document.createElement('canvas');
@@ -651,6 +652,72 @@ function buildArrowStreak(): Texture {
   return Texture.from(c);
 }
 
+/**
+ * Sleek translucent anime laser-sight danger lane for Boss Cross-Beam telegraphs
+ * (soft Gaussian glow haze + luminous thin edge rails + directional chevrons + feathered ends — ZERO solid boxes!).
+ */
+function buildTelegraphLane(): Texture {
+  const [c, ctx] = makeCanvas(512, 128);
+
+  // 1. Ultra-soft vertical glow haze (stronger near thin outer rails, airy in the center so heroes stay crystal clear)
+  const vg = ctx.createLinearGradient(0, 0, 0, 128);
+  vg.addColorStop(0.0, 'rgba(255,255,255,0)');
+  vg.addColorStop(0.14, 'rgba(255,255,255,0.22)');
+  vg.addColorStop(0.22, 'rgba(255,255,255,0.88)');
+  vg.addColorStop(0.29, 'rgba(255,255,255,0.24)');
+  vg.addColorStop(0.5, 'rgba(255,255,255,0.14)');
+  vg.addColorStop(0.71, 'rgba(255,255,255,0.24)');
+  vg.addColorStop(0.78, 'rgba(255,255,255,0.88)');
+  vg.addColorStop(0.86, 'rgba(255,255,255,0.22)');
+  vg.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, 512, 128);
+
+  // 2. Crisp razor energy guide rails along top & bottom corridor edges
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(28, 28);
+  ctx.lineTo(484, 28);
+  ctx.moveTo(28, 100);
+  ctx.lineTo(484, 100);
+  ctx.stroke();
+
+  // 3. Delicate anime targeting chevrons radiating outward from center (x=256)
+  ctx.strokeStyle = 'rgba(255,255,255,0.48)';
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (let offset = 36; offset <= 216; offset += 36) {
+    // Right-pointing chevron
+    const rx = 256 + offset;
+    ctx.beginPath();
+    ctx.moveTo(rx - 10, 44);
+    ctx.lineTo(rx + 6, 64);
+    ctx.lineTo(rx - 10, 84);
+    ctx.stroke();
+    // Left-pointing chevron
+    const lx = 256 - offset;
+    ctx.beginPath();
+    ctx.moveTo(lx + 10, 44);
+    ctx.lineTo(lx - 6, 64);
+    ctx.lineTo(lx + 10, 84);
+    ctx.stroke();
+  }
+
+  // 4. Smooth tapered horizontal fade at both ends so lane dissolves organically into the arena
+  ctx.globalCompositeOperation = 'destination-in';
+  const hg = ctx.createLinearGradient(0, 0, 512, 0);
+  hg.addColorStop(0.0, 'rgba(255,255,255,0)');
+  hg.addColorStop(0.12, 'rgba(255,255,255,1)');
+  hg.addColorStop(0.88, 'rgba(255,255,255,1)');
+  hg.addColorStop(1.0, 'rgba(255,255,255,0)');
+  ctx.fillStyle = hg;
+  ctx.fillRect(0, 0, 512, 128);
+
+  return Texture.from(c);
+}
+
 const BESPOKE_VFX_URLS: Partial<Record<VfxTexKey, string>> = {
   crescentSlash: '/assets/vfx/vfx_anime_slash.webp',
   magicCircle: '/assets/vfx/vfx_anime_magic_seal.webp',
@@ -681,6 +748,7 @@ export class VfxTextureAtlas {
         lightningBolt: buildLightningBolt(),
         chainLink: buildChainLink(),
         arrowStreak: buildArrowStreak(),
+        telegraphLane: buildTelegraphLane(),
       };
     }
     return this.instance;

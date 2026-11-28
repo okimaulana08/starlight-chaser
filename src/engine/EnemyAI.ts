@@ -1,102 +1,84 @@
-import { Graphics } from 'pixi.js';
+import { Graphics, Sprite } from 'pixi.js';
 import { audioManager } from './AudioManager';
 import type { CombatContext, EnemyTelegraph, EnemyUnit, HeroUnit } from './CombatTypes';
+import { VfxTextureAtlas } from './VfxTextureAtlas';
+
+export function destroyTelegraphVisuals(tg: EnemyTelegraph): void {
+  if (tg.laneSprite && !tg.laneSprite.destroyed) tg.laneSprite.destroy();
+  if (tg.coreSprite && !tg.coreSprite.destroyed) tg.coreSprite.destroy();
+  if (!tg.gfx.destroyed) tg.gfx.destroy();
+}
 
 export class EnemyAI {
   public update(
     ctx: CombatContext,
     dt: number,
-    telegraphLayer: { addChild: (g: Graphics) => void },
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     const aliveHeroes = ctx.heroes.filter((h) => h.alive);
     if (aliveHeroes.length === 0) return;
 
-    // 1. Update active red/orange telegraphs visuals
+    // 1. Update active feathered danger telegraphs
     for (const tg of ctx.telegraphs) {
       tg.elapsed += dt;
       const progress = Math.min(1, tg.elapsed / Math.max(0.05, tg.duration));
-      const color = tg.cancelable ? 0xf97316 : 0xef4444;
+      const color = tg.cancelable ? 0xf97316 : 0xf43f5e;
       tg.gfx.clear();
 
       if (tg.shape === 'CIRCLE') {
         tg.gfx
           .ellipse(tg.x, tg.y, tg.radius, tg.radius * 0.68)
-          .fill({ color, alpha: 0.14 })
-          .stroke({ color, width: 3, alpha: 0.9 });
-        // Expanding inner fill showing exact cast completion timing
+          .fill({ color, alpha: 0.09 })
+          .stroke({ color, width: 2.5, alpha: 0.85 });
+        // Smooth expanding inner warning pulse ring
         tg.gfx
           .ellipse(tg.x, tg.y, tg.radius * progress, tg.radius * 0.68 * progress)
-          .fill({ color, alpha: 0.32 });
+          .fill({ color, alpha: 0.16 + progress * 0.12 })
+          .stroke({ color: 0xfef08a, width: 1.6, alpha: 0.45 + progress * 0.45 });
       } else if (tg.shape === 'LINE') {
-        // Full-arena laser corridor telegraph (Cross-Beam!)
-        const halfLen = (tg.length ?? 760) * 0.5;
-        const halfW = (tg.width ?? 88) * 0.5;
-        const cos = Math.cos(tg.angle);
-        const sin = Math.sin(tg.angle);
-        const px = -sin;
-        const py = cos;
-        const x1 = tg.x - cos * halfLen;
-        const y1 = tg.y - sin * halfLen;
-        const x2 = tg.x + cos * halfLen;
-        const y2 = tg.y + sin * halfLen;
+        // Sleek Feathered Celestial Laser-Sight Telegraph (ZERO flat opaque pink rectangles!)
+        const totalLen = tg.length ?? 1020;
+        const laneW = tg.width ?? 82;
+        const pulse = 0.86 + Math.sin(tg.elapsed * 16) * 0.14;
 
-        // Outer corridor danger footprint
-        tg.gfx
-          .poly([
-            x1 + px * halfW,
-            y1 + py * halfW,
-            x2 + px * halfW,
-            y2 + py * halfW,
-            x2 - px * halfW,
-            y2 - py * halfW,
-            x1 - px * halfW,
-            y1 - py * halfW,
-          ])
-          .fill({ color: 0xf43f5e, alpha: 0.16 })
-          .stroke({ color: 0xfb7185, width: 2.5, alpha: 0.9 });
-
-        // Expanding central charge core
-        const fillW = halfW * progress;
-        tg.gfx
-          .poly([
-            x1 + px * fillW,
-            y1 + py * fillW,
-            x2 + px * fillW,
-            y2 + py * fillW,
-            x2 - px * fillW,
-            y2 - py * fillW,
-            x1 - px * fillW,
-            y1 - py * fillW,
-          ])
-          .fill({ color: 0xe879f9, alpha: 0.25 + progress * 0.25 });
-
-        // Razor bright center laser line
-        tg.gfx
-          .moveTo(x1, y1)
-          .lineTo(x2, y2)
-          .stroke({ color: 0xfef08a, width: 2 + progress * 4, alpha: 0.75 });
+        if (tg.laneSprite && !tg.laneSprite.destroyed) {
+          tg.laneSprite.position.set(tg.x, tg.y);
+          tg.laneSprite.rotation = tg.angle;
+          tg.laneSprite.width = totalLen;
+          tg.laneSprite.height = laneW * 1.42;
+          tg.laneSprite.tint = progress > 0.78 ? 0xfb7185 : 0xf43f5e;
+          tg.laneSprite.alpha = (0.36 + progress * 0.34) * pulse;
+        }
+        if (tg.coreSprite && !tg.coreSprite.destroyed) {
+          tg.coreSprite.position.set(tg.x, tg.y);
+          tg.coreSprite.rotation = tg.angle;
+          tg.coreSprite.width = totalLen * (0.42 + progress * 0.58);
+          tg.coreSprite.height = laneW * (0.18 + progress * 0.64);
+          tg.coreSprite.tint = progress > 0.72 ? 0xfef08a : 0xe879f9;
+          tg.coreSprite.alpha = 0.28 + progress * 0.66;
+        }
       } else if (tg.shape === 'RING') {
         // Donut Blast with glowing Emerald-Cyan Inner SAFE ZONE!
         const innerR = tg.innerRadius ?? 155;
         const outerR = tg.radius;
         tg.gfx
           .ellipse(tg.x, tg.y, outerR, outerR * 0.68)
-          .fill({ color: 0xef4444, alpha: 0.18 + progress * 0.18 })
+          .fill({ color: 0xef4444, alpha: 0.1 + progress * 0.12 })
           .ellipse(tg.x, tg.y, innerR, innerR * 0.68)
           .cut();
         // Expanding danger wave ring moving from inner edge -> outer edge
         const sweepR = innerR + (outerR - innerR) * progress;
         tg.gfx
           .ellipse(tg.x, tg.y, sweepR, sweepR * 0.68)
-          .stroke({ color: 0xf43f5e, width: 5, alpha: 0.88 });
+          .stroke({ color: 0xf43f5e, width: 3.5, alpha: 0.82 });
         tg.gfx
           .ellipse(tg.x, tg.y, outerR, outerR * 0.68)
-          .stroke({ color: 0xef4444, width: 3, alpha: 0.92 });
+          .stroke({ color: 0xef4444, width: 2.5, alpha: 0.85 });
         // Safe Zone glowing cyan-emerald sanctuary circle
         tg.gfx
           .ellipse(tg.x, tg.y, innerR, innerR * 0.68)
-          .fill({ color: 0x10b981, alpha: 0.12 })
-          .stroke({ color: 0x34d399, width: 3.5, alpha: 0.95 });
+          .fill({ color: 0x10b981, alpha: 0.1 })
+          .stroke({ color: 0x34d399, width: 3, alpha: 0.92 });
       } else {
         // CONE telegraph
         const startA = tg.angle - tg.arcSpan * 0.5;
@@ -105,13 +87,13 @@ export class EnemyAI {
           .moveTo(tg.x, tg.y)
           .arc(tg.x, tg.y, tg.radius, startA, endA)
           .lineTo(tg.x, tg.y)
-          .fill({ color, alpha: 0.16 })
-          .stroke({ color, width: 3, alpha: 0.9 });
+          .fill({ color, alpha: 0.1 })
+          .stroke({ color, width: 2.5, alpha: 0.85 });
         tg.gfx
           .moveTo(tg.x, tg.y)
           .arc(tg.x, tg.y, tg.radius * progress, startA, endA)
           .lineTo(tg.x, tg.y)
-          .fill({ color, alpha: 0.34 });
+          .fill({ color, alpha: 0.18 + progress * 0.1 });
       }
     }
 
@@ -506,19 +488,47 @@ export class EnemyAI {
 
   private addTelegraph(
     ctx: CombatContext,
-    telegraphLayer: { addChild: (g: Graphics) => void },
-    tg: Omit<EnemyTelegraph, 'gfx'>,
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
+    tg: Omit<EnemyTelegraph, 'gfx' | 'laneSprite' | 'coreSprite'>,
   ): void {
     const gfx = new Graphics();
     telegraphLayer.addChild(gfx);
-    ctx.telegraphs.push({ ...tg, gfx });
+    let laneSprite: Sprite | undefined;
+    let coreSprite: Sprite | undefined;
+
+    if (tg.shape === 'LINE') {
+      const atlas = VfxTextureAtlas.get();
+      laneSprite = new Sprite(atlas.telegraphLane);
+      laneSprite.anchor.set(0.5);
+      laneSprite.blendMode = 'add';
+      laneSprite.position.set(tg.x, tg.y);
+      laneSprite.rotation = tg.angle;
+      laneSprite.width = tg.length ?? 1020;
+      laneSprite.height = (tg.width ?? 82) * 1.42;
+      laneSprite.tint = 0xf43f5e;
+      laneSprite.alpha = 0.36;
+      telegraphLayer.addChild(laneSprite);
+
+      coreSprite = new Sprite(atlas.energyBeam);
+      coreSprite.anchor.set(0.5);
+      coreSprite.blendMode = 'add';
+      coreSprite.position.set(tg.x, tg.y);
+      coreSprite.rotation = tg.angle;
+      coreSprite.width = (tg.length ?? 1020) * 0.42;
+      coreSprite.height = (tg.width ?? 82) * 0.2;
+      coreSprite.tint = 0xe879f9;
+      coreSprite.alpha = 0.28;
+      telegraphLayer.addChild(coreSprite);
+    }
+
+    ctx.telegraphs.push({ ...tg, gfx, laneSprite, coreSprite });
   }
 
   private startGolemSlam(
     ctx: CombatContext,
     enemy: EnemyUnit,
     target: HeroUnit,
-    telegraphLayer: { addChild: (g: Graphics) => void },
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     enemy.isCasting = true;
     enemy.castName = 'Marble Quake';
@@ -549,7 +559,7 @@ export class EnemyAI {
     ctx: CombatContext,
     enemy: EnemyUnit,
     target: HeroUnit,
-    telegraphLayer: { addChild: (g: Graphics) => void },
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     const angle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
     enemy.isCasting = true;
@@ -579,7 +589,7 @@ export class EnemyAI {
   private startAstralNova(
     ctx: CombatContext,
     enemy: EnemyUnit,
-    telegraphLayer: { addChild: (g: Graphics) => void },
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     enemy.isCasting = true;
     enemy.castName = 'Rift Nova';
@@ -611,7 +621,7 @@ export class EnemyAI {
     ctx: CombatContext,
     enemy: EnemyUnit,
     target: HeroUnit,
-    telegraphLayer: { addChild: (g: Graphics) => void },
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     enemy.isCasting = true;
     enemy.castName = 'Root Eruption';
@@ -642,7 +652,7 @@ export class EnemyAI {
     ctx: CombatContext,
     enemy: EnemyUnit,
     target: HeroUnit,
-    telegraphLayer: { addChild: (g: Graphics) => void },
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     const angle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
     enemy.isCasting = true;
@@ -674,7 +684,7 @@ export class EnemyAI {
   private startWispBurst(
     ctx: CombatContext,
     enemy: EnemyUnit,
-    telegraphLayer: { addChild: (g: Graphics) => void },
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     enemy.isCasting = true;
     enemy.castName = 'Rift Burst';
@@ -705,7 +715,7 @@ export class EnemyAI {
     ctx: CombatContext,
     enemy: EnemyUnit,
     target: HeroUnit,
-    telegraphLayer: { addChild: (g: Graphics) => void },
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     enemy.isCasting = true;
     enemy.castName = 'Magma Lob';
@@ -736,7 +746,7 @@ export class EnemyAI {
     ctx: CombatContext,
     boss: EnemyUnit,
     target: HeroUnit,
-    telegraphLayer: { addChild: (g: Graphics) => void },
+    telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     const roll = Math.random();
     const angle = Math.atan2(target.y - boss.y, target.x - boss.x);
@@ -897,7 +907,7 @@ export class EnemyAI {
               fn: () => {
                 ctx.telegraphs = ctx.telegraphs.filter((t) => {
                   if (t.id === tgId) {
-                    t.gfx.destroy();
+                    destroyTelegraphVisuals(t);
                     return false;
                   }
                   return true;
@@ -924,7 +934,7 @@ export class EnemyAI {
   private resolveEnemyCast(
     ctx: CombatContext,
     enemy: EnemyUnit,
-    _telegraphLayer: { addChild: (g: Graphics) => void },
+    _telegraphLayer: { addChild: (child: Graphics | Sprite) => void },
   ): void {
     const action = enemy.castAction;
     enemy.isCasting = false;
@@ -939,7 +949,7 @@ export class EnemyAI {
     if (action !== 'SKYFALL' && action !== 'METEOR_BARRAGE') {
       ctx.telegraphs = ctx.telegraphs.filter((t) => {
         if (t.enemyUid === enemy.uid) {
-          t.gfx.destroy();
+          destroyTelegraphVisuals(t);
           return false;
         }
         return true;
@@ -1080,6 +1090,19 @@ export class EnemyAI {
         ctx.spawnBeam(x1, y1 - 18, x2, y2 - 18, 0xfef08a, 14);
       }
       ctx.spawnRingWave(enemy.castTargetX, enemy.castTargetY, 195, 0xf43f5e, 0.48);
+      ctx.spawnSpriteFx({
+        tex: 'impactFlare',
+        x: enemy.castTargetX,
+        y: enemy.castTargetY - 22,
+        rotation: enemy.castAngle,
+        spin: 2.2,
+        scaleX: 0.75,
+        endScaleX: 1.85,
+        tint: enemy.enraged ? 0xf43f5e : 0xfef08a,
+        alpha: 0.96,
+        life: 0.36,
+        additive: true,
+      });
       for (const h of ctx.heroes) {
         if (!h.alive) continue;
         let hit = false;
@@ -1142,7 +1165,7 @@ export class EnemyAI {
     ctx.defeatedEnemyIds.add(enemy.def.id);
     ctx.telegraphs = ctx.telegraphs.filter((t) => {
       if (t.enemyUid === enemy.uid) {
-        t.gfx.destroy();
+        destroyTelegraphVisuals(t);
         return false;
       }
       return true;

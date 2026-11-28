@@ -286,6 +286,8 @@ export interface EnemyTelegraph {
   elapsed: number;
   cancelable: boolean;
   gfx: Graphics;
+  laneSprite?: Sprite;
+  coreSprite?: Sprite;
 }
 
 export interface DelayedStrike {

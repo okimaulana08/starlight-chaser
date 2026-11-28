@@ -55,7 +55,7 @@ import {
   isFourFactionHarmony,
 } from './CombatMath';
 import type { CombatContext, EnemyUnit, GroundZone, HeroUnit, PetUnit } from './CombatTypes';
-import { EnemyAI } from './EnemyAI';
+import { EnemyAI, destroyTelegraphVisuals } from './EnemyAI';
 import { getHeroHitStyle } from './HeroVfxChoreographer';
 import { LiveMeshActor } from './LiveMeshActor';
 import { ObjectPool } from './ObjectPool';
@@ -66,7 +66,7 @@ import { VfxTextureAtlas } from './VfxTextureAtlas';
 
 const ARENA_W = 2560;
 const ARENA_H = 1440;
-const BOUNDS = { minX: 460, maxX: 2100, minY: 360, maxY: 1120 };
+const BOUNDS = { minX: 460, maxX: 2100, minY: 470, maxY: 1090 };
 
 function hexToNum(hex: string): number {
   return parseInt(hex.replace('#', ''), 16) || 0xffffff;
@@ -112,7 +112,7 @@ export class CombatEngine {
   private ctx!: CombatContext;
   private petUnit: PetUnit | null = null;
   private cameraX = 1040;
-  private cameraY = 740;
+  private cameraY = 665;
   private cameraZoom = 1.0;
   private pointerWorld = { x: 1180, y: 740 };
   private elapsedSec = 0;
@@ -288,7 +288,7 @@ export class CombatEngine {
       zones: [],
       telegraphs: [],
       delayedStrikes: [],
-      squadAnchor: { x: 760, y: 740 },
+      squadAnchor: { x: 760, y: 790 },
       moveTarget: null,
       sp: 4.5,
       maxSp: 10,
@@ -1025,8 +1025,8 @@ export class CombatEngine {
           ? 1620
           : Math.min(BOUNDS.maxX - 120, Math.max(BOUNDS.minX + 460, this.ctx.squadAnchor.x + 480 + (spawnIdx % 3) * 115));
         const spawnY = def.isBoss
-          ? 740
-          : BOUNDS.minY + 130 + ((spawnIdx * 173) % (BOUNDS.maxY - BOUNDS.minY - 260));
+          ? 775
+          : BOUNDS.minY + 110 + ((spawnIdx * 173) % (BOUNDS.maxY - BOUNDS.minY - 220));
         const flankAngle = ((spawnIdx % 6) - 2.5) * 0.72 + (Math.random() - 0.5) * 0.25;
         spawnIdx++;
 
@@ -2068,7 +2068,7 @@ export class CombatEngine {
 
     this.ctx.telegraphs = this.ctx.telegraphs.filter((tg) => {
       if (tg.enemyUid === enemy.uid) {
-        tg.gfx.destroy();
+        destroyTelegraphVisuals(tg);
         return false;
       }
       return true;
@@ -3081,18 +3081,24 @@ export class CombatEngine {
     const viewH = this.app.screen.height;
 
     let targetX = this.ctx.squadAnchor.x;
-    let targetY = this.ctx.squadAnchor.y;
+    let targetY = this.ctx.squadAnchor.y - 75;
 
     if (this.ctx.cameraFocus) {
       targetX = this.ctx.cameraFocus.x;
-      targetY = this.ctx.cameraFocus.y;
+      targetY = this.ctx.cameraFocus.y - 80;
     } else {
       const aliveEnemies = this.ctx.enemies.filter((e) => e.alive);
       if (aliveEnemies.length > 0) {
         const boss = aliveEnemies.find((e) => e.def.isBoss);
         const focus = boss ?? aliveEnemies[0];
-        targetX = this.ctx.squadAnchor.x * 0.62 + focus.x * 0.38;
-        targetY = this.ctx.squadAnchor.y * 0.68 + focus.y * 0.32;
+        if (boss) {
+          // Frame both squad AND full ~285px-tall colossal boss body centered below top Boss HP bar!
+          targetX = this.ctx.squadAnchor.x * 0.54 + boss.x * 0.46;
+          targetY = this.ctx.squadAnchor.y * 0.5 + boss.y * 0.5 - 128;
+        } else {
+          targetX = this.ctx.squadAnchor.x * 0.62 + focus.x * 0.38;
+          targetY = this.ctx.squadAnchor.y * 0.65 + focus.y * 0.35 - 75;
+        }
       }
     }
 
@@ -3110,7 +3116,7 @@ export class CombatEngine {
       // Mobile landscape: pull back vertically so top HUD + bottom dock leave clear fighting lane
       baseScale = Math.max(0.46, Math.min(0.82, viewH / 740));
     } else {
-      baseScale = Math.max(0.64, Math.min(1.05, Math.min(viewW / 1460, viewH / 840)));
+      baseScale = Math.max(0.64, Math.min(1.02, Math.min(viewW / 1480, viewH / 860)));
     }
     // Guarantee arena background ALWAYS covers 100% of viewport (+36px shake bleed) with ZERO black edge void!
     const minCoverScale = Math.max(
@@ -3136,8 +3142,10 @@ export class CombatEngine {
     const minWorldY = viewH - scaledH;
     const maxWorldY = 0;
 
+    // Place visual midpoint slightly below 50% (0.55) to compensate for taller Top Boss HP Card vs Bottom Deck
+    const screenAnchorY = viewW < viewH ? 0.54 : 0.555;
     const rawWorldX = viewW * 0.5 - this.cameraX * finalScale;
-    const rawWorldY = viewH * 0.52 - this.cameraY * finalScale;
+    const rawWorldY = viewH * screenAnchorY - this.cameraY * finalScale;
     const clampedX = Math.max(minWorldX, Math.min(maxWorldX, rawWorldX + shakeX));
     const clampedY = Math.max(minWorldY, Math.min(maxWorldY, rawWorldY + shakeY));
 
