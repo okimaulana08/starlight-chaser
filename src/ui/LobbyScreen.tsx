@@ -114,6 +114,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     checkInLastClaimDate,
     getDungeonEntriesLeft,
     getClaimableCommissionsCount,
+    getEndgameNotificationCount,
     getCheckInStatus,
     claimDailySupply,
   } = usePlayerStore();
@@ -186,6 +187,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     [squadIds, roster, activePetId, petsMap],
   );
   const claimableCommissions = getClaimableCommissionsCount();
+  const endgameBadges = getEndgameNotificationCount();
   void checkInCycle;
   void checkInClaimedDays;
   void checkInLastClaimDate;
@@ -878,15 +880,15 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             </div>
           </button>
 
-          {/* Illustrated Art-Style Mode Cards: RIFT DUNGEONS + ASTRAL SPIRE + CAMPAIGN */}
-          <div className="pointer-events-auto grid grid-cols-3 sm:flex items-stretch gap-1.5 sm:gap-2.5 w-full sm:w-auto sm:ml-auto">
+          {/* Illustrated Art-Style Mode Cards: RIFT DUNGEONS + ASTRAL SPIRE + ENDGAME SANCTUM + CAMPAIGN */}
+          <div className="pointer-events-auto grid grid-cols-2 sm:flex items-stretch gap-1.5 sm:gap-2 w-full sm:w-auto sm:ml-auto">
             {/* Art Card 1: Dedicated Farming Dungeons Button */}
             <button
               onClick={() => {
                 audioManager.playSfx('button');
                 onOpenDungeon('GOLD_VAULT');
               }}
-              className="relative h-[68px] sm:h-[74px] md:h-[86px] sm:w-[162px] md:w-[196px] rounded-2xl overflow-hidden border-2 border-fuchsia-400/75 hover:border-cyan-300 shadow-[0_10px_28px_rgba(0,0,0,0.75),0_0_22px_rgba(192,132,252,0.3)] text-left group transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
+              className="relative h-[66px] sm:h-[74px] md:h-[86px] sm:w-[144px] md:w-[168px] rounded-2xl overflow-hidden border-2 border-fuchsia-400/75 hover:border-cyan-300 shadow-[0_10px_28px_rgba(0,0,0,0.75),0_0_22px_rgba(192,132,252,0.3)] text-left group transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
             >
               <ModeArtBanner
                 primarySrc="/assets/ui/card_rift_dungeons.webp"
@@ -902,7 +904,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               />
               <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-fuchsia-400 via-cyan-300 to-transparent opacity-90" />
 
-              <div className="relative z-10 h-full px-2.5 sm:px-3.5 py-2 flex flex-col justify-between">
+              <div className="relative z-10 h-full px-2.5 sm:px-3 py-2 flex flex-col justify-between">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-[8px] sm:text-[9px] font-display font-black uppercase tracking-[0.16em] text-fuchsia-300 leading-none truncate">
                     FARMING
@@ -913,23 +915,23 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   </span>
                 </div>
                 <div>
-                  <div className="font-display text-xs sm:text-base md:text-lg font-black tracking-[0.1em] text-white drop-shadow-[0_2px_10px_rgba(192,132,252,0.85)] leading-none group-hover:text-cyan-200 transition truncate">
+                  <div className="font-display text-xs sm:text-sm md:text-base font-black tracking-[0.1em] text-white drop-shadow-[0_2px_10px_rgba(192,132,252,0.85)] leading-none group-hover:text-cyan-200 transition truncate">
                     DUNGEONS
                   </div>
                   <div className="hidden sm:block ls-hide text-[9px] md:text-[10px] font-bold text-fuchsia-100/85 mt-0.5 truncate">
-                    Gold • EXP • Forge • Relic
+                    TI–TX • Gold • Relic
                   </div>
                 </div>
               </div>
             </button>
 
-            {/* Art Card 2: Astral Spire 50-Floor Endless Tower */}
+            {/* Art Card 2: Astral Spire 120-Floor Endless Tower */}
             <button
               onClick={() => {
                 audioManager.playSfx('button');
                 onNavigate('SPIRE');
               }}
-              className="relative h-[68px] sm:h-[74px] md:h-[86px] sm:w-[162px] md:w-[196px] rounded-2xl overflow-hidden border-2 border-cyan-400/80 hover:border-amber-300 shadow-[0_10px_28px_rgba(0,0,0,0.75),0_0_22px_rgba(56,232,255,0.28)] text-left group transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
+              className="relative h-[66px] sm:h-[74px] md:h-[86px] sm:w-[144px] md:w-[168px] rounded-2xl overflow-hidden border-2 border-cyan-400/80 hover:border-amber-300 shadow-[0_10px_28px_rgba(0,0,0,0.75),0_0_22px_rgba(56,232,255,0.28)] text-left group transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
             >
               <ModeArtBanner
                 primarySrc="/assets/environments/env_region_2.webp"
@@ -945,7 +947,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               />
               <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-cyan-300 via-amber-300 to-transparent opacity-90" />
 
-              <div className="relative z-10 h-full px-2.5 sm:px-3.5 py-2 flex flex-col justify-between">
+              <div className="relative z-10 h-full px-2.5 sm:px-3 py-2 flex flex-col justify-between">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-[8px] sm:text-[9px] font-display font-black uppercase tracking-[0.16em] text-cyan-300 leading-none truncate">
                     120F TOWER
@@ -955,23 +957,71 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                   </span>
                 </div>
                 <div>
-                  <div className="font-display text-xs sm:text-base md:text-lg font-black tracking-[0.1em] text-white drop-shadow-[0_2px_10px_rgba(56,232,255,0.85)] leading-none group-hover:text-amber-200 transition truncate">
+                  <div className="font-display text-xs sm:text-sm md:text-base font-black tracking-[0.1em] text-white drop-shadow-[0_2px_10px_rgba(56,232,255,0.85)] leading-none group-hover:text-amber-200 transition truncate">
                     SPIRE
                   </div>
                   <div className="hidden sm:block ls-hide text-[9px] md:text-[10px] font-bold text-cyan-100/85 mt-0.5 truncate">
-                    Boss Gauntlet • Daily Tribute
+                    Boss Gauntlet • Tribute
                   </div>
                 </div>
               </div>
             </button>
 
-            {/* Art Card 3: Dedicated Campaign Battle Button */}
+            {/* Art Card 3: NEW Endgame Sanctum (World Boss Raid • Starlight Labyrinth • DPS Sandbox) */}
+            <button
+              onClick={() => {
+                audioManager.playSfx('button');
+                onNavigate('ENDGAME');
+              }}
+              className="relative h-[66px] sm:h-[74px] md:h-[86px] sm:w-[156px] md:w-[186px] rounded-2xl overflow-hidden border-2 border-rose-400/85 hover:border-amber-300 shadow-[0_10px_28px_rgba(0,0,0,0.8),0_0_24px_rgba(244,63,94,0.34)] text-left group transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
+            >
+              <ModeArtBanner
+                primarySrc="/assets/ui/card_endgame_raid.webp"
+                fallbackSrc="/assets/environments/env_world_boss_raid.webp"
+                alt="Endgame Sanctum"
+              />
+              <div
+                className="absolute inset-0"
+                style={{
+                  background:
+                    'linear-gradient(100deg, rgba(16,4,18,0.92) 0%, rgba(28,8,24,0.68) 54%, rgba(24,8,22,0.18) 100%)',
+                }}
+              />
+              <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-rose-400 via-amber-300 to-transparent opacity-95" />
+
+              {endgameBadges > 0 && (
+                <span className="absolute top-1.5 right-2 z-20 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 border border-amber-200 text-white text-[9px] font-mono font-black flex items-center justify-center shadow-lg animate-pulse">
+                  {endgameBadges}
+                </span>
+              )}
+
+              <div className="relative z-10 h-full px-2.5 sm:px-3 py-2 flex flex-col justify-between">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[8px] sm:text-[9px] font-display font-black uppercase tracking-[0.16em] text-rose-300 leading-none truncate">
+                    ENDGAME
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md bg-rose-600/85 border border-amber-300/70 font-display text-[7px] sm:text-[8px] font-black text-amber-100 leading-none shrink-0 uppercase">
+                    NEW
+                  </span>
+                </div>
+                <div>
+                  <div className="font-display text-xs sm:text-sm md:text-base font-black tracking-[0.1em] text-white drop-shadow-[0_2px_10px_rgba(244,63,94,0.9)] leading-none group-hover:text-amber-200 transition truncate">
+                    RAID &amp; RIFT
+                  </div>
+                  <div className="hidden sm:block ls-hide text-[9px] md:text-[10px] font-bold text-rose-100/85 mt-0.5 truncate">
+                    World Boss • Labyrinth • Lab
+                  </div>
+                </div>
+              </div>
+            </button>
+
+            {/* Art Card 4: Dedicated Campaign Battle Button */}
             <button
               onClick={() => {
                 audioManager.playSfx('button');
                 setShowMap(true);
               }}
-              className="relative h-[68px] sm:h-[74px] md:h-[86px] sm:w-[196px] md:w-[242px] rounded-2xl overflow-hidden border-2 border-amber-300/90 hover:border-yellow-200 shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_26px_rgba(245,200,76,0.4)] text-left group transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
+              className="relative h-[66px] sm:h-[74px] md:h-[86px] sm:w-[178px] md:w-[218px] rounded-2xl overflow-hidden border-2 border-amber-300/90 hover:border-yellow-200 shadow-[0_10px_30px_rgba(0,0,0,0.8),0_0_26px_rgba(245,200,76,0.4)] text-left group transition-transform hover:-translate-y-0.5 active:scale-[0.98]"
             >
               <ModeArtBanner
                 primarySrc="/assets/ui/card_campaign_battle.webp"
@@ -993,8 +1043,8 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 </span>
               )}
 
-              <div className="relative z-10 h-full px-3 sm:px-4 py-2 flex flex-col justify-between">
-                <div className="text-[8px] sm:text-[9px] font-display font-black uppercase tracking-[0.18em] text-amber-300 flex items-center gap-1 leading-none truncate pr-14">
+              <div className="relative z-10 h-full px-2.5 sm:px-3.5 py-2 flex flex-col justify-between">
+                <div className="text-[8px] sm:text-[9px] font-display font-black uppercase tracking-[0.16em] text-amber-300 flex items-center gap-1 leading-none truncate pr-6">
                   <GameIcon name="worldmap" className="w-3.5 h-3.5" />
                   {activeDifficulty !== 'NORMAL' && (
                     <span
@@ -1013,14 +1063,14 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
                 </div>
                 <div className="flex items-end justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-display text-base sm:text-xl md:text-2xl font-black tracking-[0.14em] text-white text-glow-gold leading-none group-hover:text-amber-200 transition">
+                    <div className="font-display text-sm sm:text-base md:text-lg font-black tracking-[0.1em] text-white text-glow-gold leading-none group-hover:text-amber-200 transition truncate">
                       CAMPAIGN
                     </div>
                     <div className="ls-hide text-[9px] md:text-[10px] font-bold text-amber-100/90 mt-0.5 truncate">
                       {selectedStage.code} {selectedStage.name}
                     </div>
                   </div>
-                  <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-950/85 border-2 border-amber-300/90 p-1 flex items-center justify-center shrink-0 shadow-[0_0_16px_rgba(245,200,76,0.55)]">
+                  <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-slate-950/85 border-2 border-amber-300/90 p-1 flex items-center justify-center shrink-0 shadow-[0_0_16px_rgba(245,200,76,0.55)]">
                     <GameIcon
                       name="battle"
                       className="w-full h-full group-hover:scale-110 transition"

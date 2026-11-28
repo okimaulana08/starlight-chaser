@@ -11,6 +11,7 @@ export const UltimateCutInOverlay: React.FC = () => {
   const impactFlash = useCombatStore((s) => s.impactFlash);
   const speedMultiplier = useCombatStore((s) => s.speedMultiplier);
   const heroes = useCombatStore((s) => s.heroes);
+  const hasLeftDpsHud = useCombatStore((s) => s.isWorldBoss || s.isSandbox);
   const enableUltVideo = useSettingsStore((s) => s.enableUltVideo);
 
   const [cutInFallback, setCutInFallback] = useState(false);
@@ -68,7 +69,9 @@ export const UltimateCutInOverlay: React.FC = () => {
       {skillCallout && !activeCutIn && (
         <div
           key={skillCallout.id}
-          className="absolute left-3 sm:left-5 top-[22%] sm:top-[20%] z-40 animate-skill-callout"
+          className={`absolute left-3 sm:left-5 z-40 animate-skill-callout ${
+            hasLeftDpsHud ? 'top-[46%] sm:top-[44%]' : 'top-[22%] sm:top-[20%]'
+          }`}
         >
           <div
             className={`flex items-center gap-2.5 pr-5 pl-1.5 py-1.5 rounded-r-full rounded-l-full border-2 backdrop-blur-md shadow-[0_8px_28px_rgba(0,0,0,0.85)] ${

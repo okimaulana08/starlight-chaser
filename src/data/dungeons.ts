@@ -9,8 +9,17 @@ import type {
   StageDef,
   StageWave,
 } from '../types/game';
+import { getCurrentWeekKey } from './commissions';
+import { buildLabyrinthStageDef, parseLabyrinthStageId } from './labyrinth';
+import { buildSandboxStageDef, parseSandboxStageId } from './sandbox';
 import { STAGE_MAP, getCampaignStageById } from './stages';
 import { buildSpireStageDef, parseSpireStageId } from './spire';
+import {
+  buildWorldBossStageDef,
+  getFeaturedWorldBossId,
+  parseWorldBossStageId,
+} from './worldBoss';
+import { usePlayerStore } from '../store/usePlayerStore';
 
 export const DAILY_DUNGEON_FREE_ENTRIES = 3;
 export const MAX_DUNGEON_TIER: DungeonTierNumber = 10;
@@ -821,6 +830,28 @@ export function buildDungeonStageDef(
  * Rift Farming Dungeon (`dungeon__GOLD_VAULT__1..10__...`), or Astral Spire Floor (`spire__1`..`spire__120`).
  */
 export function resolveAnyStageDef(stageId: string): StageDef {
+  const raidParsed = parseWorldBossStageId(stageId);
+  if (raidParsed) {
+    const featured = getFeaturedWorldBossId(getCurrentWeekKey());
+    return buildWorldBossStageDef(
+      raidParsed.bossId,
+      raidParsed.tier,
+      raidParsed.bossId === featured,
+    );
+  }
+  const labNodeId = parseLabyrinthStageId(stageId);
+  if (labNodeId) {
+    const run = usePlayerStore.getState().labyrinthRun;
+    return buildLabyrinthStageDef(labNodeId, run);
+  }
+  const sandboxParsed = parseSandboxStageId(stageId);
+  if (sandboxParsed) {
+    return buildSandboxStageDef(
+      sandboxParsed.targetMode,
+      sandboxParsed.durationSec,
+      sandboxParsed.passiveDummy,
+    );
+  }
   const spireFloor = parseSpireStageId(stageId);
   if (spireFloor !== null) {
     return buildSpireStageDef(spireFloor);

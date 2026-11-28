@@ -104,7 +104,9 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
   const [selectedRelic, setSelectedRelic] = useState<DroppedRelicSummary | null>(
     result.droppedRelics?.[0] ?? null,
   );
-  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'REPORT'>('SUMMARY');
+  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'REPORT'>(
+    result.isSandbox ? 'REPORT' : 'SUMMARY',
+  );
   const [reportMetric, setReportMetric] = useState<'DPS' | 'HEAL' | 'TANK' | 'CRIT_BREAK'>('DPS');
 
   const safeDurationSec = Math.max(1, result.durationSec);
@@ -268,12 +270,26 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
                   result.victory ? 'text-white text-glow-gold' : 'text-rose-200'
                 }`}
               >
-                {result.victory ? 'VICTORY' : 'DEFEAT'}
+                {result.isWorldBoss
+                  ? 'RAID COMPLETE'
+                  : result.isSandbox
+                    ? 'DPS BENCHMARK'
+                    : result.victory
+                      ? 'VICTORY'
+                      : 'DEFEAT'}
               </h1>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {result.isWorldBoss && result.raidDamageScore !== undefined && (
+              <div className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/30 via-rose-600/25 to-fuchsia-600/30 border-2 border-amber-300 text-amber-100 text-[10px] sm:text-xs font-display font-black uppercase tracking-[0.12em] shadow-[0_0_22px_rgba(245,200,76,0.45)] flex items-center gap-2">
+                <Crown className="w-4 h-4 text-amber-300 shrink-0" />
+                <span>
+                  SCORE {result.raidDamageScore.toLocaleString()} • {result.raidRankLabel ?? 'CHALLENGER'} • ×{result.raidBarsCleared ?? 0} BARS
+                </span>
+              </div>
+            )}
             {result.isFirstClear && result.victory && result.stageId === 'stage_10_12' && (
               <div className="px-3 py-1 rounded-lg bg-gradient-to-r from-orange-500/30 to-rose-600/30 border border-orange-400 text-orange-200 text-[10px] sm:text-xs font-display font-black uppercase tracking-[0.14em] shadow-[0_0_18px_rgba(249,115,22,0.5)]">
                 🔥 WORLD LEVEL 2: HARD UNLOCKED!

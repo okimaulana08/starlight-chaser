@@ -6,14 +6,19 @@ import { ENEMY_MAP } from '../data/enemies';
 import { generateEquipment } from '../data/equipment';
 import { FACTIONS } from '../data/factions';
 import { HERO_MAP, resolveHeroVisuals } from '../data/heroes';
+import {
+  computeLabyrinthBlessingMods,
+  type AggregatedBlessingMods,
+} from '../data/labyrinth';
 import { PET_MAP, computePetAura } from '../data/pets';
 import { CAMPAIGN_DIFFICULTY_MAP } from '../data/stages';
+import { getRaidRankForScore } from '../data/worldBoss';
 import {
   getExpToNextLevel,
   getHeroLevelCap,
   getStageCombatHeroExp,
 } from '../data/materials';
-import { useCombatStore } from '../store/useCombatStore';
+import { useCombatStore, type LiveDpsEntry } from '../store/useCombatStore';
 import { usePlayerStore, MAX_RELIC_RANK } from '../store/usePlayerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type {
@@ -128,6 +133,10 @@ export class CombatEngine {
   private perfectDodgesCount = 0;
   private bossBreaksCount = 0;
   private linkBurstsCount = 0;
+  private raidBarsCleared = 0;
+  private raidTotalScore = 0;
+  private labyrinthMods: AggregatedBlessingMods | null = null;
+  private chainLightningGuard = false;
   private readonly linkWindowDuration = 5.5;
   private pendingBossWarning: { name: string; title: string } | null = null;
   private joystickVec: { x: number; y: number } | null = null;
@@ -422,12 +431,17 @@ export class CombatEngine {
 
   private spawnSquad(): void {
     const player = usePlayerStore.getState();
+    const stageDef = resolveAnyStageDef(this.stageId);
+    this.labyrinthMods = stageDef.isLabyrinth
+      ? computeLabyrinthBlessingMods(player.labyrinthRun?.activeBlessingIds ?? [])
+      : null;
+    const labHpMap = stageDef.isLabyrinth ? (player.labyrinthRun?.heroHpRatios ?? {}) : null;
     const squadIds = player.squadIds;
     const activeOwnedPet =
       player.activePetId && player.ownedPets?.[player.activePetId]
         ? player.ownedPets[player.activePetId]
         : null;
-    let totalStartingGauge = 0;
+    let totalStartingGauge = this.labyrinthMods?.startingUltGauge ?? 0;
 
     squadIds.forEach((heroId, idx) => {
       const def = HERO_MAP[heroId];
@@ -435,7 +449,7 @@ export class CombatEngine {
       if (!def || !owned) return;
 
       const visuals = resolveHeroVisuals(def, owned);
-      const stats = computeHeroStats(
+      const baseStats = computeHeroStats(
         def,
         owned,
         player.equipmentInventory,
@@ -444,6 +458,25 @@ export class CombatEngine {
         player.relicRanks,
         { roster: player.roster, activePet: activeOwnedPet },
       );
+      const lm = this.labyrinthMods;
+      const stats = lm
+        ? {
+            ...baseStats,
+            atk: Math.round(baseStats.atk * (1 + lm.atkPct)),
+            maxHp: Math.round(baseStats.maxHp * (1 + lm.hpPct)),
+            def: Math.round(baseStats.def * (1 + lm.defPct)),
+            critRate: Math.min(0.95, baseStats.critRate + lm.critRate),
+            critDmg: baseStats.critDmg + lm.critDmg,
+            skillDmgBonus: baseStats.skillDmgBonus + lm.skillDmgBonus,
+            ultDmgBonus: baseStats.ultDmgBonus + lm.ultDmgBonus,
+            finalDmgBonus: (baseStats.finalDmgBonus ?? 0) + lm.finalDmgBonus,
+            breakDmgBonus: (baseStats.breakDmgBonus ?? 0) + lm.breakDmgBonus,
+            ultGaugeBonus: baseStats.ultGaugeBonus + lm.ultGaugeBonus,
+            cdr: Math.min(0.45, baseStats.cdr + lm.cdrBonus),
+            startShieldRatio: baseStats.startShieldRatio + lm.startShieldPct,
+            spRegenBonus: (baseStats.spRegenBonus ?? 0) + lm.spRegenMult,
+          }
+        : baseStats;
       totalStartingGauge += stats.startingGauge;
 
       const atlas = VfxTextureAtlas.get();
@@ -543,6 +576,10 @@ export class CombatEngine {
         Number((baseUltCd * (1 - Math.min(0.25, stats.cdr))).toFixed(1)),
       );
 
+      const savedHpRatio = labHpMap && labHpMap[heroId] !== undefined ? labHpMap[heroId] : 1;
+      const startAlive = savedHpRatio > 0;
+      const startHp = startAlive ? Math.max(1, Math.round(stats.maxHp * Math.min(1, savedHpRatio))) : 0;
+
       const heroUnit: HeroUnit = {
         heroId,
         def,
@@ -557,12 +594,12 @@ export class CombatEngine {
         vx: 0,
         vy: 0,
         facing: 1,
-        hp: stats.maxHp,
+        hp: startHp,
         maxHp: stats.maxHp,
-        shield: startShield,
+        shield: startAlive ? startShield : 0,
         shieldStoredKinetic: 0,
         shieldCounterBurn: false,
-        alive: true,
+        alive: startAlive,
         cd1: 0,
         cd2: 0,
         ultCd: 0,
@@ -681,7 +718,6 @@ export class CombatEngine {
     this.spawnActivePet();
 
     // Start every expedition with 8/90 Chaser Resonance + Relic startingGauge + Spire Starlight Surge (+24)!
-    const stageDef = resolveAnyStageDef(this.stageId);
     const spireStartGauge = stageDef.spireModifier?.id === 'STARLIGHT_SURGE' ? 24 : 0;
     this.ctx.ultGauge = Math.min(this.ctx.maxUltGauge, 8 + totalStartingGauge + spireStartGauge);
 
@@ -1217,11 +1253,24 @@ export class CombatEngine {
       }
     }
 
-    // Situational damage bonuses + Constellation C6 Final DMG
+    // Situational damage bonuses + Constellation C6 Final DMG + Raid Faction Weakness + Labyrinth Execute
     let dmgBonus = (opts.bonusDmgMult ?? 0) + (attacker.stats.finalDmgBonus ?? 0);
     if (opts.isSkill) dmgBonus += attacker.stats.skillDmgBonus;
     if (opts.isUlt) dmgBonus += attacker.stats.ultDmgBonus;
     if (enemy.lunarTraceTimer > 0) dmgBonus += 0.12;
+    const isRaidWeakness = Boolean(
+      activeStage.isWorldBoss && activeStage.raidWeakFactions?.includes(attacker.def.faction),
+    );
+    if (isRaidWeakness) {
+      dmgBonus += 0.35;
+    }
+    if (
+      this.labyrinthMods &&
+      this.labyrinthMods.executeBelow50Pct > 0 &&
+      enemy.hp < enemy.maxHp * 0.5
+    ) {
+      dmgBonus += this.labyrinthMods.executeBelow50Pct;
+    }
 
     const isDebuffed =
       enemy.burnStacks > 0 ||
@@ -1258,10 +1307,10 @@ export class CombatEngine {
       }
     }
 
-    // Stagger / Break Gauge depletion for Bosses & Mini-Bosses (scaled by Ashen Faction Break DMG bonus!)
+    // Stagger / Break Gauge depletion for Bosses & Mini-Bosses (scaled by Ashen Faction Break DMG + Raid Weakness!)
     if (enemy.maxBreakGauge > 0 && !enemy.isBroken && enemy.hp > 0) {
       const baseBrk = opts.breakDamage ?? (opts.isUlt ? 32 : opts.isSkill ? 14 : 2.6);
-      const brkDmg = baseBrk * (1 + (attacker.stats.breakDmgBonus ?? 0));
+      const brkDmg = baseBrk * (1 + (attacker.stats.breakDmgBonus ?? 0) + (isRaidWeakness ? 0.25 : 0));
       const appliedBrk = Math.min(enemy.breakGauge, brkDmg);
       attacker.staggerDealt += appliedBrk;
       enemy.breakGauge = Math.max(0, enemy.breakGauge - brkDmg);
@@ -1278,6 +1327,39 @@ export class CombatEngine {
     attacker.totalDamage += finalDmg;
     attacker.totalHits += 1;
     if (roll.isCrit) attacker.critHits += 1;
+
+    // Live Labyrinth Blessing Effects: Lifesteal, Skill Burn & Crit Chain Lightning!
+    if (this.labyrinthMods) {
+      if (this.labyrinthMods.lifestealPct > 0 && attacker.alive) {
+        const leach = Math.max(1, Math.round(finalDmg * this.labyrinthMods.lifestealPct));
+        this.handleHealHero(attacker, attacker, leach, false);
+      }
+      if (opts.isSkill && this.labyrinthMods.skillBurnStacks > 0 && enemy.alive) {
+        enemy.burnStacks = Math.min(5, enemy.burnStacks + this.labyrinthMods.skillBurnStacks);
+        enemy.burnTimer = 6.0;
+        enemy.burnSourceAtk = Math.max(enemy.burnSourceAtk, attacker.stats.atk);
+      }
+      if (
+        roll.isCrit &&
+        !this.chainLightningGuard &&
+        this.labyrinthMods.critChainLightningPct > 0
+      ) {
+        this.chainLightningGuard = true;
+        this.pool.spawnRingWave(enemy.x, enemy.y, 175, 0x38e8ff, 0.28);
+        const nearby = this.ctx.enemies
+          .filter((e) => e.alive && Math.hypot(e.x - enemy.x, e.y - enemy.y) <= 230)
+          .slice(0, 3);
+        for (const t of nearby) {
+          this.handleDamageEnemy(attacker, t, {
+            multiplier: this.labyrinthMods.critChainLightningPct,
+            isSkill: false,
+            isTrueDamage: false,
+            canTriggerMark: false,
+          });
+        }
+        this.chainLightningGuard = false;
+      }
+    }
 
     // Directional Spring Knockback + Impact Squash-and-Stretch (weight-calibrated for Bosses vs Minions!)
     const kbDx = enemy.x - attacker.x;
@@ -1355,8 +1437,35 @@ export class CombatEngine {
     }
 
     if (enemy.hp <= 0 && enemy.alive) {
-      this.ctx.addUltGauge(1.5, 1 + attacker.stats.ultGaugeBonus);
-      this.enemyAI.handleEnemyDeath(this.ctx, enemy);
+      if (activeStage.isWorldBoss && enemy.def.isBoss) {
+        // World Boss Raid Infinite-Bar Overdrive: Shatter current HP bar, escalate to next bar & reward burst energy!
+        this.raidBarsCleared += 1;
+        enemy.maxHp = Math.round(enemy.maxHp * 1.15);
+        enemy.hp = enemy.maxHp;
+        enemy.breakGauge = enemy.maxBreakGauge;
+        enemy.isBroken = false;
+        enemy.brokenTimer = 0;
+        this.ctx.addUltGauge(20, 1);
+        this.ctx.addSp(2.0);
+        this.pool.spawnRingWave(enemy.x, enemy.y, 280, 0xfde047, 0.52);
+        this.pool.spawnFloatingText(enemy.x, enemy.y - 95, `BAR ×${this.raidBarsCleared} SHATTERED!`, 0xfde047, true);
+        this.ctx.notifyBanner(`★ RAID BAR ×${this.raidBarsCleared} CLEARED! +20 Ult Gauge & +2.0 SP! ★`);
+        audioManager.playSfx('ssr_reveal', 0.24);
+      } else if (activeStage.isSandbox) {
+        // Training Sandbox Immortal Calibration Target: instant HP reset (+ Shield/Break reset on Break Dummy!)
+        enemy.hp = enemy.maxHp;
+        if (activeStage.sandboxTargetMode === 'BREAK_DUMMY' && enemy.def.isBoss) {
+          enemy.breakGauge = enemy.maxBreakGauge;
+          enemy.isBroken = false;
+          enemy.hitShield = 12;
+          enemy.maxHitShield = 12;
+        }
+        this.pool.spawnRingWave(enemy.x, enemy.y, 160, 0x38e8ff, 0.35);
+        this.pool.spawnFloatingText(enemy.x, enemy.y - 78, 'CORE RECALIBRATED', 0x38e8ff, true);
+      } else {
+        this.ctx.addUltGauge(1.5, 1 + attacker.stats.ultGaugeBonus);
+        this.enemyAI.handleEnemyDeath(this.ctx, enemy);
+      }
     }
 
     return { damage: finalDmg, isCrit: roll.isCrit };
@@ -1369,6 +1478,10 @@ export class CombatEngine {
     isRanged = false,
   ): void {
     if (!hero.alive) return;
+    const activeStage = resolveAnyStageDef(this.stageId);
+    if (activeStage.isSandbox && activeStage.sandboxPassiveDummy) {
+      return;
+    }
     if (hero.invincibleTimer > 0) {
       this.pool.spawnFloatingText(hero.x, hero.y - 36, 'IMMUNE', 0x34d399);
       return;
@@ -3187,19 +3300,39 @@ export class CombatEngine {
     }
   }
 
+  public forceFinishCurrentBattle(): void {
+    if (!this.battleEnded) {
+      this.finishBattle(true);
+    }
+  }
+
   private checkBattleProgress(dt: number, realDt: number): void {
+    const stage = resolveAnyStageDef(this.stageId);
     const aliveHeroes = this.ctx.heroes.filter((h) => h.alive);
     if (aliveHeroes.length === 0) {
-      this.finishBattle(false);
+      this.finishBattle(Boolean(stage.isWorldBoss || stage.isSandbox));
       return;
     }
 
     // Never cut off an active Anime Ultimate Cut-In / Skyfall Payload mid-sequence!
     if (this.ultDirector.isRunning()) return;
 
+    // Timed Endgame Mode completion (90s World Boss Raid / Timed Training Sandbox)
+    if (stage.isWorldBoss && this.elapsedSec >= (stage.raidTimeLimitSec ?? 90)) {
+      this.finishBattle(true);
+      return;
+    }
+    if (
+      stage.isSandbox &&
+      (stage.sandboxDurationSec ?? 0) > 0 &&
+      this.elapsedSec >= (stage.sandboxDurationSec ?? 0)
+    ) {
+      this.finishBattle(true);
+      return;
+    }
+
     const aliveEnemies = this.ctx.enemies.filter((e) => e.alive);
     if (aliveEnemies.length === 0) {
-      const stage = resolveAnyStageDef(this.stageId);
       if (this.waveIndex + 1 < stage.waves.length) {
         this.waveTransitionTimer += dt;
         if (this.waveTransitionTimer >= 1.1) {
@@ -3403,6 +3536,24 @@ export class CombatEngine {
       ultCasts: h.ultCasts,
     }));
 
+    const totalDamageAll = reportHeroes.reduce((s, r) => s + r.damageDealt, 0);
+    const raidDamageScore = stage.isWorldBoss
+      ? Math.round(totalDamageAll * (stage.raidScoreMultiplier ?? 1) + this.raidBarsCleared * 15000)
+      : undefined;
+    const raidRankLabel =
+      stage.isWorldBoss && raidDamageScore !== undefined
+        ? getRaidRankForScore(raidDamageScore).label
+        : undefined;
+    const labyrinthSurvivingHpRatios = stage.isLabyrinth
+      ? Object.fromEntries(
+          this.ctx.heroes.map((h) => [
+            h.heroId,
+            h.alive ? Math.max(0.05, Number((h.hp / Math.max(1, h.maxHp)).toFixed(3))) : 0,
+          ]),
+        )
+      : undefined;
+
+    const isZeroLootMode = Boolean(stage.isSandbox);
     const summary: CombatLootSummary = {
       victory,
       stageId: stage.id,
@@ -3411,10 +3562,10 @@ export class CombatEngine {
       durationSec: Math.round(this.elapsedSec),
       damageByHero,
       healingByHero,
-      heroExpResults,
+      heroExpResults: isZeroLootMode ? undefined : heroExpResults,
       battleReport: {
         heroes: reportHeroes,
-        totalDamage: reportHeroes.reduce((s, r) => s + r.damageDealt, 0),
+        totalDamage: totalDamageAll,
         totalHealing: reportHeroes.reduce((s, r) => s + r.healingDone, 0),
         totalDamageTaken: reportHeroes.reduce((s, r) => s + r.damageTaken, 0),
         maxCombo: this.maxCombo,
@@ -3422,45 +3573,59 @@ export class CombatEngine {
         bossBreaks: this.bossBreaksCount,
         linkBursts: this.linkBurstsCount,
       },
-      goldEarned: victory ? randBetween(stage.rewards.gold) : 0,
-      crystalsEarned: stage.isDungeon
-        ? 0
-        : isFirstClear
-          ? stage.firstClearCrystals
-          : victory
-            ? (stage.repeatCrystals ?? 40)
-            : 0,
-      expPotionsEarned: victory ? randBetween(stage.rewards.expPotions) : 0,
-      forgeStonesEarned: victory ? randBetween(stage.rewards.forgeStones) : 0,
-      starIronIngotsEarned,
-      astralAnvilCoresEarned,
-      starCoresEarned,
-      relicFragmentsEarned,
-      essencesEarned,
-      bondGiftsEarned: victory
-        ? stage.rewards.bondGiftsRange
-          ? randBetween(stage.rewards.bondGiftsRange)
-          : stage.isDungeon
-            ? 0
-            : stage.isBossStage
-              ? 2
-              : stage.isMiniBoss || Math.random() < 0.35
-                ? 1
-                : 0
-        : 0,
-      isFirstClear,
+      goldEarned: victory && !isZeroLootMode ? randBetween(stage.rewards.gold) : 0,
+      crystalsEarned:
+        stage.isDungeon || stage.isWorldBoss || stage.isLabyrinth || stage.isSandbox
+          ? 0
+          : isFirstClear
+            ? stage.firstClearCrystals
+            : victory
+              ? (stage.repeatCrystals ?? 40)
+              : 0,
+      expPotionsEarned: victory && !isZeroLootMode ? randBetween(stage.rewards.expPotions) : 0,
+      forgeStonesEarned: victory && !isZeroLootMode ? randBetween(stage.rewards.forgeStones) : 0,
+      starIronIngotsEarned: isZeroLootMode ? 0 : starIronIngotsEarned,
+      astralAnvilCoresEarned: isZeroLootMode ? 0 : astralAnvilCoresEarned,
+      starCoresEarned: isZeroLootMode ? 0 : starCoresEarned,
+      relicFragmentsEarned: isZeroLootMode ? 0 : relicFragmentsEarned,
+      essencesEarned: isZeroLootMode ? {} : essencesEarned,
+      bondGiftsEarned:
+        victory && !isZeroLootMode
+          ? stage.rewards.bondGiftsRange
+            ? randBetween(stage.rewards.bondGiftsRange)
+            : stage.isDungeon || stage.isWorldBoss || stage.isLabyrinth
+              ? 0
+              : stage.isBossStage
+                ? 2
+                : stage.isMiniBoss || Math.random() < 0.35
+                  ? 1
+                  : 0
+          : 0,
+      isFirstClear: isZeroLootMode ? false : isFirstClear,
       isDungeon: stage.isDungeon,
       dungeonId: stage.dungeonId,
       dungeonTier: stage.dungeonTier,
       isSpire: stage.isSpire,
       spireFloor: stage.spireFloor,
+      isWorldBoss: stage.isWorldBoss,
+      worldBossId: stage.worldBossId,
+      raidDamageScore,
+      raidBarsCleared: stage.isWorldBoss ? this.raidBarsCleared : undefined,
+      raidRankLabel,
+      isLabyrinth: stage.isLabyrinth,
+      labyrinthNodeId: stage.labyrinthNodeId,
+      labyrinthSurvivingHpRatios,
+      isSandbox: stage.isSandbox,
       starsEarned,
-      droppedEquipment,
-      droppedRelics,
+      droppedEquipment: isZeroLootMode ? [] : droppedEquipment,
+      droppedRelics: isZeroLootMode ? [] : droppedRelics,
     };
 
-    if (victory) {
+    if (victory && !isZeroLootMode) {
       player.applyCombatRewards(summary);
+      audioManager.setBossEnrage(false);
+      audioManager.playSfx('victory', 0);
+    } else if (victory) {
       audioManager.setBossEnrage(false);
       audioManager.playSfx('victory', 0);
     } else {
@@ -3580,8 +3745,51 @@ export class CombatEngine {
         ? this.ctx.heroes.find((h) => h.heroId === this.ctx.linkPartnerHeroId) ?? null
         : null;
 
+    const safeElapsed = Math.max(0.5, this.elapsedSec);
+    const liveTotalDamage = this.ctx.heroes.reduce((s, h) => s + Math.round(h.totalDamage), 0);
+    const liveSquadDps = Math.round(liveTotalDamage / safeElapsed);
+    const liveDpsEntries: LiveDpsEntry[] = this.ctx.heroes
+      .map((h) => {
+        const dmg = Math.round(h.totalDamage);
+        return {
+          heroId: h.heroId,
+          name: h.def.name,
+          cardAsset: h.resolvedCardAsset ?? h.def.assets.card,
+          themeColor: h.def.themeColor,
+          totalDamage: dmg,
+          dps: Math.round(dmg / safeElapsed),
+          sharePct: liveTotalDamage > 0 ? Math.round((dmg / liveTotalDamage) * 100) : 0,
+          critRatePct: h.totalHits > 0 ? Math.round((h.critHits / h.totalHits) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.totalDamage - a.totalDamage);
+
+    this.raidTotalScore = activeStage.isWorldBoss
+      ? Math.round(
+          liveTotalDamage * (activeStage.raidScoreMultiplier ?? 1) +
+            this.raidBarsCleared * 15000,
+        )
+      : 0;
+    const raidRank = getRaidRankForScore(this.raidTotalScore);
+    const raidLimit = activeStage.raidTimeLimitSec ?? 90;
+    const sandboxLimit = activeStage.isSandbox ? (activeStage.sandboxDurationSec ?? 0) : 0;
+    const activeTimerLimit = activeStage.isWorldBoss ? raidLimit : sandboxLimit;
+
     useCombatStore.getState().setSnapshot({
       elapsedSec: Math.floor(this.elapsedSec),
+      isWorldBoss: Boolean(activeStage.isWorldBoss),
+      isLabyrinth: Boolean(activeStage.isLabyrinth),
+      isSandbox: Boolean(activeStage.isSandbox),
+      raidTimeLimitSec: activeStage.isWorldBoss ? raidLimit : 0,
+      raidTimeRemaining: activeTimerLimit > 0 ? Math.max(0, activeTimerLimit - this.elapsedSec) : 0,
+      raidTotalScore: this.raidTotalScore,
+      raidBarsCleared: this.raidBarsCleared,
+      raidRankLabel: raidRank.label,
+      raidRankColor: raidRank.color,
+      sandboxDurationSec: sandboxLimit,
+      liveDpsEntries,
+      liveTotalDamage,
+      liveSquadDps,
       sp: Number(this.ctx.sp.toFixed(2)),
       ultGauge: Number(this.ctx.ultGauge.toFixed(1)),
       maxUltGauge: this.ctx.maxUltGauge,

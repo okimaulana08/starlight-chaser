@@ -2,7 +2,47 @@ export type Tier = 'R' | 'SR' | 'SSR' | 'UR';
 export type Role = 'TANK' | 'ASSAULT' | 'RANGER' | 'MAGE' | 'HEALER';
 export type Faction = 'SOLARIS' | 'ASTRAL' | 'VERDANT' | 'ASHEN';
 export type AimType = 'CIRCLE' | 'CONE' | 'LINE' | 'DASH' | 'SELF';
-export type ScreenId = 'LOBBY' | 'COMBAT' | 'SQUAD' | 'GACHA' | 'CODEX' | 'SHOP' | 'DUNGEON' | 'SPIRE';
+export type ScreenId =
+  | 'LOBBY'
+  | 'COMBAT'
+  | 'SQUAD'
+  | 'GACHA'
+  | 'CODEX'
+  | 'SHOP'
+  | 'DUNGEON'
+  | 'SPIRE'
+  | 'ENDGAME';
+
+export type WorldBossId = 'helios' | 'nihilus' | 'ignis';
+export type RaidDifficultyTier = 1 | 2 | 3;
+export type SandboxTargetMode = 'SINGLE_BOSS' | 'AOE_PACK' | 'BREAK_DUMMY';
+export type SandboxDurationSec = 30 | 60 | 0;
+export type LabyrinthNodeType = 'COMBAT' | 'ELITE' | 'ALTAR' | 'REST' | 'TREASURE' | 'BOSS';
+
+export interface LabyrinthNodeState {
+  id: string;
+  depth: number;
+  lane: 0 | 1;
+  type: LabyrinthNodeType;
+  title: string;
+  subtitle: string;
+  nextIds: string[];
+  cleared: boolean;
+}
+
+export interface LabyrinthRunState {
+  runId: string;
+  weekKey: string;
+  nodes: LabyrinthNodeState[];
+  currentDepth: number;
+  availableNodeIds: string[];
+  activeBlessingIds: string[];
+  pendingBlessingChoices: string[];
+  heroHpRatios: Record<string, number>;
+  baseScale: number;
+  completed: boolean;
+  failed: boolean;
+}
 
 export type DungeonId =
   | 'GOLD_VAULT'
@@ -404,6 +444,18 @@ export interface StageDef {
     desc: string;
     color: string;
   };
+  isWorldBoss?: boolean;
+  worldBossId?: WorldBossId;
+  raidWeakFactions?: Faction[];
+  raidTimeLimitSec?: number;
+  raidScoreMultiplier?: number;
+  isLabyrinth?: boolean;
+  labyrinthNodeId?: string;
+  labyrinthStageIndex?: number;
+  isSandbox?: boolean;
+  sandboxTargetMode?: SandboxTargetMode;
+  sandboxDurationSec?: SandboxDurationSec;
+  sandboxPassiveDummy?: boolean;
   worldModifier?: {
     id: string;
     name: string;
@@ -585,6 +637,16 @@ export interface PlayerSaveState {
   checkInCycle?: number;
   checkInClaimedDays?: number[];
   checkInLastClaimDate?: string;
+  raidWeekKey?: string;
+  raidBestScoreByBoss?: Record<string, number>;
+  raidWeeklyBestScore?: number;
+  raidAttemptsUsedToday?: number;
+  raidAttemptsResetDay?: string;
+  claimedRaidMilestones?: number[];
+  labyrinthWeekKey?: string;
+  labyrinthRun?: LabyrinthRunState | null;
+  labyrinthWeeklyClears?: number;
+  claimedLabyrinthMilestones?: number[];
   lifetimeLinkBursts: number;
   lastManualSaveAt: number;
 }
@@ -742,6 +804,15 @@ export interface CombatLootSummary {
   dungeonTier?: number;
   isSpire?: boolean;
   spireFloor?: number;
+  isWorldBoss?: boolean;
+  worldBossId?: WorldBossId;
+  raidDamageScore?: number;
+  raidBarsCleared?: number;
+  raidRankLabel?: string;
+  isLabyrinth?: boolean;
+  labyrinthNodeId?: string;
+  labyrinthSurvivingHpRatios?: Record<string, number>;
+  isSandbox?: boolean;
   starsEarned?: number;
   droppedEquipment: EquipmentInstance[];
   droppedRelics: DroppedRelicSummary[];

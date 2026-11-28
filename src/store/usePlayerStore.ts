@@ -17,6 +17,15 @@ import {
   type CheckInDayDef,
 } from '../data/checkIn';
 import {
+  WEEKLY_LABYRINTH_MILESTONES,
+  generateLabyrinthRun,
+  rollBlessingChoices,
+} from '../data/labyrinth';
+import {
+  DAILY_RAID_ATTEMPTS,
+  WEEKLY_RAID_MILESTONES,
+} from '../data/worldBoss';
+import {
   MAX_CONSTELLATION_LEVEL,
   getConstellationNodeCost,
 } from '../data/constellations';
@@ -226,6 +235,16 @@ export function buildDefaultSaveState(): PlayerSaveState {
     checkInCycle: 1,
     checkInClaimedDays: [],
     checkInLastClaimDate: '',
+    raidWeekKey: getCurrentWeekKey(),
+    raidBestScoreByBoss: {},
+    raidWeeklyBestScore: 0,
+    raidAttemptsUsedToday: 0,
+    raidAttemptsResetDay: getTodayKey(),
+    claimedRaidMilestones: [],
+    labyrinthWeekKey: getCurrentWeekKey(),
+    labyrinthRun: null,
+    labyrinthWeeklyClears: 0,
+    claimedLabyrinthMilestones: [],
     lifetimeLinkBursts: 0,
     lastManualSaveAt: 0,
   };
@@ -359,6 +378,16 @@ interface PlayerStore extends PlayerSaveState {
     dayDef?: CheckInDayDef;
     droppedGear?: EquipmentInstance;
   };
+  getRaidAttemptsLeft: () => { left: number; max: number };
+  claimRaidMilestone: (score: number) => { ok: boolean; message: string };
+  startOrResetLabyrinthRun: (squadPower: number) => void;
+  resolveLabyrinthNonCombatNode: (
+    nodeId: string,
+    restChoice?: 'HEAL' | 'REVIVE',
+  ) => { ok: boolean; message: string };
+  pickLabyrinthBlessing: (blessingId: string) => { ok: boolean; message: string };
+  claimLabyrinthMilestone: (clears: number) => { ok: boolean; message: string };
+  getEndgameNotificationCount: () => number;
   resetSave: () => void;
 }
 
@@ -2187,10 +2216,10 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       applyCombatRewards: (summary) => {
-        if (!summary.victory) return;
+        if (!summary.victory || summary.isSandbox) return;
         const state = get();
         const cleared =
-          summary.isDungeon || summary.isSpire
+          summary.isDungeon || summary.isSpire || summary.isWorldBoss || summary.isLabyrinth
             ? state.clearedStages
             : state.clearedStages.includes(summary.stageId)
               ? state.clearedStages
@@ -2273,6 +2302,68 @@ export const usePlayerStore = create<PlayerStore>()(
           weekly_tactical_combos: bossBreaksEarned + linkBurstsEarned,
         });
 
+        // World Boss Raid weekly score & daily attempt tracking
+        const weekKey = getCurrentWeekKey();
+        const sameRaidWeek = state.raidWeekKey === weekKey;
+        let nextRaidWeekKey = sameRaidWeek ? state.raidWeekKey : weekKey;
+        let nextRaidBestByBoss = sameRaidWeek ? { ...(state.raidBestScoreByBoss ?? {}) } : {};
+        let nextRaidWeeklyBest = sameRaidWeek ? (state.raidWeeklyBestScore ?? 0) : 0;
+        let nextClaimedRaidMs = sameRaidWeek ? [...(state.claimedRaidMilestones ?? [])] : [];
+        let nextRaidAttemptsUsed =
+          state.raidAttemptsResetDay === today ? (state.raidAttemptsUsedToday ?? 0) : 0;
+        let nextRaidAttemptsResetDay = today;
+
+        if (summary.isWorldBoss && summary.worldBossId) {
+          const score = Math.max(0, Math.round(summary.raidDamageScore ?? 0));
+          const prevBossBest = nextRaidBestByBoss[summary.worldBossId] ?? 0;
+          if (score > prevBossBest) nextRaidBestByBoss[summary.worldBossId] = score;
+          if (score > nextRaidWeeklyBest) nextRaidWeeklyBest = score;
+          nextRaidAttemptsUsed = Math.min(DAILY_RAID_ATTEMPTS, nextRaidAttemptsUsed + 1);
+        }
+
+        // Starlight Labyrinth node progression, carry-over HP & Blessing Draft trigger
+        const sameLabWeek = state.labyrinthWeekKey === weekKey;
+        let nextLabWeekKey = sameLabWeek ? state.labyrinthWeekKey : weekKey;
+        let nextLabWeeklyClears = sameLabWeek ? (state.labyrinthWeeklyClears ?? 0) : 0;
+        let nextClaimedLabMs = sameLabWeek ? [...(state.claimedLabyrinthMilestones ?? [])] : [];
+        let nextLabRun = state.labyrinthRun ?? null;
+
+        if (summary.isLabyrinth && summary.labyrinthNodeId && nextLabRun) {
+          const clearedNode = nextLabRun.nodes.find((n) => n.id === summary.labyrinthNodeId);
+          if (clearedNode) {
+            const updatedNodes = nextLabRun.nodes.map((n) =>
+              n.id === clearedNode.id ? { ...n, cleared: true } : n,
+            );
+            const nextHpRatios = {
+              ...nextLabRun.heroHpRatios,
+              ...(summary.labyrinthSurvivingHpRatios ?? {}),
+            };
+            const isBossClear = clearedNode.type === 'BOSS';
+            if (isBossClear) {
+              nextLabWeeklyClears += 1;
+              nextLabRun = {
+                ...nextLabRun,
+                nodes: updatedNodes,
+                availableNodeIds: [],
+                pendingBlessingChoices: [],
+                heroHpRatios: nextHpRatios,
+                completed: true,
+              };
+            } else {
+              const bias = clearedNode.type === 'ELITE' ? 'ELITE' : 'STANDARD';
+              const choices = rollBlessingChoices(nextLabRun.activeBlessingIds, bias);
+              nextLabRun = {
+                ...nextLabRun,
+                nodes: updatedNodes,
+                currentDepth: Math.max(nextLabRun.currentDepth, clearedNode.depth),
+                availableNodeIds: clearedNode.nextIds,
+                pendingBlessingChoices: choices,
+                heroHpRatios: nextHpRatios,
+              };
+            }
+          }
+        }
+
         set({
           gold: state.gold + summary.goldEarned,
           starlightCrystals: state.starlightCrystals + summary.crystalsEarned,
@@ -2295,6 +2386,16 @@ export const usePlayerStore = create<PlayerStore>()(
           dungeonResetDay: nextDungeonResetDay,
           dungeonBestStars: nextDungeonBestStars,
           spireHighestFloor: nextSpireHighest,
+          raidWeekKey: nextRaidWeekKey,
+          raidBestScoreByBoss: nextRaidBestByBoss,
+          raidWeeklyBestScore: nextRaidWeeklyBest,
+          raidAttemptsUsedToday: nextRaidAttemptsUsed,
+          raidAttemptsResetDay: nextRaidAttemptsResetDay,
+          claimedRaidMilestones: nextClaimedRaidMs,
+          labyrinthWeekKey: nextLabWeekKey,
+          labyrinthRun: nextLabRun,
+          labyrinthWeeklyClears: nextLabWeeklyClears,
+          claimedLabyrinthMilestones: nextClaimedLabMs,
           lifetimeLinkBursts: (state.lifetimeLinkBursts ?? 0) + linkBurstsEarned,
           ...dailyBump,
           ...weeklyBump,
@@ -2630,6 +2731,213 @@ export const usePlayerStore = create<PlayerStore>()(
           dayDef,
           droppedGear,
         };
+      },
+
+      getRaidAttemptsLeft: () => {
+        const st = get();
+        const today = getTodayKey();
+        const used = st.raidAttemptsResetDay === today ? (st.raidAttemptsUsedToday ?? 0) : 0;
+        return {
+          left: Math.max(0, DAILY_RAID_ATTEMPTS - used),
+          max: DAILY_RAID_ATTEMPTS,
+        };
+      },
+
+      claimRaidMilestone: (score) => {
+        const st = get();
+        const weekKey = getCurrentWeekKey();
+        const sameWeek = st.raidWeekKey === weekKey;
+        const best = sameWeek ? (st.raidWeeklyBestScore ?? 0) : 0;
+        const claimed = sameWeek ? (st.claimedRaidMilestones ?? []) : [];
+        const def = WEEKLY_RAID_MILESTONES.find((m) => m.score === score);
+        if (!def) return { ok: false, message: 'Raid milestone not found.' };
+        if (claimed.includes(score)) return { ok: false, message: 'Weekly Raid reward already claimed!' };
+        if (best < score) {
+          return {
+            ok: false,
+            message: `Reach ${score.toLocaleString()} Weekly Raid Score first (Current: ${best.toLocaleString()}).`,
+          };
+        }
+        const rewardPatch = applyCommissionReward(st, def.reward);
+        set({
+          ...rewardPatch,
+          raidWeekKey: weekKey,
+          claimedRaidMilestones: [...claimed, score],
+        });
+        return { ok: true, message: `Claimed ${def.rankLabel} Raid Milestone Reward!` };
+      },
+
+      startOrResetLabyrinthRun: (squadPower) => {
+        const st = get();
+        const weekKey = getCurrentWeekKey();
+        const sameWeek = st.labyrinthWeekKey === weekKey;
+        const freshRun = generateLabyrinthRun(weekKey, squadPower);
+        set({
+          labyrinthWeekKey: weekKey,
+          labyrinthWeeklyClears: sameWeek ? (st.labyrinthWeeklyClears ?? 0) : 0,
+          claimedLabyrinthMilestones: sameWeek ? (st.claimedLabyrinthMilestones ?? []) : [],
+          labyrinthRun: freshRun,
+        });
+      },
+
+      resolveLabyrinthNonCombatNode: (nodeId, restChoice = 'HEAL') => {
+        const st = get();
+        const run = st.labyrinthRun;
+        if (!run) return { ok: false, message: 'Start a Labyrinth Expedition first.' };
+        if (run.pendingBlessingChoices.length > 0) {
+          return { ok: false, message: 'Pick your pending Astral Blessing first!' };
+        }
+        if (!run.availableNodeIds.includes(nodeId)) {
+          return { ok: false, message: 'This Labyrinth node is not currently reachable.' };
+        }
+        const node = run.nodes.find((n) => n.id === nodeId);
+        if (!node) return { ok: false, message: 'Node not found.' };
+
+        const updatedNodes = run.nodes.map((n) => (n.id === nodeId ? { ...n, cleared: true } : n));
+
+        if (node.type === 'ALTAR') {
+          const bias = node.depth >= 4 ? 'MYTHIC' : 'ELITE';
+          const choices = rollBlessingChoices(run.activeBlessingIds, bias);
+          set({
+            labyrinthRun: {
+              ...run,
+              nodes: updatedNodes,
+              currentDepth: Math.max(run.currentDepth, node.depth),
+              availableNodeIds: node.nextIds,
+              pendingBlessingChoices: choices,
+            },
+          });
+          return { ok: true, message: 'Astral Altar resonated! Choose 1 of 3 Astral Blessings.' };
+        }
+
+        if (node.type === 'REST') {
+          const nextRatios: Record<string, number> = { ...run.heroHpRatios };
+          if (restChoice === 'REVIVE') {
+            let revivedName: string | null = null;
+            for (const hid of st.squadIds) {
+              const cur = nextRatios[hid] ?? 1;
+              if (cur <= 0 && !revivedName) {
+                nextRatios[hid] = 0.65;
+                revivedName = HERO_MAP[hid]?.name ?? hid;
+              } else if (cur > 0) {
+                nextRatios[hid] = Math.min(1, cur + 0.25);
+              }
+            }
+            set({
+              labyrinthRun: {
+                ...run,
+                nodes: updatedNodes,
+                currentDepth: Math.max(run.currentDepth, node.depth),
+                availableNodeIds: node.nextIds,
+                heroHpRatios: nextRatios,
+              },
+            });
+            return {
+              ok: true,
+              message: revivedName
+                ? `Revived ${revivedName} (65% HP) & healed allies +25% HP!`
+                : 'Restored all allies +25% HP at Celestial Spring!',
+            };
+          } else {
+            for (const hid of st.squadIds) {
+              const cur = nextRatios[hid] ?? 1;
+              if (cur > 0) {
+                nextRatios[hid] = Math.min(1, cur + 0.55);
+              }
+            }
+            set({
+              labyrinthRun: {
+                ...run,
+                nodes: updatedNodes,
+                currentDepth: Math.max(run.currentDepth, node.depth),
+                availableNodeIds: node.nextIds,
+                heroHpRatios: nextRatios,
+              },
+            });
+            return { ok: true, message: 'Celestial Spring restored +55% Max HP to all living allies!' };
+          }
+        }
+
+        if (node.type === 'TREASURE') {
+          const choices = rollBlessingChoices(run.activeBlessingIds, 'STANDARD');
+          set({
+            gold: st.gold + 8500,
+            forgeStones: st.forgeStones + 8,
+            relicFragments: st.relicFragments + 6,
+            starCores: st.starCores + 1,
+            labyrinthRun: {
+              ...run,
+              nodes: updatedNodes,
+              currentDepth: Math.max(run.currentDepth, node.depth),
+              availableNodeIds: node.nextIds,
+              pendingBlessingChoices: choices,
+            },
+          });
+          return {
+            ok: true,
+            message: 'Opened Star Vault! +8,500g • ×8 Stones • ×6 Relic Frags • ×1 Star Core + Bonus Blessing!',
+          };
+        }
+
+        return { ok: false, message: 'Deploy into combat to clear this node.' };
+      },
+
+      pickLabyrinthBlessing: (blessingId) => {
+        const st = get();
+        const run = st.labyrinthRun;
+        if (!run || !run.pendingBlessingChoices.includes(blessingId)) {
+          return { ok: false, message: 'Blessing choice unavailable.' };
+        }
+        set({
+          labyrinthRun: {
+            ...run,
+            activeBlessingIds: [...run.activeBlessingIds, blessingId],
+            pendingBlessingChoices: [],
+          },
+        });
+        return { ok: true, message: 'Astral Blessing bound to your Expedition Squad!' };
+      },
+
+      claimLabyrinthMilestone: (clears) => {
+        const st = get();
+        const weekKey = getCurrentWeekKey();
+        const sameWeek = st.labyrinthWeekKey === weekKey;
+        const count = sameWeek ? (st.labyrinthWeeklyClears ?? 0) : 0;
+        const claimed = sameWeek ? (st.claimedLabyrinthMilestones ?? []) : [];
+        const def = WEEKLY_LABYRINTH_MILESTONES.find((m) => m.clears === clears);
+        if (!def) return { ok: false, message: 'Labyrinth milestone not found.' };
+        if (claimed.includes(clears)) return { ok: false, message: 'Already claimed this week!' };
+        if (count < clears) {
+          return { ok: false, message: `Clear ${clears} Labyrinth Run(s) this week (Current: ${count}).` };
+        }
+        const rewardPatch = applyCommissionReward(st, def.reward);
+        set({
+          ...rewardPatch,
+          labyrinthWeekKey: weekKey,
+          claimedLabyrinthMilestones: [...claimed, clears],
+        });
+        return { ok: true, message: `Claimed Labyrinth Milestone: ${def.label}!` };
+      },
+
+      getEndgameNotificationCount: () => {
+        const st = get();
+        const weekKey = getCurrentWeekKey();
+        let total = 0;
+        if (st.raidWeekKey === weekKey) {
+          const best = st.raidWeeklyBestScore ?? 0;
+          const claimed = st.claimedRaidMilestones ?? [];
+          for (const m of WEEKLY_RAID_MILESTONES) {
+            if (best >= m.score && !claimed.includes(m.score)) total += 1;
+          }
+        }
+        if (st.labyrinthWeekKey === weekKey) {
+          const clears = st.labyrinthWeeklyClears ?? 0;
+          const claimed = st.claimedLabyrinthMilestones ?? [];
+          for (const m of WEEKLY_LABYRINTH_MILESTONES) {
+            if (clears >= m.clears && !claimed.includes(m.clears)) total += 1;
+          }
+        }
+        return total;
       },
 
       resetSave: () => set(buildDefaultSaveState()),

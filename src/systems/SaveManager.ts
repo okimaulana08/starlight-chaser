@@ -146,6 +146,31 @@ export function extractPlayerSaveState(raw: PlayerSaveState): PlayerSaveState {
       ? raw.checkInClaimedDays.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7)
       : [],
     checkInLastClaimDate: typeof raw.checkInLastClaimDate === 'string' ? raw.checkInLastClaimDate : '',
+    raidWeekKey: typeof raw.raidWeekKey === 'string' ? raw.raidWeekKey : base.raidWeekKey,
+    raidBestScoreByBoss:
+      raw.raidBestScoreByBoss && typeof raw.raidBestScoreByBoss === 'object'
+        ? raw.raidBestScoreByBoss
+        : {},
+    raidWeeklyBestScore: Number.isFinite(raw.raidWeeklyBestScore)
+      ? Math.max(0, Math.round(raw.raidWeeklyBestScore as number))
+      : 0,
+    raidAttemptsUsedToday: Number.isFinite(raw.raidAttemptsUsedToday)
+      ? Math.max(0, Math.round(raw.raidAttemptsUsedToday as number))
+      : 0,
+    raidAttemptsResetDay:
+      typeof raw.raidAttemptsResetDay === 'string'
+        ? raw.raidAttemptsResetDay
+        : base.raidAttemptsResetDay,
+    claimedRaidMilestones: Array.isArray(raw.claimedRaidMilestones) ? raw.claimedRaidMilestones : [],
+    labyrinthWeekKey:
+      typeof raw.labyrinthWeekKey === 'string' ? raw.labyrinthWeekKey : base.labyrinthWeekKey,
+    labyrinthRun: raw.labyrinthRun && typeof raw.labyrinthRun === 'object' ? raw.labyrinthRun : null,
+    labyrinthWeeklyClears: Number.isFinite(raw.labyrinthWeeklyClears)
+      ? Math.max(0, Math.round(raw.labyrinthWeeklyClears as number))
+      : 0,
+    claimedLabyrinthMilestones: Array.isArray(raw.claimedLabyrinthMilestones)
+      ? raw.claimedLabyrinthMilestones
+      : [],
     lifetimeLinkBursts: Number.isFinite(raw.lifetimeLinkBursts) ? Math.max(0, Math.round(raw.lifetimeLinkBursts)) : 0,
     lastManualSaveAt: Number.isFinite(raw.lastManualSaveAt) ? raw.lastManualSaveAt : Date.now(),
   };

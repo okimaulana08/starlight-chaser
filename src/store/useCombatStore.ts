@@ -39,6 +39,17 @@ export interface TouchJoystickState {
   knobY: number;
 }
 
+export interface LiveDpsEntry {
+  heroId: string;
+  name: string;
+  cardAsset: string;
+  themeColor: string;
+  totalDamage: number;
+  dps: number;
+  sharePct: number;
+  critRatePct: number;
+}
+
 interface CombatStore {
   inCombat: boolean;
   paused: boolean;
@@ -49,6 +60,19 @@ interface CombatStore {
   totalWaves: number;
   waveLabel: string;
   elapsedSec: number;
+  isWorldBoss: boolean;
+  isLabyrinth: boolean;
+  isSandbox: boolean;
+  raidTimeRemaining: number;
+  raidTimeLimitSec: number;
+  raidTotalScore: number;
+  raidBarsCleared: number;
+  raidRankLabel: string;
+  raidRankColor: string;
+  sandboxDurationSec: number;
+  liveDpsEntries: LiveDpsEntry[];
+  liveTotalDamage: number;
+  liveSquadDps: number;
   sp: number;
   maxSp: number;
   ultGauge: number;
@@ -111,6 +135,19 @@ export const useCombatStore = create<CombatStore>((set) => ({
   totalWaves: 2,
   waveLabel: 'Wave 1',
   elapsedSec: 0,
+  isWorldBoss: false,
+  isLabyrinth: false,
+  isSandbox: false,
+  raidTimeRemaining: 0,
+  raidTimeLimitSec: 0,
+  raidTotalScore: 0,
+  raidBarsCleared: 0,
+  raidRankLabel: 'Challenger',
+  raidRankColor: '#94a3b8',
+  sandboxDurationSec: 0,
+  liveDpsEntries: [],
+  liveTotalDamage: 0,
+  liveSquadDps: 0,
   sp: 4,
   maxSp: 10,
   ultGauge: 0,
@@ -152,6 +189,19 @@ export const useCombatStore = create<CombatStore>((set) => ({
       totalWaves,
       waveLabel: 'Wave 1',
       elapsedSec: 0,
+      isWorldBoss: stageId.startsWith('raid__'),
+      isLabyrinth: stageId.startsWith('labyrinth__'),
+      isSandbox: stageId.startsWith('sandbox__'),
+      raidTimeRemaining: stageId.startsWith('raid__') ? 90 : 0,
+      raidTimeLimitSec: stageId.startsWith('raid__') ? 90 : 0,
+      raidTotalScore: 0,
+      raidBarsCleared: 0,
+      raidRankLabel: 'Challenger',
+      raidRankColor: '#94a3b8',
+      sandboxDurationSec: 0,
+      liveDpsEntries: [],
+      liveTotalDamage: 0,
+      liveSquadDps: 0,
       sp: 5,
       ultGauge: 8,
       maxUltGauge: 90,

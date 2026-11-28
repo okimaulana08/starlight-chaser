@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  Activity,
   AlertTriangle,
   Crosshair,
   Crown,
+  Flag,
   Flame,
   Heart,
   LogOut,
@@ -12,12 +14,15 @@ import {
   Shield,
   Sparkles,
   Swords,
+  Timer,
+  Trophy,
   Volume2,
   VolumeX,
   Wind,
   Zap,
 } from 'lucide-react';
 import { parseDungeonStageId, resolveAnyStageDef } from '../data/dungeons';
+import { FACTIONS } from '../data/factions';
 import { HERO_MAP } from '../data/heroes';
 import { SPIRE_MAX_FLOOR, encodeSpireStageId, parseSpireStageId } from '../data/spire';
 import {
@@ -89,16 +94,30 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
   const activePetId = usePlayerStore((s) => s.activePetId);
   const ownedPets = usePlayerStore((s) => s.ownedPets);
   const getDungeonEntriesLeft = usePlayerStore((s) => s.getDungeonEntriesLeft);
+  const getRaidAttemptsLeft = usePlayerStore((s) => s.getRaidAttemptsLeft);
   const parsedDungeon = parseDungeonStageId(stageId);
   const parsedSpireFloor = parseSpireStageId(stageId);
   const isDungeonStage = Boolean(parsedDungeon);
   const isSpireStage = parsedSpireFloor !== null;
   const resolvedStageDef = resolveAnyStageDef(stageId);
+  const isWorldBossStage = Boolean(resolvedStageDef.isWorldBoss);
+  const isLabyrinthStage = Boolean(resolvedStageDef.isLabyrinth);
+  const isSandboxStage = Boolean(resolvedStageDef.isSandbox);
+  const isEndgameMode = isWorldBossStage || isLabyrinthStage || isSandboxStage;
+  const weakFactionMetas = (resolvedStageDef.raidWeakFactions ?? [])
+    .map((f) => FACTIONS[f])
+    .filter(Boolean);
   const activeSynergies = getSquadSynergyPills(squadIds, roster, activePetId, ownedPets);
   const dungeonCanReplay = parsedDungeon
     ? getDungeonEntriesLeft(parsedDungeon.dungeonId).canEnter
     : true;
-  const nextStageId = isDungeonStage || isSpireStage ? null : getNextStageId(stageId);
+  const canReplayBattle = isLabyrinthStage
+    ? false
+    : isWorldBossStage
+      ? getRaidAttemptsLeft().left > 0
+      : dungeonCanReplay;
+  const nextStageId =
+    isDungeonStage || isSpireStage || isEndgameMode ? null : getNextStageId(stageId);
   const candidateNext = nextStageId ? getCampaignStageById(nextStageId) : null;
   const nextStage =
     candidateNext && isStageUnlocked(candidateNext, clearedStages) ? candidateNext : null;
@@ -142,6 +161,18 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
     linkWindow,
     bannerToast,
     combatResult,
+    isWorldBoss,
+    isSandbox,
+    raidTimeRemaining,
+    raidTimeLimitSec,
+    raidTotalScore,
+    raidBarsCleared,
+    raidRankLabel,
+    raidRankColor,
+    sandboxDurationSec,
+    liveDpsEntries,
+    liveTotalDamage,
+    liveSquadDps,
     toggleAutoMove,
     toggleAutoSkill,
     toggleSpeed,
@@ -196,9 +227,34 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
             {/* Minimal Floating Stage Plaque */}
             <div
               className="pointer-events-auto rpg-panel-subtle px-2.5 py-1 flex items-center gap-1.5 sm:gap-2.5 border-l-4 min-w-0"
-              style={{ borderLeftColor: worldDiffCfg ? worldDiffCfg.themeColor : '#fbbf24' }}
+              style={{
+                borderLeftColor: isWorldBossStage
+                  ? '#fb7185'
+                  : isLabyrinthStage
+                    ? '#a78bfa'
+                    : isSandboxStage
+                      ? '#22d3ee'
+                      : worldDiffCfg
+                        ? worldDiffCfg.themeColor
+                        : '#fbbf24',
+              }}
             >
-              {worldDiffCfg && (
+              {isWorldBossStage && (
+                <span className="px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-display font-black uppercase tracking-wider border border-rose-400/75 bg-rose-950/90 text-rose-200 shrink-0">
+                  RAID
+                </span>
+              )}
+              {isLabyrinthStage && (
+                <span className="px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-display font-black uppercase tracking-wider border border-violet-400/75 bg-violet-950/90 text-violet-200 shrink-0">
+                  LABYRINTH
+                </span>
+              )}
+              {isSandboxStage && (
+                <span className="px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-display font-black uppercase tracking-wider border border-cyan-400/75 bg-cyan-950/90 text-cyan-200 shrink-0">
+                  DPS LAB
+                </span>
+              )}
+              {worldDiffCfg && !isEndgameMode && (
                 <span
                   className="px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-display font-black uppercase tracking-wider border bg-slate-950/90 shrink-0"
                   style={{
@@ -214,15 +270,36 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                 <span className="hidden sm:inline">{stageName}</span>
               </div>
               <span className="text-slate-600">|</span>
-              <span className="text-[10px] sm:text-[11px] font-bold text-white shrink-0">
-                W{waveIndex}/{totalWaves}
-              </span>
+              {!isWorldBossStage && !isSandboxStage && (
+                <span className="text-[10px] sm:text-[11px] font-bold text-white shrink-0">
+                  W{waveIndex}/{totalWaves}
+                </span>
+              )}
               <span className="font-mono text-[10px] sm:text-[11px] text-cyan-300 shrink-0">
-                {formatClock(elapsedSec)}
+                {isWorldBossStage && raidTimeLimitSec > 0
+                  ? formatClock(Math.max(0, Math.ceil(raidTimeRemaining)))
+                  : isSandboxStage && sandboxDurationSec > 0
+                    ? formatClock(Math.max(0, Math.ceil(raidTimeRemaining)))
+                    : formatClock(elapsedSec)}
               </span>
               <span className="font-mono text-[10px] text-emerald-400 hidden md:inline ls-hide shrink-0">
                 {fps} FPS
               </span>
+              {weakFactionMetas.map((wf) => (
+                <span
+                  key={wf.id}
+                  title={`World Boss Weak to ${wf.name}: +35% DMG & +25% Break DMG`}
+                  className="hidden lg:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-display font-black uppercase border shrink-0"
+                  style={{
+                    color: wf.color,
+                    borderColor: `${wf.color}99`,
+                    backgroundColor: `${wf.color}1c`,
+                  }}
+                >
+                  <Trophy className="w-2.5 h-2.5" />
+                  WEAK: {wf.name} +35%
+                </span>
+              ))}
               {/* Active Faction Resonance & Spire Modifier Badges */}
               {activeSynergies.map((syn) => (
                 <span
@@ -811,6 +888,147 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
         </div>
       </div>
 
+      {/* LIVE REAL-TIME DPS METER & WORLD BOSS SCORE PANEL (Top-Left Floating) */}
+      {(isWorldBoss || isSandbox) && !combatResult && (
+        <div className="pointer-events-none fixed left-2.5 sm:left-3 top-[50px] sm:top-[56px] z-20 w-[212px] sm:w-[252px] flex flex-col gap-1.5">
+          {/* Raid Countdown + Score / Sandbox DPS Summary Card */}
+          <div
+            className="rounded-xl bg-[#070b1a]/88 backdrop-blur-md border px-2.5 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.75)]"
+            style={{
+              borderColor: isWorldBoss ? `${raidRankColor}88` : 'rgba(34,211,238,0.45)',
+            }}
+          >
+            {isWorldBoss ? (
+              <>
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1 text-[10px] font-display font-black uppercase tracking-wider text-rose-300">
+                    <Timer className="w-3.5 h-3.5 text-rose-400" />
+                    <span
+                      className={`font-mono text-xs ${
+                        raidTimeRemaining <= 15 ? 'text-rose-400 animate-pulse' : 'text-white'
+                      }`}
+                    >
+                      {formatClock(Math.max(0, Math.ceil(raidTimeRemaining)))}
+                    </span>
+                  </div>
+                  <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-300/50 text-[9px] font-mono font-black text-amber-200">
+                    BAR ×{raidBarsCleared + 1}
+                  </span>
+                  <span
+                    className="px-1.5 py-0.5 rounded text-[9px] font-display font-black uppercase border"
+                    style={{
+                      color: raidRankColor,
+                      borderColor: `${raidRankColor}88`,
+                      backgroundColor: `${raidRankColor}22`,
+                    }}
+                  >
+                    {raidRankLabel}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-baseline justify-between gap-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    RAID SCORE
+                  </span>
+                  <span className="font-mono text-base sm:text-lg font-black text-amber-300 leading-none drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]">
+                    {Math.round(raidTotalScore).toLocaleString()}
+                  </span>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between text-[9px] font-mono text-cyan-300/90">
+                  <span>SQUAD DPS</span>
+                  <span className="font-black">
+                    {Math.round(liveSquadDps).toLocaleString()} /s
+                  </span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center gap-1 text-[10px] font-display font-black uppercase tracking-wider text-cyan-300">
+                    <Activity className="w-3.5 h-3.5 text-cyan-300" />
+                    <span>LIVE DPS METER</span>
+                  </div>
+                  <span className="px-1.5 py-0.5 rounded bg-slate-900/90 border border-cyan-400/40 text-[9px] font-mono font-black text-cyan-200">
+                    {sandboxDurationSec > 0
+                      ? formatClock(Math.max(0, Math.ceil(raidTimeRemaining)))
+                      : `∞ ${formatClock(elapsedSec)}`}
+                  </span>
+                </div>
+                <div className="mt-1 flex items-baseline justify-between gap-1">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                    SQUAD DPS
+                  </span>
+                  <span className="font-mono text-base sm:text-lg font-black text-cyan-200 leading-none drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]">
+                    {Math.round(liveSquadDps).toLocaleString()} /s
+                  </span>
+                </div>
+                <div className="mt-0.5 flex items-center justify-between text-[9px] font-mono text-slate-300">
+                  <span>TOTAL DMG</span>
+                  <span className="font-black text-amber-200">
+                    {Math.round(liveTotalDamage).toLocaleString()}
+                  </span>
+                </div>
+              </>
+            )}
+
+            {/* Per-Hero Live DPS Bars */}
+            {liveDpsEntries.length > 0 && (
+              <div className="mt-2 pt-1.5 border-t border-white/10 space-y-1">
+                {liveDpsEntries.map((entry) => {
+                  const topDmg = Math.max(1, liveDpsEntries[0]?.totalDamage ?? 1);
+                  const barPct = Math.max(4, Math.min(100, (entry.totalDamage / topDmg) * 100));
+                  return (
+                    <div key={entry.heroId} className="space-y-0.5">
+                      <div className="flex items-center justify-between gap-1 text-[9px] leading-none">
+                        <span
+                          className="font-display font-extrabold uppercase truncate max-w-[92px]"
+                          style={{ color: entry.themeColor }}
+                        >
+                          {entry.name}
+                        </span>
+                        <div className="flex items-center gap-1.5 font-mono shrink-0">
+                          <span className="text-white font-bold">
+                            {entry.dps >= 1000
+                              ? `${(entry.dps / 1000).toFixed(1)}k`
+                              : Math.round(entry.dps)}
+                            /s
+                          </span>
+                          <span className="text-slate-400 w-7 text-right">
+                            {Math.round(entry.sharePct)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-slate-900/95 overflow-hidden border border-white/5">
+                        <div
+                          className="h-full rounded-full transition-all duration-150"
+                          style={{
+                            width: `${barPct}%`,
+                            background: `linear-gradient(90deg, ${entry.themeColor}, #ffffffcc)`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Instant Finish & Report CTA in DPS Sandbox */}
+            {isSandbox && (
+              <button
+                onClick={() => {
+                  audioManager.playSfx('button');
+                  engineRef.current?.forceFinishCurrentBattle();
+                }}
+                className="pointer-events-auto mt-2 w-full py-1.5 px-2.5 rounded-lg bg-gradient-to-r from-cyan-500/25 via-sky-500/25 to-amber-500/25 hover:from-cyan-400/35 hover:to-amber-400/35 border border-cyan-300/65 text-[10px] font-display font-black uppercase tracking-wider text-cyan-100 flex items-center justify-center gap-1.5 transition shadow-[0_0_14px_rgba(34,211,238,0.28)]"
+              >
+                <Flag className="w-3 h-3 text-amber-300" />
+                Finish &amp; Report
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* TACTILE SQUAD EVADE & ACTIVE COMPANION PET ORB (Right Edge Above Hero Dock) */}
       {!combatResult && !paused && (
         <div className="fixed right-3 sm:right-5 bottom-[126px] sm:bottom-[104px] z-30 flex flex-col items-center gap-2">
@@ -1060,11 +1278,17 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                 onClick={onExit}
                 className="w-full py-2.5 rounded-xl bg-rose-950/75 border border-rose-500/50 text-rose-200 font-bold text-xs uppercase tracking-wider hover:bg-rose-900/75"
               >
-                {isSpireStage
-                  ? 'Return to Astral Spire'
-                  : isDungeonStage
-                    ? 'Return to Rift Dungeons'
-                    : 'Retreat to Command Deck'}
+                {isWorldBossStage
+                  ? 'Return to World Boss Raid'
+                  : isLabyrinthStage
+                    ? 'Return to Starlight Labyrinth'
+                    : isSandboxStage
+                      ? 'Return to DPS Sandbox'
+                      : isSpireStage
+                        ? 'Return to Astral Spire'
+                        : isDungeonStage
+                          ? 'Return to Rift Dungeons'
+                          : 'Retreat to Command Deck'}
               </button>
             </div>
           </div>
@@ -1090,8 +1314,20 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                 ? () => onSelectStage(nextStage.id)
                 : undefined
           }
-          canReplay={dungeonCanReplay}
-          exitLabel={isSpireStage ? 'Astral Spire' : isDungeonStage ? 'Dungeons' : 'Lobby'}
+          canReplay={canReplayBattle}
+          exitLabel={
+            isWorldBossStage
+              ? 'Raid Hub'
+              : isLabyrinthStage
+                ? 'Labyrinth Map'
+                : isSandboxStage
+                  ? 'DPS Lab'
+                  : isSpireStage
+                    ? 'Astral Spire'
+                    : isDungeonStage
+                      ? 'Dungeons'
+                      : 'Lobby'
+          }
           onReplay={() => {
             useCombatStore.getState().resetForStage(stageId, `${resolvedStageDef.code} ${resolvedStageDef.name}`, resolvedStageDef.waves.length);
             setRunSeed((s) => s + 1);

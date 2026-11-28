@@ -9,6 +9,7 @@ import type { DungeonId, Faction, ScreenId } from './types/game';
 import { CodexScreen } from './ui/CodexScreen';
 import { CombatHUD } from './ui/CombatHUD';
 import { DungeonScreen } from './ui/DungeonScreen';
+import { EndgameHubScreen, type EndgameTab } from './ui/EndgameHubScreen';
 import { GachaScreen } from './ui/GachaScreen';
 import { LobbyScreen } from './ui/LobbyScreen';
 import { ShopScreen } from './ui/ShopScreen';
@@ -28,7 +29,10 @@ export const App: React.FC = () => {
   });
   const [screen, setScreen] = useState<ScreenId>('LOBBY');
   const [activeStageId, setActiveStageId] = useState<string>('stage_1_1');
-  const [combatReturnScreen, setCombatReturnScreen] = useState<'LOBBY' | 'DUNGEON' | 'SPIRE'>('LOBBY');
+  const [combatReturnScreen, setCombatReturnScreen] = useState<
+    'LOBBY' | 'DUNGEON' | 'SPIRE' | 'ENDGAME'
+  >('LOBBY');
+  const [endgameTab, setEndgameTab] = useState<EndgameTab>('RAID');
   const [shopTab, setShopTab] = useState<ShopCategory>('GROWTH');
   const [gachaTab, setGachaTab] = useState<'EVENT' | 'HERO' | 'PET' | 'RELIC'>('EVENT');
   const [dungeonFocus, setDungeonFocus] = useState<{
@@ -53,11 +57,17 @@ export const App: React.FC = () => {
 
   const handleStartCombat = (
     stageId: string,
-    returnTo: 'LOBBY' | 'DUNGEON' | 'SPIRE' = 'LOBBY',
+    returnTo: 'LOBBY' | 'DUNGEON' | 'SPIRE' | 'ENDGAME' = 'LOBBY',
   ) => {
     // Synchronously wipe stale Victory/Defeat state BEFORE mounting CombatHUD (prevents Stage Cleared flash!)
     useCombatStore.getState().resetForStage(stageId, '', 1);
-    if (!stageId.startsWith('dungeon__') && !stageId.startsWith('spire__')) {
+    if (
+      !stageId.startsWith('dungeon__') &&
+      !stageId.startsWith('spire__') &&
+      !stageId.startsWith('raid__') &&
+      !stageId.startsWith('labyrinth__') &&
+      !stageId.startsWith('sandbox__')
+    ) {
       const store = usePlayerStore.getState();
       store.setSelectedStage(stageId);
       store.setSelectedDifficulty(parseCampaignStageId(stageId).difficulty);
@@ -137,6 +147,16 @@ export const App: React.FC = () => {
               <SpireScreen
                 onBack={() => setScreen('LOBBY')}
                 onDeploySpire={(stageId) => handleStartCombat(stageId, 'SPIRE')}
+              />
+            )}
+            {screen === 'ENDGAME' && (
+              <EndgameHubScreen
+                initialTab={endgameTab}
+                onBack={() => setScreen('LOBBY')}
+                onDeployEndgame={(stageId, activeTab) => {
+                  setEndgameTab(activeTab);
+                  handleStartCombat(stageId, 'ENDGAME');
+                }}
               />
             )}
             {screen === 'SQUAD' && (
