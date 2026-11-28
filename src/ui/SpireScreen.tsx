@@ -14,11 +14,17 @@ import {
 import { HERO_MAP } from '../data/heroes';
 import {
   SPIRE_MAX_FLOOR,
+  SPIRE_STRATA,
   encodeSpireStageId,
   getSpireFloorInfo,
+  getSpireStratumForFloor,
 } from '../data/spire';
 import { audioManager } from '../engine/AudioManager';
-import { computeHeroStats, getSquadSynergyPills } from '../engine/CombatMath';
+import {
+  computeHeroStats,
+  getActivePetPower,
+  getSquadSynergyPills,
+} from '../engine/CombatMath';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { GameIcon, MaterialIcon } from './GameIcon';
 import { PartyManagerModal } from './PartyManagerModal';
@@ -30,14 +36,6 @@ interface SpireScreenProps {
   onDeploySpire: (stageId: string) => void;
 }
 
-const SECTORS = [
-  { label: 'F1–10', start: 1, end: 10 },
-  { label: 'F11–20', start: 11, end: 20 },
-  { label: 'F21–30', start: 21, end: 30 },
-  { label: 'F31–40', start: 31, end: 40 },
-  { label: 'F41–50', start: 41, end: 50 },
-];
-
 function getTodayKey(): string {
   const d = new Date();
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
@@ -48,6 +46,8 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
     squadIds,
     roster,
     relicRanks,
+    ownedPets,
+    activePetId,
     equipmentInventory,
     unlockedCodexIds,
     spireHighestFloor,
@@ -57,9 +57,14 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
 
   const highest = spireHighestFloor ?? 0;
   const frontierFloor = Math.min(SPIRE_MAX_FLOOR, highest + 1);
-  const initialSectorIdx = Math.min(4, Math.floor((frontierFloor - 1) / 10));
+  const initialStratumIdx = getSpireStratumForFloor(frontierFloor).index;
+  const initialSubSectorIdx = Math.min(
+    3,
+    Math.floor((frontierFloor - SPIRE_STRATA[initialStratumIdx].floorStart) / 10),
+  );
 
-  const [sectorIdx, setSectorIdx] = useState<number>(initialSectorIdx);
+  const [stratumIdx, setStratumIdx] = useState<0 | 1 | 2>(initialStratumIdx);
+  const [subSectorIdx, setSubSectorIdx] = useState<number>(initialSubSectorIdx);
   const [selectedFloor, setSelectedFloor] = useState<number>(frontierFloor);
   const [showPartyModal, setShowPartyModal] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -68,6 +73,9 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
     setToast(msg);
     window.setTimeout(() => setToast(null), 3400);
   };
+
+  const petsMap = ownedPets ?? {};
+  const activeOwnedPet = activePetId && petsMap[activePetId] ? petsMap[activePetId] : null;
 
   const squadPower = useMemo(
     () =>
@@ -84,27 +92,58 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
             squadIds,
             unlockedCodexIds.length,
             relicRanks,
+            { roster, activePet: activeOwnedPet },
           ).powerRating
         );
-      }, 0),
-    [squadIds, roster, equipmentInventory, unlockedCodexIds.length, relicRanks],
+      }, 0) + getActivePetPower(activePetId, petsMap),
+    [
+      squadIds,
+      roster,
+      equipmentInventory,
+      unlockedCodexIds.length,
+      relicRanks,
+      activeOwnedPet,
+      activePetId,
+      petsMap,
+    ],
   );
 
-  const synergyPills = useMemo(() => getSquadSynergyPills(squadIds), [squadIds]);
+  const synergyPills = useMemo(
+    () => getSquadSynergyPills(squadIds, roster, activePetId, petsMap),
+    [squadIds, roster, activePetId, petsMap],
+  );
   const floorInfo = useMemo(() => getSpireFloorInfo(selectedFloor), [selectedFloor]);
   const floorUnlocked = selectedFloor <= frontierFloor;
   const floorCleared = selectedFloor <= highest;
   const dailyTributeReady = highest >= 1 && spireLastSweepDay !== getTodayKey();
   const powerReady = squadPower >= floorInfo.recommendedPower * 0.88;
 
-  const sector = SECTORS[sectorIdx] ?? SECTORS[0];
+  const activeStratum = SPIRE_STRATA[stratumIdx] ?? SPIRE_STRATA[0];
+  const subSectors = useMemo(
+    () =>
+      Array.from({ length: 4 }, (_, i) => {
+        const start = activeStratum.floorStart + i * 10;
+        const end = Math.min(activeStratum.floorEnd, start + 9);
+        return { label: `F${start}–${end}`, start, end };
+      }),
+    [activeStratum.floorStart, activeStratum.floorEnd],
+  );
+
+  const currentSubSector = subSectors[subSectorIdx] ?? subSectors[0];
   const sectorFloors = useMemo(
     () =>
-      Array.from({ length: sector.end - sector.start + 1 }, (_, i) =>
-        getSpireFloorInfo(sector.start + i),
+      Array.from({ length: currentSubSector.end - currentSubSector.start + 1 }, (_, i) =>
+        getSpireFloorInfo(currentSubSector.start + i),
       ),
-    [sector.start, sector.end],
+    [currentSubSector.start, currentSubSector.end],
   );
+
+  const handleSelectStratum = (idx: 0 | 1 | 2) => {
+    audioManager.playSfx('button');
+    setStratumIdx(idx);
+    setSubSectorIdx(0);
+    setSelectedFloor(SPIRE_STRATA[idx].floorStart);
+  };
 
   const handleDailyTribute = () => {
     const res = sweepSpireDaily();
@@ -132,7 +171,7 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
           <RpgBackButton onClick={onBack} />
           <div className="min-w-0">
             <div className="text-[9px] sm:text-[10px] font-display font-black uppercase tracking-[0.24em] text-cyan-300 leading-none">
-              ENDGAME 50-FLOOR ASCENSION TOWER
+              ENDGAME 120-FLOOR ASCENSION TOWER • 💎 EVERY 5F / 10F BOSS
             </div>
             <h1 className="font-display text-base sm:text-xl font-black text-white text-glow-gold leading-tight truncate flex items-center gap-2">
               <span>Astral Spire</span>
@@ -179,23 +218,57 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
       {/* MAIN TWO-PANE BODY */}
       <div className="relative z-20 flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4">
         <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 pb-4">
-          {/* LEFT: 50-FLOOR SECTOR TABS + TOWER LADDER */}
+          {/* LEFT: 3-STRATUM + 120-FLOOR TOWER LADDER */}
           <div className="lg:col-span-5 rpg-panel p-3.5 space-y-3 border-cyan-400/35">
+            {/* 3 Stratum Tabs (Normal F1-40 | Hard F41-80 | Hell F81-120) */}
+            <div className="grid grid-cols-3 gap-1.5">
+              {SPIRE_STRATA.map((st) => {
+                const active = stratumIdx === st.index;
+                return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => handleSelectStratum(st.index)}
+                    className={`px-2 py-1.5 rounded-xl border text-center transition ${
+                      active
+                        ? 'bg-slate-900 shadow-lg'
+                        : 'bg-slate-950/75 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                    style={{
+                      borderColor: active ? st.color : undefined,
+                      boxShadow: active ? `0 0 14px ${st.color}44` : undefined,
+                    }}
+                  >
+                    <div
+                      className="text-[10px] font-display font-black uppercase tracking-wider leading-tight"
+                      style={{ color: active ? st.color : undefined }}
+                    >
+                      {st.shortLabel}
+                    </div>
+                    <div className="text-[8px] font-bold uppercase text-slate-400 mt-0.5">
+                      {st.id} SCALE
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 10-Floor Sub-Sector Selector */}
             <div className="flex items-center justify-between gap-2">
               <div className="text-[10px] font-display font-black uppercase tracking-[0.2em] text-cyan-300 flex items-center gap-1.5">
-                <Trophy className="w-3.5 h-3.5 text-amber-300" /> Tower Floors
+                <Trophy className="w-3.5 h-3.5 text-amber-300" /> Floors
               </div>
               <div className="flex items-center gap-1">
-                {SECTORS.map((s, idx) => (
+                {subSectors.map((s, idx) => (
                   <button
                     key={s.label}
                     type="button"
                     onClick={() => {
                       audioManager.playSfx('button');
-                      setSectorIdx(idx);
+                      setSubSectorIdx(idx);
                     }}
                     className={`px-2 py-1 rounded-lg text-[10px] font-mono font-black border transition ${
-                      sectorIdx === idx
+                      subSectorIdx === idx
                         ? 'bg-cyan-400/25 border-cyan-300 text-cyan-100'
                         : 'bg-slate-950/80 border-slate-700 text-slate-400 hover:text-white'
                     }`}
@@ -225,16 +298,22 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
                     className={`relative rounded-xl p-2.5 text-left border transition overflow-hidden ${
                       isSelected
                         ? 'bg-gradient-to-br from-cyan-500/25 via-slate-900 to-amber-500/15 border-amber-300 shadow-[0_0_20px_rgba(253,224,71,0.3)]'
-                        : fl.isBossFloor
-                          ? 'bg-rose-950/30 border-rose-400/45 hover:border-amber-300/70'
-                          : isLocked
-                            ? 'bg-slate-950/60 border-slate-800/80 opacity-60 hover:opacity-85'
-                            : 'bg-slate-950/85 border-white/15 hover:border-cyan-400/60'
+                        : fl.isMajorBossFloor
+                          ? 'bg-gradient-to-br from-rose-950/50 to-amber-950/30 border-amber-400/55 hover:border-amber-300'
+                          : fl.isBossFloor
+                            ? 'bg-rose-950/30 border-rose-400/45 hover:border-amber-300/70'
+                            : isLocked
+                              ? 'bg-slate-950/60 border-slate-800/80 opacity-60 hover:opacity-85'
+                              : 'bg-slate-950/85 border-white/15 hover:border-cyan-400/60'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1.5">
                       <span className="font-display font-black text-sm text-white flex items-center gap-1">
-                        {fl.isBossFloor && <Crown className="w-3.5 h-3.5 text-amber-300" />}
+                        {fl.isBossFloor && (
+                          <Crown
+                            className={`w-3.5 h-3.5 ${fl.isMajorBossFloor ? 'text-amber-300' : 'text-rose-300'}`}
+                          />
+                        )}
                         <span>Floor {fl.floor}</span>
                       </span>
                       {isCleared ? (
@@ -254,9 +333,15 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
                       {fl.isBossFloor ? fl.bossName : fl.modifier.name}
                     </div>
                     <div className="flex items-center justify-between text-[9px] font-mono text-slate-400 mt-1">
-                      <span>PWR {fl.recommendedPower.toLocaleString()}</span>
-                      {!isCleared && (
-                        <span className="text-sky-300 font-bold">+{fl.firstClearCrystals}💎</span>
+                      <span>PWR {(fl.recommendedPower / 1000).toFixed(0)}k</span>
+                      {!isCleared && fl.firstClearCrystals > 0 ? (
+                        <span
+                          className={`font-black ${fl.isMajorBossFloor ? 'text-amber-300' : 'text-sky-300'}`}
+                        >
+                          +{fl.firstClearCrystals}💎
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 font-semibold">MATS</span>
                       )}
                     </div>
                   </motion.button>
@@ -274,7 +359,15 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
               <img
                 src={floorInfo.arenaAsset}
                 alt={floorInfo.title}
-                className="w-full h-full object-cover object-center"
+                className="w-full h-full object-cover object-center transition-all duration-500"
+                style={{
+                  filter:
+                    floorInfo.stratum.id === 'HELL'
+                      ? 'brightness(0.66) contrast(1.22) saturate(1.45) hue-rotate(-32deg)'
+                      : floorInfo.stratum.id === 'HARD'
+                        ? 'brightness(0.78) contrast(1.14) saturate(1.3) hue-rotate(-14deg)'
+                        : undefined,
+                }}
                 draggable={false}
               />
               <div
@@ -298,13 +391,26 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
               <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 pr-36 sm:pr-44">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
                   <span
+                    className="px-2 py-0.5 rounded-full text-[9px] font-display font-black uppercase tracking-[0.16em] bg-slate-950/90 border"
+                    style={{
+                      borderColor: floorInfo.stratum.color,
+                      color: floorInfo.stratum.color,
+                    }}
+                  >
+                    {floorInfo.stratum.name}
+                  </span>
+                  <span
                     className="px-2.5 py-0.5 rounded-full text-[10px] font-display font-black uppercase tracking-[0.18em] bg-slate-950/90 border"
                     style={{
                       borderColor: floorInfo.modifier.color,
                       color: floorInfo.modifier.color,
                     }}
                   >
-                    {floorInfo.isBossFloor ? '👑 MILESTONE BOSS FLOOR' : `FLOOR ${floorInfo.floor} TRIAL`}
+                    {floorInfo.isMajorBossFloor
+                      ? '👑 10F SOVEREIGN GEM MILESTONE'
+                      : floorInfo.isBossFloor
+                        ? '✦ 5F BOSS GEM MILESTONE'
+                        : `FLOOR ${floorInfo.floor} TRIAL`}
                   </span>
                   {floorCleared && (
                     <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/60 text-emerald-200 text-[10px] font-display font-black uppercase">
@@ -377,20 +483,29 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
 
                 {/* First-Clear & Repeat Spoils */}
                 <div className="space-y-2">
-                  <div className="text-[10px] font-display font-black uppercase tracking-[0.22em] text-cyan-300 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5" />{' '}
-                    {floorCleared ? 'Floor Clear Rewards (Repeat)' : 'First-Clear Ascension Rewards'}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[10px] font-display font-black uppercase tracking-[0.22em] text-cyan-300 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5" />{' '}
+                      {floorCleared ? 'Floor Clear Rewards (Repeat)' : 'First-Clear Ascension Rewards'}
+                    </div>
+                    {floorInfo.firstClearCrystals === 0 && (
+                      <span className="text-[10px] font-semibold text-slate-400">
+                        💎 Crystals awarded on every 5th &amp; 10th Boss Floor
+                      </span>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <RpgLootTile
-                      color="#38e8ff"
-                      subLabel="Crystals"
-                      bottomLabel={floorCleared ? '+40' : `+${floorInfo.firstClearCrystals}`}
-                      topTag={floorCleared ? undefined : '1ST'}
-                      index={0}
-                    >
-                      <GameIcon name="crystal" className="w-8 h-8" />
-                    </RpgLootTile>
+                    {!floorCleared && floorInfo.firstClearCrystals > 0 && (
+                      <RpgLootTile
+                        color="#38e8ff"
+                        subLabel="Crystals"
+                        bottomLabel={`+${floorInfo.firstClearCrystals}`}
+                        topTag={floorInfo.isMajorBossFloor ? '10F' : '5F'}
+                        index={0}
+                      >
+                        <GameIcon name="crystal" className="w-8 h-8" />
+                      </RpgLootTile>
+                    )}
                     <RpgLootTile
                       color="#f5c84c"
                       subLabel="Gold"
@@ -400,10 +515,18 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
                       <GameIcon name="gold" className="w-8 h-8" />
                     </RpgLootTile>
                     <RpgLootTile
+                      color="#34d399"
+                      subLabel="EXP"
+                      bottomLabel={`×${floorInfo.expPotions}+`}
+                      index={2}
+                    >
+                      <MaterialIcon material="expPotions" className="w-8 h-8" />
+                    </RpgLootTile>
+                    <RpgLootTile
                       color="#22d3ee"
                       subLabel="Relic Frag"
                       bottomLabel={`×${floorInfo.relicFragments}+`}
-                      index={2}
+                      index={3}
                     >
                       <GameIcon name="relic" className="w-8 h-8" />
                     </RpgLootTile>
@@ -411,7 +534,7 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
                       color="#a78bfa"
                       subLabel="Stones"
                       bottomLabel={`×${floorInfo.forgeStones}+`}
-                      index={3}
+                      index={4}
                     >
                       <MaterialIcon material="forgeStones" className="w-8 h-8" />
                     </RpgLootTile>
@@ -420,9 +543,19 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
                         color="#e879f9"
                         subLabel="Star Core"
                         bottomLabel={`×${floorInfo.starCores}`}
-                        index={4}
+                        index={5}
                       >
                         <MaterialIcon material="starCores" className="w-8 h-8" />
+                      </RpgLootTile>
+                    )}
+                    {floorInfo.astralAnvilCores > 0 && (
+                      <RpgLootTile
+                        color="#f5c84c"
+                        subLabel="Anvil"
+                        bottomLabel={`×${floorInfo.astralAnvilCores}`}
+                        index={6}
+                      >
+                        <MaterialIcon material="astralAnvilCores" className="w-8 h-8" />
                       </RpgLootTile>
                     )}
                   </div>
@@ -432,7 +565,7 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
               {/* DEPLOY CTA */}
               <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
                 <div className="text-xs text-slate-400">
-                  Unlimited free attempts • Conquer Boss Milestones every 5 Floors for massive rewards!
+                  Unlimited free attempts • Conquer 5F &amp; 10F Boss Milestones for Starlight Crystals up to F120!
                 </div>
                 <RpgButton
                   variant={floorUnlocked ? 'gold' : 'slate'}
@@ -451,7 +584,7 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
                   ) : (
                     <>
                       <Lock className="w-4 h-4" />
-                      <span>Clear Floor {floorInfo.floor - 1} First</span>
+                      <span>Clear F{floorInfo.floor - 1} First</span>
                     </>
                   )}
                 </RpgButton>
@@ -461,8 +594,9 @@ export const SpireScreen: React.FC<SpireScreenProps> = ({ onBack, onDeploySpire 
         </div>
       </div>
 
+      {/* TOAST */}
       {toast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-slate-950/95 border border-emerald-400/70 text-emerald-200 text-xs font-bold shadow-2xl">
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-slate-950/95 border border-cyan-400/70 text-xs font-bold text-cyan-100 shadow-2xl">
           {toast}
         </div>
       )}

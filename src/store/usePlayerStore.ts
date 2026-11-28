@@ -54,6 +54,7 @@ import type {
   CombatLootSummary,
   DroppedRelicSummary,
   DungeonId,
+  DungeonTierNumber,
   EquipmentInstance,
   EquipmentRarity,
   EquipmentSetId,
@@ -223,12 +224,12 @@ interface PlayerStore extends PlayerSaveState {
   };
   sweepDungeonTier: (
     dungeonId: DungeonId,
-    tier: 1 | 2 | 3 | 4 | 5,
+    tier: DungeonTierNumber,
     opts?: { faction?: Faction; setId?: EquipmentSetId },
   ) => { ok: boolean; message: string; summary?: CombatLootSummary };
   sweepDungeonMulti: (
     dungeonId: DungeonId,
-    tier: 1 | 2 | 3 | 4 | 5,
+    tier: DungeonTierNumber,
     count: number,
     opts?: { faction?: Faction; setId?: EquipmentSetId },
   ) => { ok: boolean; count: number; message: string; summary?: CombatLootSummary };
@@ -304,6 +305,7 @@ interface PlayerStore extends PlayerSaveState {
       forgeStones: number;
       starCores: number;
       relicFragments: number;
+      astralAnvilCores?: number;
     };
   };
   claimDailyCommission: (id: string) => { ok: boolean; message: string };
@@ -2192,12 +2194,13 @@ export const usePlayerStore = create<PlayerStore>()(
           return { ok: false, message: 'Daily Spire Tribute already claimed today! Return tomorrow.' };
         }
         const rewards = {
-          gold: Math.round(1400 + highest * 420),
-          crystals: Math.min(360, 60 + Math.floor(highest / 2) * 12),
+          gold: Math.round(1400 + highest * 460 + (highest > 40 ? (highest - 40) * 280 : 0)),
+          crystals: Math.min(480, 60 + Math.floor(highest / 5) * 18),
           expPotions: 2 + Math.floor(highest / 6),
           forgeStones: 3 + Math.floor(highest / 4),
           starCores: Math.max(1, Math.floor(highest / 10) + 1),
           relicFragments: 2 + Math.floor(highest / 5),
+          astralAnvilCores: highest >= 40 ? 1 + Math.floor((highest - 40) / 20) : 0,
         };
         set({
           gold: state.gold + rewards.gold,
@@ -2206,12 +2209,13 @@ export const usePlayerStore = create<PlayerStore>()(
           forgeStones: state.forgeStones + rewards.forgeStones,
           starCores: state.starCores + rewards.starCores,
           relicFragments: state.relicFragments + rewards.relicFragments,
+          astralAnvilCores: state.astralAnvilCores + rewards.astralAnvilCores,
           spireLastSweepDay: today,
           ...bumpDailyProgress(state, { daily_spire_ascent: 1, daily_clear_battles: 1 }),
         });
         return {
           ok: true,
-          message: `Daily Spire Tribute (Floor ${highest}): +${rewards.crystals} Crystals • +${rewards.gold.toLocaleString()}g • +${rewards.relicFragments} Relic Frags!`,
+          message: `Daily Spire Tribute (Floor ${highest}): +${rewards.crystals} Crystals • +${rewards.gold.toLocaleString()}g • +${rewards.relicFragments} Relic Frags${rewards.astralAnvilCores > 0 ? ` • +${rewards.astralAnvilCores} Anvil Cores` : ''}!`,
           rewards,
         };
       },

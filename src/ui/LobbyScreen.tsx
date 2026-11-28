@@ -917,7 +917,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               <div className="relative z-10 h-full px-2.5 sm:px-3.5 py-2 flex flex-col justify-between">
                 <div className="flex items-center justify-between gap-1">
                   <span className="text-[8px] sm:text-[9px] font-display font-black uppercase tracking-[0.16em] text-cyan-300 leading-none truncate">
-                    50F TOWER
+                    120F TOWER
                   </span>
                   <span className="px-1.5 py-0.5 rounded-md bg-slate-950/85 border border-cyan-400/60 font-mono text-[8px] sm:text-[9px] font-black text-amber-200 leading-none shrink-0">
                     F{spireHighestFloor ?? 0}/{SPIRE_MAX_FLOOR}

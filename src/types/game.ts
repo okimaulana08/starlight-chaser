@@ -434,10 +434,14 @@ export interface StageDef {
   };
 }
 
+export type DungeonTierNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type DungeonTierRoman = 'I' | 'II' | 'III' | 'IV' | 'V' | 'VI' | 'VII' | 'VIII' | 'IX' | 'X';
+
 export interface DungeonTierDef {
-  tier: 1 | 2 | 3 | 4 | 5;
-  roman: 'I' | 'II' | 'III' | 'IV' | 'V';
+  tier: DungeonTierNumber;
+  roman: DungeonTierRoman;
   title: string;
+  worldDifficultyTag: CampaignDifficulty;
   unlockStageId: string;
   unlockLabel: string;
   recommendedPower: number;

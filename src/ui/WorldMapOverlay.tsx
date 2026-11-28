@@ -64,6 +64,43 @@ interface WorldMapOverlayProps {
 
 const MAP_ASPECT = 16 / 9;
 
+const WORLD_WEATHER_PARTICLES = Array.from({ length: 24 }, (_, i) => ({
+  id: i,
+  left: ((i * 37 + 7) % 94) + 3,
+  top: ((i * 53 + 11) % 88) + 6,
+  size: i % 4 === 0 ? 5 : i % 2 === 0 ? 3.5 : 2.5,
+  duration: 4.5 + (i % 6) * 1.15,
+  delay: -(i * 0.65),
+  alt: i % 3 === 0,
+}));
+
+const VOID_FISSURES_SVG: string[] = [
+  'M 860 96 L 785 168 L 732 214 L 664 252 L 598 298',
+  'M 860 96 L 826 196 L 802 276 L 848 352 L 882 435',
+  'M 732 214 L 640 198 L 548 164 L 468 188',
+  'M 598 298 L 512 342 L 430 330 L 352 384',
+  'M 802 276 L 704 334 L 642 406 L 568 468',
+  'M 468 188 L 380 226 L 318 205',
+];
+
+const WORLD_ERA_TITLES: Record<CampaignDifficulty, { title: string; subtitle: string; color: string }> = {
+  NORMAL: {
+    title: 'WL 1 • AGE OF DAWNLIGHT',
+    subtitle: 'Clear skies over Aetheria • Standard Campaign Realm',
+    color: '#fde047',
+  },
+  HARD: {
+    title: 'WL 2 • TWILIGHT RIFT SURGE',
+    subtitle: 'Crimson Dusk descends • 2× Gold • Epic & Legendary Drops',
+    color: '#fb923c',
+  },
+  HELL: {
+    title: 'WL 3 • BLOOD-ECLIPSE ABYSS',
+    subtitle: 'Reality fractures under the Total Eclipse • 3.2× Gold • Transcendence Loot',
+    color: '#fb7185',
+  },
+};
+
 /**
  * 12 Scenic S-Curve Adventure Trail coordinates (in % of the Region Trail Canvas)
  * climbing from bottom-left (Stage X-1) across two Elite gates (X-4, X-8) to the Boss Summit (X-12).
@@ -133,6 +170,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       selectedDifficulty ?? parseCampaignStageId(selectedStageId).difficulty ?? 'NORMAL';
     return isDifficultyUnlocked(candidate, clearedStages) ? candidate : 'NORMAL';
   });
+  const [worldShiftFx, setWorldShiftFx] = useState<{ id: number; diff: CampaignDifficulty } | null>(null);
   const activeDiffCfg = CAMPAIGN_DIFFICULTY_MAP[worldDifficulty];
   const activeDiffUnlocked = isDifficultyUnlocked(worldDifficulty, clearedStages);
 
@@ -307,8 +345,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
   const handleSwitchDifficulty = (nextDiff: CampaignDifficulty) => {
     if (nextDiff === worldDifficulty) return;
-    audioManager.playSfx('button');
+    audioManager.playSfx(nextDiff === 'HELL' ? 'ult_chime' : nextDiff === 'HARD' ? 'forge' : 'button');
     setWorldDifficulty(nextDiff);
+    const fxId = Date.now() + Math.random();
+    setWorldShiftFx({ id: fxId, diff: nextDiff });
+    window.setTimeout(() => {
+      setWorldShiftFx((cur) => (cur?.id === fxId ? null : cur));
+    }, 950);
     const unlocked = isDifficultyUnlocked(nextDiff, clearedStages);
     if (unlocked) {
       setSelectedDifficulty(nextDiff);
@@ -508,57 +551,145 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             }}
             className="relative will-change-transform"
           >
-            {/* 1. Hand-Painted Fantasy Overworld Illustration (Shifts Atmosphere by World Level!) */}
+            {/* 1. Hand-Painted Fantasy Overworld Illustration (Dramatic 3-Era Recolor by World Level!) */}
             <img
               src="/assets/environments/bg_worldmap_aetheria.webp"
               alt="World of Aetheria"
               draggable={false}
-              className="w-full h-full object-fill pointer-events-none transition-all duration-500"
+              className={`w-full h-full object-fill pointer-events-none transition-all duration-700 ${
+                worldShiftFx?.diff === 'HELL' ? 'animate-world-shake' : ''
+              }`}
               style={{
                 filter:
                   worldDifficulty === 'HELL'
-                    ? 'brightness(0.84) contrast(1.14) saturate(1.24) hue-rotate(-24deg)'
+                    ? 'grayscale(0.46) sepia(0.62) hue-rotate(-52deg) saturate(2.18) brightness(0.58) contrast(1.34)'
                     : worldDifficulty === 'HARD'
-                      ? 'brightness(0.92) contrast(1.1) saturate(1.16) hue-rotate(-10deg)'
-                      : 'brightness(0.98) contrast(1.04) saturate(1.06)',
+                      ? 'sepia(0.42) saturate(1.55) brightness(0.76) contrast(1.18) hue-rotate(-20deg)'
+                      : 'brightness(1.0) contrast(1.05) saturate(1.08)',
               }}
             />
 
-            {/* 2. Subtle Edge Cinematic Vignette + World Level Atmospheric Veil */}
+            {/* 2A. True Color-Grading Multiply Veil (Transforms Ocean, Forests & Sky per Difficulty!) */}
             <div
-              className="pointer-events-none absolute inset-0 transition-all duration-500"
+              className="pointer-events-none absolute inset-0 transition-all duration-700"
+              style={{
+                mixBlendMode: worldDifficulty === 'NORMAL' ? 'normal' : 'multiply',
+                background:
+                  worldDifficulty === 'HELL'
+                    ? 'radial-gradient(ellipse 88% 82% at 45% 48%, rgba(136,19,55,0.62) 0%, rgba(59,7,54,0.82) 64%, rgba(10,2,18,0.95) 100%)'
+                    : worldDifficulty === 'HARD'
+                      ? 'linear-gradient(150deg, rgba(194,65,12,0.56) 0%, rgba(136,19,55,0.48) 54%, rgba(46,16,66,0.72) 100%)'
+                      : 'radial-gradient(ellipse 88% 82% at 45% 48%, transparent 54%, rgba(4, 8, 22, 0.52) 100%)',
+              }}
+            />
+
+            {/* 2B. Secondary Blend Highlight Layer (Dawn Sunbeams / Twilight Ember Glow / Blood-Eclipse Radiance) */}
+            <div
+              className="pointer-events-none absolute inset-0 transition-all duration-700"
+              style={{
+                mixBlendMode: worldDifficulty === 'HARD' ? 'color' : 'screen',
+                background:
+                  worldDifficulty === 'HELL'
+                    ? 'radial-gradient(circle at 86% 18%, rgba(244,63,94,0.46) 0%, rgba(168,85,247,0.22) 32%, transparent 62%)'
+                    : worldDifficulty === 'HARD'
+                      ? 'radial-gradient(ellipse 90% 80% at 48% 42%, rgba(251,146,60,0.34), rgba(159,18,57,0.44))'
+                      : 'linear-gradient(128deg, rgba(254,240,138,0.16) 0%, rgba(186,230,253,0.06) 28%, transparent 56%)',
+              }}
+            />
+
+            {/* 2C. Periodic Sky Lightning Flash (Hard Dusk Thunder / Hell Void Lightning) */}
+            {worldDifficulty !== 'NORMAL' && (
+              <div
+                className="pointer-events-none absolute inset-0 animate-world-lightning"
+                style={{
+                  mixBlendMode: 'screen',
+                  background:
+                    worldDifficulty === 'HELL'
+                      ? 'radial-gradient(circle at 84% 22%, rgba(244,63,94,0.65) 0%, rgba(192,132,252,0.28) 38%, transparent 72%)'
+                      : 'radial-gradient(circle at 38% 28%, rgba(251,146,60,0.48) 0%, rgba(245,158,11,0.18) 38%, transparent 68%)',
+                }}
+              />
+            )}
+
+            {/* 3. Seamless Eastern Twilight / Abyssal Mist */}
+            <div
+              className="pointer-events-none absolute inset-0 animate-fog-swirl transition-all duration-700"
               style={{
                 background:
                   worldDifficulty === 'HELL'
-                    ? 'radial-gradient(ellipse 86% 80% at 46% 48%, rgba(244,63,94,0.12) 0%, rgba(45,8,38,0.48) 65%, rgba(6,4,18,0.82) 100%)'
+                    ? 'radial-gradient(ellipse 58% 84% at 86% 44%, rgba(190, 18, 60, 0.5) 0%, rgba(59, 7, 100, 0.36) 48%, transparent 86%)'
                     : worldDifficulty === 'HARD'
-                      ? 'radial-gradient(ellipse 86% 80% at 46% 48%, rgba(249,115,22,0.1) 0%, rgba(36,12,18,0.36) 66%, rgba(8,6,20,0.72) 100%)'
-                      : 'radial-gradient(ellipse 88% 82% at 45% 48%, transparent 52%, rgba(4, 8, 22, 0.56) 100%)',
+                      ? 'radial-gradient(ellipse 52% 80% at 86% 46%, rgba(194, 65, 12, 0.42) 0%, rgba(88, 28, 135, 0.28) 52%, transparent 86%)'
+                      : 'radial-gradient(ellipse 46% 78% at 88% 48%, rgba(28, 12, 64, 0.38) 0%, rgba(12, 10, 34, 0.2) 52%, transparent 86%)',
               }}
             />
 
-            {/* 3. Seamless Eastern Twilight Fog-of-War Mist */}
-            <div
-              className="pointer-events-none absolute inset-0 animate-fog-swirl"
-              style={{
-                background:
-                  'radial-gradient(ellipse 46% 78% at 88% 48%, rgba(28, 12, 64, 0.4) 0%, rgba(12, 10, 34, 0.22) 52%, transparent 86%)',
-              }}
-            />
-
-            {/* 4. Soft Drifting Cloud Wisps */}
+            {/* 4. Dynamic Era Cloud Wisps (White Dawn / Amber Storm / Crimson-Void Smoke) */}
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
               <div
-                className="absolute top-[10%] left-[32%] w-[26%] h-[16%] rounded-full blur-2xl animate-cloud-drift"
-                style={{ background: 'rgba(224, 242, 254, 0.24)' }}
+                className="absolute top-[10%] left-[32%] w-[28%] h-[18%] rounded-full blur-2xl animate-cloud-drift transition-colors duration-700"
+                style={{
+                  background:
+                    worldDifficulty === 'HELL'
+                      ? 'rgba(159, 18, 57, 0.34)'
+                      : worldDifficulty === 'HARD'
+                        ? 'rgba(251, 146, 60, 0.3)'
+                        : 'rgba(224, 242, 254, 0.24)',
+                  animationDuration: worldDifficulty === 'HELL' ? '14s' : worldDifficulty === 'HARD' ? '18s' : '26s',
+                }}
               />
               <div
-                className="absolute bottom-[14%] left-[48%] w-[24%] h-[14%] rounded-full blur-2xl animate-cloud-drift"
-                style={{ background: 'rgba(224, 242, 254, 0.18)', animationDelay: '-9s' }}
+                className="absolute bottom-[14%] left-[46%] w-[26%] h-[16%] rounded-full blur-2xl animate-cloud-drift transition-colors duration-700"
+                style={{
+                  background:
+                    worldDifficulty === 'HELL'
+                      ? 'rgba(126, 34, 206, 0.34)'
+                      : worldDifficulty === 'HARD'
+                        ? 'rgba(220, 38, 38, 0.24)'
+                        : 'rgba(224, 242, 254, 0.18)',
+                  animationDelay: '-9s',
+                  animationDuration: worldDifficulty === 'HELL' ? '16s' : worldDifficulty === 'HARD' ? '20s' : '28s',
+                }}
               />
             </div>
 
-            {/* 5. Curved Animated Golden Ley-Line Routes Connecting All 10 Regions */}
+            {/* 4B. Dynamic Floating Weather Particles (Starlight Motes / Rising Embers / Crimson Ash + Void Sparks) */}
+            <div className="pointer-events-none absolute inset-0 overflow-hidden z-[8]">
+              {WORLD_WEATHER_PARTICLES.map((p) => {
+                const isHell = worldDifficulty === 'HELL';
+                const isHard = worldDifficulty === 'HARD';
+                const animClass = isHell && !p.alt ? 'animate-world-ash' : 'animate-world-ember';
+                const color = isHell
+                  ? p.alt
+                    ? '#e879f9'
+                    : '#fb7185'
+                  : isHard
+                    ? p.alt
+                      ? '#fde047'
+                      : '#fb923c'
+                    : p.alt
+                      ? '#bae6fd'
+                      : '#fde047';
+                return (
+                  <span
+                    key={p.id}
+                    className={`absolute rounded-full ${animClass}`}
+                    style={{
+                      left: `${p.left}%`,
+                      top: isHell && !p.alt ? `${(p.top % 35)}%` : `${55 + (p.top % 45)}%`,
+                      width: `${isHell ? p.size + 1 : p.size}px`,
+                      height: `${isHell ? p.size + 1 : p.size}px`,
+                      backgroundColor: color,
+                      boxShadow: `0 0 ${isHell ? 12 : isHard ? 9 : 7}px ${color}`,
+                      animationDuration: `${isHell ? p.duration * 0.72 : isHard ? p.duration * 0.85 : p.duration * 1.4}s`,
+                      animationDelay: `${p.delay}s`,
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            {/* 5. Curved Animated Ley-Line Routes + Hard Rift Surge Rings + Hell Blood Eclipse & Void Fissures */}
             <svg
               viewBox="0 0 1000 562.5"
               preserveAspectRatio="none"
@@ -572,7 +703,42 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     <feMergeNode in="SourceGraphic" />
                   </feMerge>
                 </filter>
+                <radialGradient id="bloodEclipseCorona" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#09030e" stopOpacity="0.98" />
+                  <stop offset="48%" stopColor="#09030e" stopOpacity="0.96" />
+                  <stop offset="56%" stopColor="#fb7185" stopOpacity="0.95" />
+                  <stop offset="72%" stopColor="#e11d48" stopOpacity="0.55" />
+                  <stop offset="100%" stopColor="#a855f7" stopOpacity="0" />
+                </radialGradient>
               </defs>
+
+              {/* WL 2 HARD: Subtle Rift Surge Shock Rings pulsing across the central sea */}
+              {worldDifficulty === 'HARD' && (
+                <g opacity="0.55">
+                  <circle cx="400" cy="230" r="95" fill="none" stroke="#fb923c" strokeWidth="1.4" strokeDasharray="8 12" />
+                  <circle cx="670" cy="300" r="115" fill="none" stroke="#f97316" strokeWidth="1.3" strokeDasharray="6 10" />
+                  <circle cx="860" cy="115" r="78" fill="none" stroke="#fdba74" strokeWidth="1.6" strokeDasharray="4 8" />
+                </g>
+              )}
+
+              {/* WL 3 HELL: Monumental Blood Eclipse in Eastern Sky + Glowing Dimensional Void Fissures */}
+              {worldDifficulty === 'HELL' && (
+                <g>
+                  <g className="animate-world-eclipse" style={{ transformOrigin: '860px 96px' }}>
+                    <circle cx="860" cy="96" r="88" fill="url(#bloodEclipseCorona)" />
+                    <circle cx="860" cy="96" r="46" fill="none" stroke="#fda4af" strokeWidth="2.2" filter="url(#leyGlow)" />
+                    <circle cx="860" cy="96" r="64" fill="none" stroke="#c084fc" strokeWidth="1.1" strokeDasharray="5 7" opacity="0.7" />
+                  </g>
+                  <g className="animate-world-fissure" filter="url(#leyGlow)">
+                    {VOID_FISSURES_SVG.map((fp, fi) => (
+                      <g key={fi}>
+                        <path d={fp} fill="none" stroke="#be123c" strokeWidth="5.2" strokeOpacity="0.45" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d={fp} fill="none" stroke="#fda4af" strokeWidth="1.6" strokeOpacity="0.88" strokeLinecap="round" strokeLinejoin="round" />
+                      </g>
+                    ))}
+                  </g>
+                </g>
+              )}
               {REGION_LINKS.map(([fromId, toId], idx) => {
                 const a = REGION_MAP[fromId];
                 const b = REGION_MAP[toId];
@@ -1033,31 +1199,71 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       {/* ========================================================================== */}
       {viewMode === 'REGION' && activeStage && (
         <div className="relative w-full h-full flex flex-col overflow-hidden">
-          {/* LAYER 0: Bespoke Hand-Painted Region Biome Panorama Backdrop */}
+          {/* LAYER 0: Bespoke Hand-Painted Region Biome Panorama Backdrop (Synced to World Level Atmosphere!) */}
           <div className="pointer-events-none absolute inset-0 overflow-hidden">
             <img
               src={focusedRegion.arenaAsset}
               alt={focusedRegion.name}
               className="w-full h-full object-cover scale-105 transition-all duration-700"
               style={{
-                filter: 'brightness(0.58) saturate(1.16) contrast(1.06)',
+                filter:
+                  worldDifficulty === 'HELL'
+                    ? 'grayscale(0.42) sepia(0.58) hue-rotate(-48deg) saturate(2.05) brightness(0.46) contrast(1.3)'
+                    : worldDifficulty === 'HARD'
+                      ? 'sepia(0.38) saturate(1.48) brightness(0.52) contrast(1.16) hue-rotate(-18deg)'
+                      : 'brightness(0.6) saturate(1.16) contrast(1.06)',
               }}
             />
             <div
-              className="absolute inset-0 transition-all duration-500"
+              className="absolute inset-0 transition-all duration-700"
               style={{
+                mixBlendMode: worldDifficulty === 'NORMAL' ? 'normal' : 'multiply',
                 background:
                   worldDifficulty === 'HELL'
-                    ? `radial-gradient(ellipse 75% 70% at 38% 50%, rgba(244,63,94,0.24) 0%, rgba(26,6,28,0.78) 68%, rgba(4,4,14,0.95) 100%)`
+                    ? `radial-gradient(ellipse 78% 72% at 38% 50%, rgba(190,18,60,0.52) 0%, rgba(46,7,54,0.82) 66%, rgba(8,2,16,0.96) 100%)`
                     : worldDifficulty === 'HARD'
-                      ? `radial-gradient(ellipse 75% 70% at 38% 50%, rgba(249,115,22,0.22) 0%, rgba(24,10,20,0.75) 68%, rgba(4,7,18,0.94) 100%)`
+                      ? `radial-gradient(ellipse 78% 72% at 38% 50%, rgba(194,65,12,0.46) 0%, rgba(56,14,28,0.78) 66%, rgba(6,6,18,0.94) 100%)`
                       : `radial-gradient(ellipse 75% 70% at 38% 50%, ${focusedRegion.themeColor}22 0%, rgba(5, 9, 24, 0.72) 68%, rgba(4, 7, 18, 0.92) 100%)`,
               }}
             />
             <div
-              className="absolute top-[12%] left-[18%] w-[40%] h-[20%] rounded-full blur-3xl animate-cloud-drift"
-              style={{ background: `${focusedRegion.themeColor}24` }}
+              className="absolute top-[12%] left-[18%] w-[42%] h-[22%] rounded-full blur-3xl animate-cloud-drift"
+              style={{
+                background:
+                  worldDifficulty === 'HELL'
+                    ? 'rgba(244,63,94,0.28)'
+                    : worldDifficulty === 'HARD'
+                      ? 'rgba(251,146,60,0.26)'
+                      : `${focusedRegion.themeColor}24`,
+              }}
             />
+            {WORLD_WEATHER_PARTICLES.slice(0, 14).map((p) => {
+              const isHell = worldDifficulty === 'HELL';
+              const isHard = worldDifficulty === 'HARD';
+              const color = isHell
+                ? p.alt
+                  ? '#e879f9'
+                  : '#fb7185'
+                : isHard
+                  ? '#fb923c'
+                  : focusedRegion.themeColor;
+              return (
+                <span
+                  key={`reg_p_${p.id}`}
+                  className={`absolute rounded-full ${isHell && !p.alt ? 'animate-world-ash' : 'animate-world-ember'}`}
+                  style={{
+                    left: `${p.left}%`,
+                    top: isHell && !p.alt ? `${p.top % 30}%` : `${60 + (p.top % 40)}%`,
+                    width: `${p.size}px`,
+                    height: `${p.size}px`,
+                    backgroundColor: color,
+                    boxShadow: `0 0 10px ${color}`,
+                    animationDuration: `${isHell ? p.duration * 0.75 : p.duration}s`,
+                    animationDelay: `${p.delay}s`,
+                  }}
+                />
+              );
+            })}
           </div>
 
           {/* LAYER 1: Floating Top Region Bar */}
@@ -1962,6 +2168,64 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     Awesome!
                   </RpgButton>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* SCREEN-EDGE WORLD LEVEL CORRUPTION FRAME (Subtle Amber Heat on Hard / Pulsing Blood-Crimson Rim on Hell) */}
+      {worldDifficulty !== 'NORMAL' && (
+        <div
+          className="pointer-events-none fixed inset-0 z-[45] transition-all duration-700"
+          style={{
+            boxShadow:
+              worldDifficulty === 'HELL'
+                ? 'inset 0 0 90px rgba(225,29,72,0.48), inset 0 0 28px rgba(168,85,247,0.34)'
+                : 'inset 0 0 70px rgba(234,88,12,0.34), inset 0 0 22px rgba(251,146,60,0.22)',
+          }}
+        />
+      )}
+
+      {/* WORLD-SHIFT DIMENSIONAL SHOCKWAVE & ERA CALLOUT ON DIFFICULTY SWITCH */}
+      <AnimatePresence>
+        {worldShiftFx && (
+          <motion.div
+            key={worldShiftFx.id}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="pointer-events-none fixed inset-0 z-[80] flex items-center justify-center overflow-hidden"
+          >
+            <motion.div
+              initial={{ scale: 0.25, opacity: 0.9 }}
+              animate={{ scale: 2.8, opacity: 0 }}
+              transition={{ duration: 0.72, ease: [0.16, 1, 0.3, 1] }}
+              className="absolute w-[64vw] h-[64vw] rounded-full border-4"
+              style={{
+                borderColor: WORLD_ERA_TITLES[worldShiftFx.diff].color,
+                boxShadow: `0 0 90px ${WORLD_ERA_TITLES[worldShiftFx.diff].color}, inset 0 0 60px ${WORLD_ERA_TITLES[worldShiftFx.diff].color}88`,
+              }}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.88, y: 10 }}
+              animate={{ opacity: [0, 1, 1, 0], scale: [0.9, 1.02, 1, 1.04], y: [10, 0, 0, -6] }}
+              transition={{ duration: 0.9, times: [0, 0.2, 0.72, 1] }}
+              className="px-6 py-3 rounded-2xl bg-slate-950/90 backdrop-blur-md border-2 text-center shadow-2xl"
+              style={{
+                borderColor: WORLD_ERA_TITLES[worldShiftFx.diff].color,
+                boxShadow: `0 0 42px ${WORLD_ERA_TITLES[worldShiftFx.diff].color}66`,
+              }}
+            >
+              <div
+                className="font-display text-lg sm:text-2xl font-black tracking-[0.18em] uppercase"
+                style={{ color: WORLD_ERA_TITLES[worldShiftFx.diff].color }}
+              >
+                {WORLD_ERA_TITLES[worldShiftFx.diff].title}
+              </div>
+              <div className="text-[11px] sm:text-xs text-slate-200 font-semibold mt-0.5">
+                {WORLD_ERA_TITLES[worldShiftFx.diff].subtitle}
               </div>
             </motion.div>
           </motion.div>

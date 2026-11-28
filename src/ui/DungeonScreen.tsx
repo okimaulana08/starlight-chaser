@@ -36,12 +36,13 @@ import {
 } from '../data/materials';
 import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
-import { computeHeroStats } from '../engine/CombatMath';
+import { computeHeroStats, getActivePetPower } from '../engine/CombatMath';
 import { usePlayerStore } from '../store/usePlayerStore';
 import type {
   CombatLootSummary,
   DungeonDef,
   DungeonId,
+  DungeonTierNumber,
   EquipmentSetId,
   Faction,
 } from '../types/game';
@@ -94,6 +95,8 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
     squadIds,
     roster,
     relicRanks,
+    ownedPets,
+    activePetId,
     equipmentInventory,
     unlockedCodexIds,
     clearedStages,
@@ -105,7 +108,7 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
   } = usePlayerStore();
 
   const [selectedDungeonId, setSelectedDungeonId] = useState<DungeonId>(initialDungeonId);
-  const [selectedTier, setSelectedTier] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [selectedTier, setSelectedTier] = useState<DungeonTierNumber>(1);
   const [targetFaction, setTargetFaction] = useState<Faction>(initialFaction);
   const [targetSetId, setTargetSetId] = useState<EquipmentSetId>('VANGUARD');
   const [showPartyModal, setShowPartyModal] = useState(false);
@@ -118,6 +121,9 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
   const starKey = getDungeonTierStarKey(selectedDungeonId, selectedTier);
   const bestStars = dungeonBestStars?.[starKey] ?? 0;
   const entryInfo = getDungeonEntriesLeft(selectedDungeonId);
+
+  const petsMap = ownedPets ?? {};
+  const activeOwnedPet = activePetId && petsMap[activePetId] ? petsMap[activePetId] : null;
 
   const squadPower = useMemo(
     () =>
@@ -134,10 +140,20 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
             squadIds,
             unlockedCodexIds.length,
             relicRanks,
+            { roster, activePet: activeOwnedPet },
           ).powerRating
         );
-      }, 0),
-    [squadIds, roster, equipmentInventory, unlockedCodexIds.length, relicRanks],
+      }, 0) + getActivePetPower(activePetId, petsMap),
+    [
+      squadIds,
+      roster,
+      equipmentInventory,
+      unlockedCodexIds.length,
+      relicRanks,
+      activeOwnedPet,
+      activePetId,
+      petsMap,
+    ],
   );
 
   const previewStage = useMemo(
@@ -159,7 +175,7 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
     setSelectedDungeonId(id);
     // Auto-pick highest unlocked tier for smooth farming UX!
     const d = DUNGEON_MAP[id];
-    let highest: 1 | 2 | 3 | 4 | 5 = 1;
+    let highest: DungeonTierNumber = 1;
     for (const t of d.tiers) {
       if (isDungeonTierUnlocked(t, clearedStages)) highest = t.tier;
     }
@@ -475,22 +491,31 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
                   </div>
                 )}
 
-                {/* 5 DIFFICULTY TIERS */}
+                {/* 10 DIFFICULTY TIERS (I–V NORMAL • VI–VIII HARD • IX–X HELL) */}
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-[10px] font-display font-black uppercase tracking-[0.2em] text-amber-300">
-                    <span>Select Difficulty Tier (I – V)</span>
-                    <span className="font-mono text-slate-400">
-                      Rec. PWR:{' '}
-                      <strong className={powerReady ? 'text-emerald-400' : 'text-rose-400'}>
-                        {tierDef.recommendedPower.toLocaleString()}
-                      </strong>
-                    </span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-[10px] font-display font-black uppercase tracking-[0.2em] text-amber-300">
+                    <span>Select Difficulty Tier (I – X)</span>
+                    <div className="flex items-center gap-2 font-mono text-[9px]">
+                      <span className="text-amber-300">I–V WL1</span>
+                      <span className="text-orange-400">VI–VIII WL2</span>
+                      <span className="text-rose-400">IX–X WL3</span>
+                      <span className="text-slate-600">|</span>
+                      <span className="text-slate-400">
+                        Rec. PWR:{' '}
+                        <strong className={powerReady ? 'text-emerald-400' : 'text-rose-400'}>
+                          {tierDef.recommendedPower.toLocaleString()}
+                        </strong>
+                      </span>
+                    </div>
                   </div>
                   <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                     {dungeon.tiers.map((t) => {
                       const unlocked = isDungeonTierUnlocked(t, clearedStages);
                       const active = selectedTier === t.tier;
                       const stars = dungeonBestStars?.[getDungeonTierStarKey(dungeon.id, t.tier)] ?? 0;
+                      const isHellTier = t.worldDifficultyTag === 'HELL';
+                      const isHardTier = t.worldDifficultyTag === 'HARD';
+                      const tagLabel = isHellTier ? 'WL3' : isHardTier ? 'WL2' : 'WL1';
                       return (
                         <button
                           key={t.tier}
@@ -498,26 +523,55 @@ export const DungeonScreen: React.FC<DungeonScreenProps> = ({
                             audioManager.playSfx('button');
                             setSelectedTier(t.tier);
                           }}
-                          className={`rounded-xl p-2 border-2 text-center transition flex flex-col items-center gap-0.5 ${
+                          className={`relative rounded-xl px-1.5 py-2 border-2 text-center transition flex flex-col items-center gap-0.5 ${
                             active
-                              ? 'bg-amber-400/15 border-amber-300 shadow-[0_0_16px_rgba(245,200,76,0.3)]'
+                              ? isHellTier
+                                ? 'bg-rose-500/20 border-rose-400 shadow-[0_0_16px_rgba(244,63,94,0.4)]'
+                                : isHardTier
+                                  ? 'bg-orange-500/20 border-orange-400 shadow-[0_0_16px_rgba(249,115,22,0.35)]'
+                                  : 'bg-amber-400/15 border-amber-300 shadow-[0_0_16px_rgba(245,200,76,0.3)]'
                               : unlocked
-                                ? 'bg-slate-950/80 border-slate-700 hover:border-amber-400/60'
-                                : 'bg-slate-950/50 border-slate-800/80 opacity-60'
+                                ? isHellTier
+                                  ? 'bg-rose-950/35 border-rose-500/45 hover:border-rose-300'
+                                  : isHardTier
+                                    ? 'bg-orange-950/30 border-orange-500/40 hover:border-orange-300'
+                                    : 'bg-slate-950/80 border-slate-700 hover:border-amber-400/60'
+                                : 'bg-slate-950/55 border-slate-800/80 opacity-60 hover:opacity-85'
                           }`}
                         >
-                          <div className="flex items-center gap-1">
-                            {!unlocked && <Lock className="w-3 h-3 text-slate-500" />}
+                          <span
+                            className={`absolute top-1 right-1 text-[7px] font-display font-black uppercase px-1 rounded ${
+                              isHellTier
+                                ? 'bg-rose-500/25 text-rose-300'
+                                : isHardTier
+                                  ? 'bg-orange-500/25 text-orange-300'
+                                  : 'bg-amber-500/15 text-amber-300/80'
+                            }`}
+                          >
+                            {tagLabel}
+                          </span>
+                          <div className="flex items-center gap-1 mt-1">
+                            {!unlocked && <Lock className="w-2.5 h-2.5 text-slate-500" />}
                             <span
-                              className={`font-display text-sm sm:text-base font-black ${
-                                active ? 'text-amber-300' : unlocked ? 'text-white' : 'text-slate-500'
+                              className={`font-display text-xs sm:text-sm font-black ${
+                                active
+                                  ? isHellTier
+                                    ? 'text-rose-200'
+                                    : isHardTier
+                                      ? 'text-orange-200'
+                                      : 'text-amber-300'
+                                  : unlocked
+                                    ? 'text-white'
+                                    : 'text-slate-500'
                               }`}
                             >
                               T{t.roman}
                             </span>
                           </div>
                           <div className="font-mono text-[9px] text-slate-400">
-                            {(t.recommendedPower / 1000).toFixed(1)}k
+                            {t.recommendedPower >= 100000
+                              ? `${Math.round(t.recommendedPower / 1000)}k`
+                              : `${(t.recommendedPower / 1000).toFixed(1)}k`}
                           </div>
                           <div className="flex items-center gap-0.5 mt-0.5">
                             {[1, 2, 3].map((n) => (
