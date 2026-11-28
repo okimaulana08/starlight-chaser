@@ -8,7 +8,7 @@ import type {
   StageDef,
   StageWave,
 } from '../types/game';
-import { STAGE_MAP } from './stages';
+import { STAGE_MAP, getCampaignStageById } from './stages';
 import { buildSpireStageDef, parseSpireStageId } from './spire';
 
 export const DAILY_DUNGEON_FREE_ENTRIES = 3;
@@ -542,5 +542,5 @@ export function resolveAnyStageDef(stageId: string): StageDef {
       setId: parsed.setId,
     });
   }
-  return STAGE_MAP[stageId] ?? STAGE_MAP.stage_1_1;
+  return getCampaignStageById(stageId) ?? STAGE_MAP.stage_1_1;
 }

@@ -9,18 +9,20 @@ import {
 } from '../data/equipment';
 import {
   MATERIAL_META,
-  REGION_CHEST_REWARDS,
   factionToEssenceKey,
+  getRegionChestReward,
 } from '../data/materials';
+import { CAMPAIGN_DIFFICULTY_MAP, encodeRegionChestKey } from '../data/stages';
 import { audioManager } from '../engine/AudioManager';
 import { usePlayerStore } from '../store/usePlayerStore';
-import type { EquipmentInstance, RegionDef } from '../types/game';
+import type { CampaignDifficulty, EquipmentInstance, RegionDef } from '../types/game';
 import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
 import { CornerFiligree, RpgButton, RpgLootTile, RpgProgressBar } from './RpgKit';
 
 interface RegionChestModalProps {
   open: boolean;
   region: RegionDef;
+  difficulty?: CampaignDifficulty;
   clearedCount: number;
   onClose: () => void;
 }
@@ -28,6 +30,7 @@ interface RegionChestModalProps {
 export const RegionChestModal: React.FC<RegionChestModalProps> = ({
   open,
   region,
+  difficulty = 'NORMAL',
   clearedCount,
   onClose,
 }) => {
@@ -35,17 +38,19 @@ export const RegionChestModal: React.FC<RegionChestModalProps> = ({
   const [claimedGear, setClaimedGear] = useState<EquipmentInstance | null>(null);
   const [justClaimed, setJustClaimed] = useState(false);
 
-  const reward = REGION_CHEST_REWARDS[region.id];
+  const reward = getRegionChestReward(region.id, difficulty);
   if (!reward) return null;
 
-  const isAlreadyClaimed = (claimedRegionChests ?? []).includes(region.id);
+  const diffCfg = CAMPAIGN_DIFFICULTY_MAP[difficulty];
+  const chestKey = encodeRegionChestKey(region.id, difficulty);
+  const isAlreadyClaimed = (claimedRegionChests ?? []).includes(chestKey);
   const isUnlocked = clearedCount >= region.stageCount;
   const essenceKey = factionToEssenceKey(reward.essenceFaction);
   const essenceMeta = MATERIAL_META[essenceKey];
 
   const handleClaim = () => {
     if (!isUnlocked || isAlreadyClaimed) return;
-    const res = claimRegionChest(region.id);
+    const res = claimRegionChest(region.id, difficulty);
     if (res.ok) {
       audioManager.playSfx('ssr_reveal');
       setClaimedGear(res.droppedGear ?? null);
@@ -92,11 +97,19 @@ export const RegionChestModal: React.FC<RegionChestModalProps> = ({
                   <GameIcon name="reward_chest" className="w-11 h-11" />
                 </div>
                 <div className="min-w-0">
-                  <div
-                    className="text-[10px] font-display font-black uppercase tracking-[0.22em]"
-                    style={{ color: region.themeColor }}
-                  >
-                    CHAPTER {region.chapter} COMPLETION REWARD
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span
+                      className="text-[10px] font-display font-black uppercase tracking-[0.22em]"
+                      style={{ color: region.themeColor }}
+                    >
+                      CHAPTER {region.chapter} COMPLETION REWARD
+                    </span>
+                    <span
+                      className="px-1.5 py-0.5 rounded text-[8px] font-display font-black uppercase tracking-wider border bg-black/75"
+                      style={{ borderColor: diffCfg.themeColor, color: diffCfg.themeColor }}
+                    >
+                      {diffCfg.shortLabel} {diffCfg.label}
+                    </span>
                   </div>
                   <h2 className="font-display text-lg sm:text-2xl font-black text-white text-glow-gold truncate">
                     {reward.title}

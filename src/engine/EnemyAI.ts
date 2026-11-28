@@ -422,7 +422,8 @@ export class EnemyAI {
 
       if (dist <= desiredRange + 8 && enemy.basicTimer <= 0) {
         const rageSpd = enemy.enraged ? 1.18 : 1.0;
-        enemy.basicTimer = 1 / (enemy.def.atkSpeed * rageSpd);
+        const worldSpd = enemy.atkSpeedMult ?? 1.0;
+        enemy.basicTimer = 1 / (enemy.def.atkSpeed * rageSpd * worldSpd);
         enemy.attackSwingDuration = isHeavy ? 0.34 : 0.26;
         enemy.attackSwingTimer = enemy.attackSwingDuration;
         enemy.springLeanVel += isHeavy ? 6.5 : 8.5;

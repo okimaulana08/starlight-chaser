@@ -7,6 +7,7 @@ import { generateEquipment } from '../data/equipment';
 import { FACTIONS } from '../data/factions';
 import { HERO_MAP, resolveHeroVisuals } from '../data/heroes';
 import { PET_MAP, computePetAura } from '../data/pets';
+import { CAMPAIGN_DIFFICULTY_MAP } from '../data/stages';
 import {
   getExpToNextLevel,
   getHeroLevelCap,
@@ -1013,9 +1014,10 @@ export class CombatEngine {
 
         const stageScale = stage.enemyScale ?? 1.0;
         const modId = stage.spireModifier?.id;
+        const worldDiffCfg = stage.difficulty ? CAMPAIGN_DIFFICULTY_MAP[stage.difficulty] : null;
         const hpMod = modId === 'STARLIGHT_SURGE' ? 1.12 : 1.0;
         const atkMod = modId === 'SOLAR_OVERCHARGE' ? 1.15 : 1.0;
-        const brkMod = modId === 'IRON_VANGUARD' ? 1.25 : 1.0;
+        const brkMod = (modId === 'IRON_VANGUARD' ? 1.25 : 1.0) * (worldDiffCfg?.bossBreakMult ?? 1.0);
         const scaledHp = Math.max(240, Math.round(def.hp * stageScale * hpMod));
         const scaledAtk = Math.max(32, Math.round(def.atk * 1.92 * Math.pow(stageScale, 1.14) * atkMod));
         const scaledDef = Math.max(35, Math.round(def.def * Math.pow(stageScale, 0.68)));
@@ -1043,6 +1045,7 @@ export class CombatEngine {
           maxHp: scaledHp,
           atk: scaledAtk,
           defStat: scaledDef,
+          atkSpeedMult: worldDiffCfg?.enemyAtkSpeedMult ?? 1.0,
           alive: true,
           basicTimer: 0.7 + Math.random() * 0.6,
           stunTimer: 0,
@@ -3379,6 +3382,7 @@ export class CombatEngine {
       victory,
       stageId: stage.id,
       stageName: `${stage.code} ${stage.name}`,
+      difficulty: stage.difficulty,
       durationSec: Math.round(this.elapsedSec),
       damageByHero,
       healingByHero,
@@ -3399,7 +3403,7 @@ export class CombatEngine {
         : isFirstClear
           ? stage.firstClearCrystals
           : victory
-            ? 40
+            ? (stage.repeatCrystals ?? 40)
             : 0,
       expPotionsEarned: victory ? randBetween(stage.rewards.expPotions) : 0,
       forgeStonesEarned: victory ? randBetween(stage.rewards.forgeStones) : 0,

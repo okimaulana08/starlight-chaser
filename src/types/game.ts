@@ -357,6 +357,8 @@ export interface RegionDef {
   recommendedPowerRange: [number, number];
 }
 
+export type CampaignDifficulty = 'NORMAL' | 'HARD' | 'HELL';
+
 export interface StageWave {
   label: string;
   spawns: Array<{ enemyId: string; count: number; spread?: number }>;
@@ -364,6 +366,8 @@ export interface StageWave {
 
 export interface StageDef {
   id: string;
+  baseStageId?: string;
+  difficulty?: CampaignDifficulty;
   regionId: string;
   stageNumber: number;
   code: string;
@@ -383,12 +387,19 @@ export interface StageDef {
   ambientMoteColors?: [number, number];
   waves: StageWave[];
   firstClearCrystals: number;
+  repeatCrystals?: number;
   isDungeon?: boolean;
   dungeonId?: DungeonId;
   dungeonTier?: number;
   isSpire?: boolean;
   spireFloor?: number;
   spireModifier?: {
+    id: string;
+    name: string;
+    desc: string;
+    color: string;
+  };
+  worldModifier?: {
     id: string;
     name: string;
     desc: string;
@@ -535,6 +546,7 @@ export interface PlayerSaveState {
   claimedRegionChests: string[];
   clearedStages: string[];
   selectedStageId: string;
+  selectedDifficulty?: CampaignDifficulty;
   shopPurchases: Record<string, number>;
   shopResetDay: string;
   lastDailySupplyAt: number;
@@ -684,6 +696,7 @@ export interface CombatLootSummary {
   victory: boolean;
   stageId: string;
   stageName: string;
+  difficulty?: CampaignDifficulty;
   durationSec: number;
   damageByHero: Record<string, number>;
   healingByHero: Record<string, number>;

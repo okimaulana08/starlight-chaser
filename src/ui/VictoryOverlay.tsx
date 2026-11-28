@@ -29,6 +29,7 @@ import {
   getExpToNextLevel,
 } from '../data/materials';
 import { RELIC_MAP } from '../data/relics';
+import { CAMPAIGN_DIFFICULTY_MAP } from '../data/stages';
 import { audioManager } from '../engine/AudioManager';
 import { usePlayerStore } from '../store/usePlayerStore';
 import type {
@@ -241,12 +242,26 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
               <Skull className="w-8 h-8 text-rose-400 drop-shadow-[0_0_16px_rgba(244,63,94,0.75)] shrink-0" />
             )}
             <div className="min-w-0">
-              <div
-                className={`text-[9px] sm:text-xs font-black uppercase tracking-[0.24em] truncate ${
-                  result.victory ? 'text-cyan-300' : 'text-rose-400'
-                }`}
-              >
-                {result.stageName} • TIME {formatClock(result.durationSec)}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {result.difficulty && result.difficulty !== 'NORMAL' && (
+                  <span
+                    className="px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-display font-black uppercase tracking-wider border bg-slate-950/90 shrink-0"
+                    style={{
+                      borderColor: CAMPAIGN_DIFFICULTY_MAP[result.difficulty].themeColor,
+                      color: CAMPAIGN_DIFFICULTY_MAP[result.difficulty].themeColor,
+                    }}
+                  >
+                    {CAMPAIGN_DIFFICULTY_MAP[result.difficulty].shortLabel}{' '}
+                    {CAMPAIGN_DIFFICULTY_MAP[result.difficulty].label}
+                  </span>
+                )}
+                <div
+                  className={`text-[9px] sm:text-xs font-black uppercase tracking-[0.24em] truncate ${
+                    result.victory ? 'text-cyan-300' : 'text-rose-400'
+                  }`}
+                >
+                  {result.stageName} • TIME {formatClock(result.durationSec)}
+                </div>
               </div>
               <h1
                 className={`font-display text-2xl sm:text-4xl font-black tracking-[0.16em] leading-none mt-0.5 ${
@@ -258,7 +273,17 @@ export const VictoryOverlay: React.FC<VictoryOverlayProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {result.isFirstClear && result.victory && result.stageId === 'stage_10_12' && (
+              <div className="px-3 py-1 rounded-lg bg-gradient-to-r from-orange-500/30 to-rose-600/30 border border-orange-400 text-orange-200 text-[10px] sm:text-xs font-display font-black uppercase tracking-[0.14em] shadow-[0_0_18px_rgba(249,115,22,0.5)]">
+                🔥 WORLD LEVEL 2: HARD UNLOCKED!
+              </div>
+            )}
+            {result.isFirstClear && result.victory && result.stageId === 'hard__stage_10_12' && (
+              <div className="px-3 py-1 rounded-lg bg-gradient-to-r from-rose-600/35 to-fuchsia-600/35 border border-rose-400 text-rose-200 text-[10px] sm:text-xs font-display font-black uppercase tracking-[0.14em] shadow-[0_0_20px_rgba(244,63,94,0.55)]">
+                💀 WORLD LEVEL 3: HELL UNLOCKED!
+              </div>
+            )}
             {result.isFirstClear && result.victory && (
               <div className="px-3 py-1 rounded-lg bg-gradient-to-r from-amber-400/25 to-cyan-400/25 border border-amber-300 text-amber-200 text-[10px] sm:text-xs font-black uppercase tracking-[0.18em]">
                 ★ FIRST CLEAR!

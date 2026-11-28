@@ -15,12 +15,12 @@ import {
 import { createStarterEquipment, generateEquipment } from '../data/equipment';
 import { HERO_MAP } from '../data/heroes';
 import {
-  REGION_CHEST_REWARDS,
   SHOP_OFFERS,
   getAwakeningCost,
   getExpToNextLevel,
   getHeroLevelCap,
   getLevelUpCost,
+  getRegionChestReward,
   getStageCombatHeroExp,
   getTranscendenceCost,
   type RegionChestRewardDef,
@@ -32,7 +32,11 @@ import {
   getPetLevelUpCost,
 } from '../data/pets';
 import { RELIC_MAP } from '../data/relics';
-import { getStagesByRegion, STAGE_MAP } from '../data/stages';
+import {
+  encodeRegionChestKey,
+  getCampaignStageById,
+  getStagesByRegion,
+} from '../data/stages';
 import { computeHeroStats } from '../engine/CombatMath';
 import {
   enhanceEquipmentItem,
@@ -42,6 +46,7 @@ import {
 import { executeGachaPulls, isURBanner } from '../systems/GachaSystem';
 import type {
   BannerDef,
+  CampaignDifficulty,
   CombatLootSummary,
   DroppedRelicSummary,
   DungeonId,
@@ -181,6 +186,7 @@ export function buildDefaultSaveState(): PlayerSaveState {
     claimedRegionChests: [],
     clearedStages: [],
     selectedStageId: 'stage_1_1',
+    selectedDifficulty: 'NORMAL',
     shopPurchases: {},
     shopResetDay: getTodayKey(),
     lastDailySupplyAt: 0,
@@ -204,6 +210,7 @@ interface PlayerStore extends PlayerSaveState {
   setCommanderName: (name: string) => void;
   setFavoriteHero: (heroId: string) => void;
   setSelectedStage: (stageId: string) => void;
+  setSelectedDifficulty: (difficulty: CampaignDifficulty) => void;
   getDungeonEntriesLeft: (dungeonId: DungeonId) => {
     freeLeft: number;
     tickets: number;
@@ -269,6 +276,7 @@ interface PlayerStore extends PlayerSaveState {
   claimCodexMilestone: (threshold: number) => boolean;
   claimRegionChest: (
     regionId: string,
+    difficulty?: CampaignDifficulty,
   ) => {
     ok: boolean;
     message: string;
@@ -417,6 +425,7 @@ export const usePlayerStore = create<PlayerStore>()(
       },
 
       setSelectedStage: (stageId) => set({ selectedStageId: stageId }),
+      setSelectedDifficulty: (difficulty) => set({ selectedDifficulty: difficulty }),
 
       getDungeonEntriesLeft: (dungeonId) => {
         const state = get();
@@ -668,7 +677,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
       sweepCampaignStage: (stageId, count = 1) => {
         const state = get();
-        const stage = STAGE_MAP[stageId];
+        const stage = getCampaignStageById(stageId);
         if (!stage) return { ok: false, count: 0, message: 'Stage not found.' };
         if (!state.clearedStages.includes(stageId)) {
           return {
@@ -711,7 +720,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
         for (let r = 0; r < runs; r++) {
           goldEarned += randBetween(stage.rewards.gold);
-          crystalsEarned += 40; // Standard repeat clear crystals per clear
+          crystalsEarned += stage.repeatCrystals ?? 40; // Scaled repeat crystals per clear (40 Normal / 60 Hard / 85 Hell)
           expPotionsEarned += randBetween(stage.rewards.expPotions);
           forgeStonesEarned += randBetween(stage.rewards.forgeStones);
           if (stage.rewards.starIronIngots) starIronIngotsEarned += randBetween(stage.rewards.starIronIngots);
@@ -834,6 +843,7 @@ export const usePlayerStore = create<PlayerStore>()(
           victory: true,
           stageId: stage.id,
           stageName: runs > 1 ? `${stage.code} ${stage.name} (×${runs} Sweep)` : `${stage.code} ${stage.name}`,
+          difficulty: stage.difficulty,
           durationSec: 0,
           damageByHero,
           healingByHero,
@@ -1970,15 +1980,16 @@ export const usePlayerStore = create<PlayerStore>()(
         return true;
       },
 
-      claimRegionChest: (regionId) => {
+      claimRegionChest: (regionId, difficulty = 'NORMAL') => {
         const state = get();
-        const reward = REGION_CHEST_REWARDS[regionId];
+        const reward = getRegionChestReward(regionId, difficulty);
         if (!reward) return { ok: false, message: 'Region chest not found.' };
+        const chestKey = encodeRegionChestKey(regionId, difficulty);
         const claimedList = state.claimedRegionChests ?? [];
-        if (claimedList.includes(regionId)) {
+        if (claimedList.includes(chestKey)) {
           return { ok: false, message: 'Region Reward Chest already claimed!' };
         }
-        const regionStages = getStagesByRegion(regionId);
+        const regionStages = getStagesByRegion(regionId, difficulty);
         const clearedCount = regionStages.filter((s) => state.clearedStages.includes(s.id)).length;
         if (regionStages.length === 0 || clearedCount < regionStages.length) {
           return {
@@ -2007,7 +2018,7 @@ export const usePlayerStore = create<PlayerStore>()(
               (state.factionEssences[reward.essenceFaction] ?? 0) + reward.essenceQty,
           },
           equipmentInventory: [droppedGear, ...state.equipmentInventory],
-          claimedRegionChests: [...claimedList, regionId],
+          claimedRegionChests: [...claimedList, chestKey],
         });
 
         return {

@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Crown,
   FastForward,
+  Flame,
   Lock,
   Maximize2,
   Minus,
@@ -31,17 +32,24 @@ import { MATERIAL_META, factionToEssenceKey, getExpToNextLevel } from '../data/m
 import { RELIC_MAP } from '../data/relics';
 import { REGION_LINKS, REGION_MAP, REGIONS } from '../data/regions';
 import {
+  CAMPAIGN_DIFFICULTIES,
+  CAMPAIGN_DIFFICULTY_MAP,
+  encodeRegionChestKey,
+  getAllStagesForDifficulty,
+  getCampaignStageById,
   getHighestUnlockedStage,
+  getRegionRecommendedPowerRange,
   getStagesByRegion,
+  isDifficultyUnlocked,
   isRegionUnlocked,
   isStageUnlocked,
-  STAGE_MAP,
+  parseCampaignStageId,
   STAGES,
 } from '../data/stages';
 import { audioManager } from '../engine/AudioManager';
-import { computeHeroStats } from '../engine/CombatMath';
+import { computeHeroStats, getActivePetPower } from '../engine/CombatMath';
 import { usePlayerStore } from '../store/usePlayerStore';
-import type { CombatLootSummary, Faction, RegionDef } from '../types/game';
+import type { CampaignDifficulty, CombatLootSummary, Faction, RegionDef } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { EquipIcon, GameIcon, MaterialIcon } from './GameIcon';
 import { PartyManagerModal } from './PartyManagerModal';
@@ -99,7 +107,9 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     clearedStages,
     claimedRegionChests,
     selectedStageId,
+    selectedDifficulty,
     setSelectedStage,
+    setSelectedDifficulty,
     squadIds,
     partyPresets,
     activePresetIndex,
@@ -108,6 +118,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
     equipmentInventory,
     unlockedCodexIds,
     relicRanks,
+    ownedPets,
+    activePetId,
     favoriteHeroId,
     sweepCampaignStage,
   } = usePlayerStore();
@@ -116,31 +128,60 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   const [sweepResult, setSweepResult] = useState<CombatLootSummary | null>(null);
   const [lastSweepCount, setLastSweepCount] = useState<1 | 5>(1);
 
+  const [worldDifficulty, setWorldDifficulty] = useState<CampaignDifficulty>(() => {
+    const candidate =
+      selectedDifficulty ?? parseCampaignStageId(selectedStageId).difficulty ?? 'NORMAL';
+    return isDifficultyUnlocked(candidate, clearedStages) ? candidate : 'NORMAL';
+  });
+  const activeDiffCfg = CAMPAIGN_DIFFICULTY_MAP[worldDifficulty];
+  const activeDiffUnlocked = isDifficultyUnlocked(worldDifficulty, clearedStages);
+
+  const petsMap = ownedPets ?? {};
+  const activeOwnedPet = activePetId && petsMap[activePetId] ? petsMap[activePetId] : null;
+
   const squadPower = useMemo(() => {
-    const computed = squadIds.reduce((sum, id) => {
-      const def = HERO_MAP[id];
-      const own = roster[id];
-      if (!def || !own) return sum;
-      return (
-        sum +
-        computeHeroStats(
-          def,
-          own,
-          equipmentInventory,
-          squadIds,
-          unlockedCodexIds.length,
-          relicRanks,
-        ).powerRating
-      );
-    }, 0);
+    const computed =
+      squadIds.reduce((sum, id) => {
+        const def = HERO_MAP[id];
+        const own = roster[id];
+        if (!def || !own) return sum;
+        return (
+          sum +
+          computeHeroStats(
+            def,
+            own,
+            equipmentInventory,
+            squadIds,
+            unlockedCodexIds.length,
+            relicRanks,
+            { roster, activePet: activeOwnedPet },
+          ).powerRating
+        );
+      }, 0) + getActivePetPower(activePetId, petsMap);
     return computed || initialSquadPower;
-  }, [squadIds, roster, equipmentInventory, unlockedCodexIds.length, relicRanks, initialSquadPower]);
+  }, [
+    squadIds,
+    roster,
+    equipmentInventory,
+    unlockedCodexIds.length,
+    relicRanks,
+    activeOwnedPet,
+    activePetId,
+    petsMap,
+    initialSquadPower,
+  ]);
 
   const safeInitialStage = useMemo(() => {
-    const saved = STAGE_MAP[selectedStageId];
-    if (saved && isStageUnlocked(saved, clearedStages)) return saved;
-    return getHighestUnlockedStage(clearedStages);
-  }, [selectedStageId, clearedStages]);
+    const saved = getCampaignStageById(selectedStageId);
+    if (
+      saved &&
+      (saved.difficulty ?? 'NORMAL') === worldDifficulty &&
+      isStageUnlocked(saved, clearedStages)
+    ) {
+      return saved;
+    }
+    return getHighestUnlockedStage(clearedStages, worldDifficulty);
+  }, [selectedStageId, clearedStages, worldDifficulty]);
 
   const [viewMode, setViewMode] = useState<'CONTINENT' | 'REGION'>('CONTINENT');
   const [focusedRegionId, setFocusedRegionId] = useState<string>(safeInitialStage.regionId);
@@ -217,14 +258,19 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   }, [vpSize.w, vpSize.h]);
 
   const focusedRegion: RegionDef = REGION_MAP[focusedRegionId] ?? REGIONS[0];
-  const focusedRegionUnlocked = isRegionUnlocked(focusedRegion.id, clearedStages);
+  const focusedRegionUnlocked = isRegionUnlocked(focusedRegion.id, clearedStages, worldDifficulty);
   const prevRegionForFocused =
     focusedRegion.chapter > 1 ? REGION_MAP[`region_${focusedRegion.chapter - 1}`] : null;
   const prevRegionClearedCount = prevRegionForFocused
-    ? getStagesByRegion(prevRegionForFocused.id).filter((s) => clearedStages.includes(s.id)).length
+    ? getStagesByRegion(prevRegionForFocused.id, worldDifficulty).filter((s) =>
+        clearedStages.includes(s.id),
+      ).length
     : 0;
 
-  const regionStages = useMemo(() => getStagesByRegion(focusedRegion.id), [focusedRegion.id]);
+  const regionStages = useMemo(
+    () => getStagesByRegion(focusedRegion.id, worldDifficulty),
+    [focusedRegion.id, worldDifficulty],
+  );
 
   const activeStage = useMemo(() => {
     const found = regionStages.find((s) => s.id === pickedStageId);
@@ -242,15 +288,114 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
 
   const leaderHero = HERO_MAP[squadIds[1] ?? squadIds[0] ?? favoriteHeroId] ?? HERO_MAP.vaelen;
 
-  const totalPlayableStages = STAGES.length; // 120 stages (10 regions × 12)
-  const totalCleared = clearedStages.length;
+  const totalPlayableStages = STAGES.length; // 120 stages per World Level (360 total across WL 1-3!)
+  const diffStages = useMemo(
+    () => getAllStagesForDifficulty(worldDifficulty),
+    [worldDifficulty],
+  );
+  const totalCleared = useMemo(
+    () => diffStages.filter((s) => clearedStages.includes(s.id)).length,
+    [diffStages, clearedStages],
+  );
   const unlockedRegionsCount = useMemo(
-    () => REGIONS.filter((r) => isRegionUnlocked(r.id, clearedStages)).length,
-    [clearedStages],
+    () => REGIONS.filter((r) => isRegionUnlocked(r.id, clearedStages, worldDifficulty)).length,
+    [clearedStages, worldDifficulty],
   );
 
   const getRegionClearedCount = (regionId: string) =>
-    getStagesByRegion(regionId).filter((s) => clearedStages.includes(s.id)).length;
+    getStagesByRegion(regionId, worldDifficulty).filter((s) => clearedStages.includes(s.id)).length;
+
+  const handleSwitchDifficulty = (nextDiff: CampaignDifficulty) => {
+    if (nextDiff === worldDifficulty) return;
+    audioManager.playSfx('button');
+    setWorldDifficulty(nextDiff);
+    const unlocked = isDifficultyUnlocked(nextDiff, clearedStages);
+    if (unlocked) {
+      setSelectedDifficulty(nextDiff);
+      const nextRegStages = getStagesByRegion(focusedRegion.id, nextDiff);
+      const regOpen = isRegionUnlocked(focusedRegion.id, clearedStages, nextDiff);
+      if (regOpen && nextRegStages.length > 0) {
+        const frontier =
+          nextRegStages.find((s) => isStageUnlocked(s, clearedStages) && !clearedStages.includes(s.id)) ??
+          nextRegStages[nextRegStages.length - 1] ??
+          nextRegStages[0];
+        if (frontier) {
+          setPickedStageId(frontier.id);
+          setSelectedStage(frontier.id);
+        }
+      } else {
+        const highest = getHighestUnlockedStage(clearedStages, nextDiff);
+        setFocusedRegionId(highest.regionId);
+        setPickedStageId(highest.id);
+        setSelectedStage(highest.id);
+        if (viewMode === 'REGION') setViewMode('CONTINENT');
+      }
+    } else if (viewMode === 'REGION') {
+      setViewMode('CONTINENT');
+    }
+  };
+
+  const renderWorldLevelSwitcher = (compact = false) => (
+    <div
+      className="flex items-center gap-0.5 sm:gap-1 p-0.5 rounded-xl bg-slate-950/90 border border-white/15 backdrop-blur-md shadow-[0_6px_20px_rgba(0,0,0,0.75)]"
+      role="tablist"
+      aria-label="Campaign World Level"
+    >
+      {CAMPAIGN_DIFFICULTIES.map((cfg) => {
+        const isSel = worldDifficulty === cfg.id;
+        const unlocked = isDifficultyUnlocked(cfg.id, clearedStages);
+        return (
+          <button
+            key={cfg.id}
+            type="button"
+            onClick={() => handleSwitchDifficulty(cfg.id)}
+            title={
+              unlocked
+                ? `${cfg.shortLabel} ${cfg.label} (${cfg.subtitle}) — ${cfg.rewardHighlight}`
+                : `${cfg.shortLabel} ${cfg.label} (Locked) — ${cfg.unlockLabel}`
+            }
+            className={`relative px-2 sm:px-2.5 py-1 rounded-lg font-display font-black uppercase tracking-wider flex items-center gap-1 transition whitespace-nowrap ${
+              compact ? 'text-[9px] sm:text-[10px]' : 'text-[9px] sm:text-[11px]'
+            } ${
+              isSel
+                ? 'text-white shadow-md border'
+                : unlocked
+                  ? 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+                  : 'text-slate-500 hover:text-slate-300 border border-transparent'
+            }`}
+            style={
+              isSel
+                ? {
+                    borderColor: cfg.themeColor,
+                    background:
+                      cfg.id === 'HELL'
+                        ? 'linear-gradient(135deg, rgba(225,29,72,0.45), rgba(147,51,234,0.4))'
+                        : cfg.id === 'HARD'
+                          ? 'linear-gradient(135deg, rgba(249,115,22,0.42), rgba(225,29,72,0.28))'
+                          : 'linear-gradient(135deg, rgba(245,200,76,0.34), rgba(234,179,8,0.18))',
+                    boxShadow: `0 0 16px ${cfg.themeColor}55`,
+                  }
+                : undefined
+            }
+          >
+            {!unlocked ? (
+              <Lock className="w-2.5 h-2.5 shrink-0 opacity-80" />
+            ) : cfg.id === 'HELL' ? (
+              <Skull className="w-3 h-3 shrink-0" style={{ color: cfg.themeColor }} />
+            ) : cfg.id === 'HARD' ? (
+              <Flame className="w-3 h-3 shrink-0" style={{ color: cfg.themeColor }} />
+            ) : (
+              <Star className="w-2.5 h-2.5 shrink-0 fill-amber-300 text-amber-300" />
+            )}
+            <span className="hidden md:inline text-[8px] font-mono opacity-80">
+              {cfg.shortLabel}
+            </span>
+            <span>{cfg.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
 
   const selectRegionOnAtlas = (region: RegionDef) => {
     audioManager.playSfx('button');
@@ -261,13 +406,13 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
   };
 
   const enterRegion = (region: RegionDef) => {
-    if (!isRegionUnlocked(region.id, clearedStages)) {
+    if (!isRegionUnlocked(region.id, clearedStages, worldDifficulty)) {
       selectRegionOnAtlas(region);
       return;
     }
     audioManager.playSfx('button');
     setFocusedRegionId(region.id);
-    const stages = getStagesByRegion(region.id);
+    const stages = getStagesByRegion(region.id, worldDifficulty);
     const frontier =
       stages.find((s) => isStageUnlocked(s, clearedStages) && !clearedStages.includes(s.id)) ??
       stages[stages.length - 1] ??
@@ -363,20 +508,32 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             }}
             className="relative will-change-transform"
           >
-            {/* 1. Hand-Painted Fantasy Overworld Illustration */}
+            {/* 1. Hand-Painted Fantasy Overworld Illustration (Shifts Atmosphere by World Level!) */}
             <img
               src="/assets/environments/bg_worldmap_aetheria.webp"
               alt="World of Aetheria"
               draggable={false}
-              className="w-full h-full object-fill pointer-events-none brightness-[0.98] contrast-[1.04] saturate-[1.06]"
+              className="w-full h-full object-fill pointer-events-none transition-all duration-500"
+              style={{
+                filter:
+                  worldDifficulty === 'HELL'
+                    ? 'brightness(0.84) contrast(1.14) saturate(1.24) hue-rotate(-24deg)'
+                    : worldDifficulty === 'HARD'
+                      ? 'brightness(0.92) contrast(1.1) saturate(1.16) hue-rotate(-10deg)'
+                      : 'brightness(0.98) contrast(1.04) saturate(1.06)',
+              }}
             />
 
-            {/* 2. Subtle Edge Cinematic Vignette */}
+            {/* 2. Subtle Edge Cinematic Vignette + World Level Atmospheric Veil */}
             <div
-              className="pointer-events-none absolute inset-0"
+              className="pointer-events-none absolute inset-0 transition-all duration-500"
               style={{
                 background:
-                  'radial-gradient(ellipse 88% 82% at 45% 48%, transparent 52%, rgba(4, 8, 22, 0.56) 100%)',
+                  worldDifficulty === 'HELL'
+                    ? 'radial-gradient(ellipse 86% 80% at 46% 48%, rgba(244,63,94,0.12) 0%, rgba(45,8,38,0.48) 65%, rgba(6,4,18,0.82) 100%)'
+                    : worldDifficulty === 'HARD'
+                      ? 'radial-gradient(ellipse 86% 80% at 46% 48%, rgba(249,115,22,0.1) 0%, rgba(36,12,18,0.36) 66%, rgba(8,6,20,0.72) 100%)'
+                      : 'radial-gradient(ellipse 88% 82% at 45% 48%, transparent 52%, rgba(4, 8, 22, 0.56) 100%)',
               }}
             />
 
@@ -421,7 +578,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                 const b = REGION_MAP[toId];
                 if (!a || !b) return null;
                 const bothOpen =
-                  isRegionUnlocked(a.id, clearedStages) && isRegionUnlocked(b.id, clearedStages);
+                  isRegionUnlocked(a.id, clearedStages, worldDifficulty) &&
+                  isRegionUnlocked(b.id, clearedStages, worldDifficulty);
                 const d = buildCurvedPath(
                   a.mapPos.x * 10,
                   a.mapPos.y * 5.625,
@@ -429,14 +587,26 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                   b.mapPos.y * 5.625,
                   idx % 2 === 0 ? 0.12 : -0.12,
                 );
+                const activeGlowColor =
+                  worldDifficulty === 'HELL'
+                    ? '#f43f5e'
+                    : worldDifficulty === 'HARD'
+                      ? '#f97316'
+                      : '#f5c84c';
+                const activeLineColor =
+                  worldDifficulty === 'HELL'
+                    ? '#fda4af'
+                    : worldDifficulty === 'HARD'
+                      ? '#fdba74'
+                      : '#fef08a';
                 return (
                   <g key={`${fromId}_${toId}`}>
                     {bothOpen && (
                       <path
                         d={d}
                         fill="none"
-                        stroke="#f5c84c"
-                        strokeOpacity="0.35"
+                        stroke={activeGlowColor}
+                        strokeOpacity="0.4"
                         strokeWidth="6.5"
                         strokeLinecap="round"
                         filter="url(#leyGlow)"
@@ -445,7 +615,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     <path
                       d={d}
                       fill="none"
-                      stroke={bothOpen ? '#fef08a' : '#a78bfa'}
+                      stroke={bothOpen ? activeLineColor : '#a78bfa'}
                       strokeOpacity={bothOpen ? 0.92 : 0.34}
                       strokeWidth={bothOpen ? 2.6 : 1.7}
                       strokeDasharray={bothOpen ? '9 9' : '4 8'}
@@ -457,13 +627,14 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               })}
             </svg>
 
-            {/* 6. 10 Sculpted RPG Region Landmark Pins (Dynamic Sequential Unlock!) */}
+            {/* 6. 10 Sculpted RPG Region Landmark Pins (Dynamic Sequential Unlock per World Level!) */}
             {REGIONS.map((region) => {
-              const regionUnlocked = isRegionUnlocked(region.id, clearedStages);
+              const regionUnlocked = isRegionUnlocked(region.id, clearedStages, worldDifficulty);
               const isSelected = focusedRegion.id === region.id;
               const clearedInRegion = getRegionClearedCount(region.id);
               const pct = clearedInRegion / region.stageCount;
               const allCleared = regionUnlocked && clearedInRegion >= region.stageCount;
+              const chestKey = encodeRegionChestKey(region.id, worldDifficulty);
               const ringCircumference = 2 * Math.PI * 26;
 
               return (
@@ -552,7 +723,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                         CH.{region.chapter}
                       </span>
 
-                      {allCleared && !(claimedRegionChests ?? []).includes(region.id) && (
+                      {allCleared && !(claimedRegionChests ?? []).includes(chestKey) && (
                         <span
                           className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-gradient-to-br from-amber-300 to-yellow-500 border-2 border-white flex items-center justify-center shadow-[0_0_16px_rgba(253,224,71,0.95)] animate-bounce"
                           title="Region Completion Reward Chest Ready!"
@@ -594,66 +765,119 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
           </div>
 
           {/* FLOATING FULL-SCREEN RPG CHROME */}
-          <div className="pointer-events-none absolute top-0 inset-x-0 z-40 flex items-start justify-between gap-2 safe-area-pad sm:p-3 ls-compact-pad">
-            <div className="pointer-events-auto flex items-center gap-2">
-              <button
-                onClick={() => {
-                  audioManager.playSfx('button');
-                  onClose();
-                }}
-                className="rpg-blade px-3 py-1.5 text-xs font-display font-extrabold uppercase tracking-wider text-white flex items-center gap-1.5"
-              >
-                <ArrowLeft className="w-4 h-4 text-amber-300" />
-                <span className="hidden sm:inline">Lobby</span>
-              </button>
+          <div className="pointer-events-none absolute top-0 inset-x-0 z-40 flex flex-col gap-1.5 safe-area-pad sm:p-3 ls-compact-pad">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="pointer-events-auto flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    audioManager.playSfx('button');
+                    onClose();
+                  }}
+                  className="rpg-blade px-3 py-1.5 text-xs font-display font-extrabold uppercase tracking-wider text-white flex items-center gap-1.5"
+                >
+                  <ArrowLeft className="w-4 h-4 text-amber-300" />
+                  <span className="hidden sm:inline">Lobby</span>
+                </button>
 
-              <div className="rpg-panel-subtle px-3 py-1 flex items-center gap-2 border-l-4 border-l-amber-400">
-                <GameIcon name="worldmap" className="w-6 h-6 sm:w-7 sm:h-7" />
-                <div>
-                  <div className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.22em] text-cyan-300 leading-none">
-                    {unlockedRegionsCount} / 10 REALMS UNLOCKED • 120 STAGES
+                <div
+                  className="rpg-panel-subtle px-3 py-1 flex items-center gap-2 border-l-4"
+                  style={{ borderLeftColor: activeDiffCfg.themeColor }}
+                >
+                  <GameIcon name="worldmap" className="w-6 h-6 sm:w-7 sm:h-7" />
+                  <div>
+                    <div
+                      className="text-[8px] sm:text-[9px] font-black uppercase tracking-[0.22em] leading-none"
+                      style={{ color: activeDiffCfg.themeColor }}
+                    >
+                      {activeDiffCfg.shortLabel} {activeDiffCfg.label} • {unlockedRegionsCount}/10 REALMS
+                    </div>
+                    <h1 className="font-display text-xs sm:text-lg font-black text-white text-glow-gold leading-tight">
+                      WORLD OF AETHERIA
+                    </h1>
                   </div>
-                  <h1 className="font-display text-xs sm:text-lg font-black text-white text-glow-gold leading-tight">
-                    WORLD OF AETHERIA
-                  </h1>
+                </div>
+              </div>
+
+              {/* CAMPAIGN WORLD LEVEL SELECTOR (WL 1 NORMAL | WL 2 HARD | WL 3 HELL) */}
+              <div className="pointer-events-auto order-3 sm:order-2 w-full sm:w-auto flex justify-center">
+                {renderWorldLevelSwitcher(false)}
+              </div>
+
+              <div className="pointer-events-auto order-2 sm:order-3 flex items-center gap-1.5">
+                <div className="hidden lg:flex items-center gap-2 rpg-panel-subtle px-3 py-1.5 text-[11px] font-mono">
+                  <Star className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                  <span className="font-black text-amber-200">
+                    {totalCleared}/{totalPlayableStages}
+                  </span>
+                  <span className="text-slate-600">|</span>
+                  <span className="text-cyan-300 font-bold">PWR {squadPower.toLocaleString()}</span>
+                </div>
+
+                <div className="flex items-center rounded-xl overflow-hidden bg-slate-950/85 border border-amber-400/35 backdrop-blur-md">
+                  <button
+                    onClick={() => adjustZoom(-0.2)}
+                    className="p-1.5 sm:p-2 text-slate-200 hover:text-amber-300 transition"
+                    title="Zoom Out"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={resetCamera}
+                    className="p-1.5 sm:p-2 border-x border-slate-700/80 text-slate-200 hover:text-cyan-300 transition"
+                    title="Reset Map View"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => adjustZoom(0.2)}
+                    className="p-1.5 sm:p-2 text-slate-200 hover:text-amber-300 transition"
+                    title="Zoom In"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div className="pointer-events-auto flex items-center gap-1.5">
-              <div className="hidden md:flex items-center gap-2 rpg-panel-subtle px-3 py-1.5 text-[11px] font-mono">
-                <Star className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                <span className="font-black text-amber-200">
-                  {totalCleared}/{totalPlayableStages}
-                </span>
-                <span className="text-slate-600">|</span>
-                <span className="text-cyan-300 font-bold">PWR {squadPower.toLocaleString()}</span>
+            {/* WORLD LEVEL AFFIX & UNLOCK BANNER (Shown for Hard & Hell) */}
+            {worldDifficulty !== 'NORMAL' && (
+              <div className="flex justify-center">
+                <div
+                  className="pointer-events-auto px-3 py-1 rounded-full bg-slate-950/90 backdrop-blur-md border text-[10px] sm:text-[11px] font-bold flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 shadow-xl max-w-3xl"
+                  style={{
+                    borderColor: `${activeDiffCfg.themeColor}88`,
+                    boxShadow: `0 0 20px ${activeDiffCfg.themeColor}33`,
+                  }}
+                >
+                  {!activeDiffUnlocked ? (
+                    <>
+                      <span className="inline-flex items-center gap-1 font-display font-black uppercase tracking-wider text-rose-300">
+                        <Lock className="w-3 h-3" /> {activeDiffCfg.shortLabel} {activeDiffCfg.label} LOCKED
+                      </span>
+                      <span className="text-slate-300">• {activeDiffCfg.unlockLabel}</span>
+                      <span className="hidden md:inline text-amber-200/90">
+                        • Preview: {activeDiffCfg.rewardHighlight}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span
+                        className="inline-flex items-center gap-1 font-display font-black uppercase tracking-wider"
+                        style={{ color: activeDiffCfg.themeColor }}
+                      >
+                        {worldDifficulty === 'HELL' ? (
+                          <Skull className="w-3 h-3" />
+                        ) : (
+                          <Flame className="w-3 h-3" />
+                        )}
+                        {activeDiffCfg.worldModifier?.name ?? activeDiffCfg.subtitle}
+                      </span>
+                      <span className="text-slate-200">{activeDiffCfg.rewardHighlight}</span>
+                    </>
+                  )}
+                </div>
               </div>
-
-              <div className="flex items-center rounded-xl overflow-hidden bg-slate-950/85 border border-amber-400/35 backdrop-blur-md">
-                <button
-                  onClick={() => adjustZoom(-0.2)}
-                  className="p-1.5 sm:p-2 text-slate-200 hover:text-amber-300 transition"
-                  title="Zoom Out"
-                >
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={resetCamera}
-                  className="p-1.5 sm:p-2 border-x border-slate-700/80 text-slate-200 hover:text-cyan-300 transition"
-                  title="Reset Map View"
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => adjustZoom(0.2)}
-                  className="p-1.5 sm:p-2 text-slate-200 hover:text-amber-300 transition"
-                  title="Zoom In"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Bottom Floating Region Dossier & Quick-Jump Compass */}
@@ -661,7 +885,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             {/* Compact Floating 1–10 Quick-Jump Strip */}
             <div className="pointer-events-auto flex items-center gap-1 max-w-full overflow-x-auto px-2 py-1 bg-slate-950/85 border border-amber-400/25 backdrop-blur-md rounded-full">
               {REGIONS.map((r) => {
-                const open = isRegionUnlocked(r.id, clearedStages);
+                const open = isRegionUnlocked(r.id, clearedStages, worldDifficulty);
                 const sel = r.id === focusedRegion.id;
                 return (
                   <button
@@ -684,55 +908,70 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
             </div>
 
             {/* Floating Selected Region Card */}
-            <div className="pointer-events-auto rpg-panel w-full max-w-4xl px-3 sm:px-4 py-2 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 border-amber-400/45">
-              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
-                <img
-                  src={getRegionEmblemSrc(focusedRegion, focusedRegionUnlocked)}
-                  alt={focusedRegion.name}
-                  className="w-10 h-10 sm:w-12 sm:h-12 object-contain shrink-0 drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span
-                      className="px-2 py-0.5 rounded text-[9px] font-black uppercase border bg-black/80"
-                      style={{
-                        borderColor: focusedRegion.themeColor,
-                        color: focusedRegion.themeColor,
-                      }}
-                    >
-                      CHAPTER {focusedRegion.chapter}
-                    </span>
-                    {focusedRegion.faction !== 'VOID' && (
-                      <span className="text-[10px] font-bold uppercase text-slate-300 hidden md:inline ls-hide">
-                        {FACTIONS[focusedRegion.faction].name}
-                      </span>
-                    )}
-                    <span className="text-[10px] font-mono text-amber-300 font-bold">
-                      PWR {focusedRegion.recommendedPowerRange[0].toLocaleString()}–
-                      {focusedRegion.recommendedPowerRange[1].toLocaleString()}
-                    </span>
-                    <span className="text-[10px] text-fuchsia-300 font-bold flex items-center gap-1">
-                      <Skull className="w-3 h-3" /> {focusedRegion.bossName}
-                    </span>
+            {(() => {
+              const pwrRange = getRegionRecommendedPowerRange(focusedRegion, worldDifficulty);
+              const focusedCleared = getRegionClearedCount(focusedRegion.id);
+              const chestKey = encodeRegionChestKey(focusedRegion.id, worldDifficulty);
+              const chestClaimed = (claimedRegionChests ?? []).includes(chestKey);
+              const chestReady = focusedCleared >= focusedRegion.stageCount && !chestClaimed;
+              return (
+                <div
+                  className="pointer-events-auto rpg-panel w-full max-w-4xl px-3 sm:px-4 py-2 sm:py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3"
+                  style={{ borderColor: `${activeDiffCfg.themeColor}70` }}
+                >
+                  <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                    <img
+                      src={getRegionEmblemSrc(focusedRegion, focusedRegionUnlocked)}
+                      alt={focusedRegion.name}
+                      className="w-10 h-10 sm:w-12 sm:h-12 object-contain shrink-0 drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)]"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className="px-2 py-0.5 rounded text-[9px] font-black uppercase border bg-black/80"
+                          style={{
+                            borderColor: focusedRegion.themeColor,
+                            color: focusedRegion.themeColor,
+                          }}
+                        >
+                          CHAPTER {focusedRegion.chapter}
+                        </span>
+                        {worldDifficulty !== 'NORMAL' && (
+                          <span
+                            className="px-2 py-0.5 rounded text-[9px] font-display font-black uppercase border bg-black/80"
+                            style={{
+                              borderColor: activeDiffCfg.themeColor,
+                              color: activeDiffCfg.themeColor,
+                            }}
+                          >
+                            {activeDiffCfg.shortLabel} {activeDiffCfg.label}
+                          </span>
+                        )}
+                        {focusedRegion.faction !== 'VOID' && (
+                          <span className="text-[10px] font-bold uppercase text-slate-300 hidden md:inline ls-hide">
+                            {FACTIONS[focusedRegion.faction].name}
+                          </span>
+                        )}
+                        <span className="text-[10px] font-mono text-amber-300 font-bold">
+                          PWR {pwrRange[0].toLocaleString()}–{pwrRange[1].toLocaleString()}
+                        </span>
+                        <span className="text-[10px] text-fuchsia-300 font-bold flex items-center gap-1">
+                          <Skull className="w-3 h-3" /> {focusedRegion.bossName}
+                        </span>
+                      </div>
+                      <h2 className="font-display text-sm sm:text-lg font-black text-white leading-tight truncate mt-0.5">
+                        {focusedRegion.name}{' '}
+                        <span className="text-xs font-serif-italic italic font-normal text-amber-200/85 hidden sm:inline">
+                          — {focusedRegion.subtitle}
+                        </span>
+                      </h2>
+                      <p className="ls-hide text-[11px] text-slate-300 line-clamp-1 sm:line-clamp-2 mt-0.5">
+                        {focusedRegion.lore}
+                      </p>
+                    </div>
                   </div>
-                  <h2 className="font-display text-sm sm:text-lg font-black text-white leading-tight truncate mt-0.5">
-                    {focusedRegion.name}{' '}
-                    <span className="text-xs font-serif-italic italic font-normal text-amber-200/85 hidden sm:inline">
-                      — {focusedRegion.subtitle}
-                    </span>
-                  </h2>
-                  <p className="ls-hide text-[11px] text-slate-300 line-clamp-1 sm:line-clamp-2 mt-0.5">
-                    {focusedRegion.lore}
-                  </p>
-                </div>
-              </div>
 
-              <div className="shrink-0 flex items-center gap-2">
-                {(() => {
-                  const focusedCleared = getRegionClearedCount(focusedRegion.id);
-                  const chestClaimed = (claimedRegionChests ?? []).includes(focusedRegion.id);
-                  const chestReady = focusedCleared >= focusedRegion.stageCount && !chestClaimed;
-                  return (
+                  <div className="shrink-0 flex items-center gap-2">
                     <button
                       onClick={() => {
                         audioManager.playSfx('button');
@@ -761,28 +1000,30 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                         </span>
                       )}
                     </button>
-                  );
-                })()}
 
-                {focusedRegionUnlocked ? (
-                  <button
-                    onClick={() => enterRegion(focusedRegion)}
-                    className="rpg-battle-cta w-full sm:w-auto px-5 sm:px-7 py-2 sm:py-2.5 text-slate-950 font-display font-black text-xs sm:text-sm uppercase tracking-[0.14em] flex items-center justify-center gap-2"
-                  >
-                    <GameIcon name="battle" className="w-5 h-5" />
-                    <span>Enter Region</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                ) : (
-                  <div className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-950/90 border border-violet-500/50 text-violet-200 text-[11px] font-bold flex items-center justify-center gap-2">
-                    <Lock className="w-4 h-4 text-violet-400 shrink-0" />
-                    <span className="truncate max-w-[260px]">
-                      Clear Ch.{focusedRegion.chapter - 1} ({prevRegionClearedCount}/12) to Unlock
-                    </span>
+                    {focusedRegionUnlocked ? (
+                      <button
+                        onClick={() => enterRegion(focusedRegion)}
+                        className="rpg-battle-cta w-full sm:w-auto px-5 sm:px-7 py-2 sm:py-2.5 text-slate-950 font-display font-black text-xs sm:text-sm uppercase tracking-[0.14em] flex items-center justify-center gap-2"
+                      >
+                        <GameIcon name="battle" className="w-5 h-5" />
+                        <span>Enter Region</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <div className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-950/90 border border-violet-500/50 text-violet-200 text-[11px] font-bold flex items-center justify-center gap-2">
+                        <Lock className="w-4 h-4 text-violet-400 shrink-0" />
+                        <span className="truncate max-w-[260px]">
+                          {!activeDiffUnlocked
+                            ? activeDiffCfg.unlockLabel
+                            : `Clear ${activeDiffCfg.label} Ch.${focusedRegion.chapter - 1} (${prevRegionClearedCount}/12)`}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -803,9 +1044,14 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               }}
             />
             <div
-              className="absolute inset-0"
+              className="absolute inset-0 transition-all duration-500"
               style={{
-                background: `radial-gradient(ellipse 75% 70% at 38% 50%, ${focusedRegion.themeColor}22 0%, rgba(5, 9, 24, 0.72) 68%, rgba(4, 7, 18, 0.92) 100%)`,
+                background:
+                  worldDifficulty === 'HELL'
+                    ? `radial-gradient(ellipse 75% 70% at 38% 50%, rgba(244,63,94,0.24) 0%, rgba(26,6,28,0.78) 68%, rgba(4,4,14,0.95) 100%)`
+                    : worldDifficulty === 'HARD'
+                      ? `radial-gradient(ellipse 75% 70% at 38% 50%, rgba(249,115,22,0.22) 0%, rgba(24,10,20,0.75) 68%, rgba(4,7,18,0.94) 100%)`
+                      : `radial-gradient(ellipse 75% 70% at 38% 50%, ${focusedRegion.themeColor}22 0%, rgba(5, 9, 24, 0.72) 68%, rgba(4, 7, 18, 0.92) 100%)`,
               }}
             />
             <div
@@ -851,10 +1097,12 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <div className="hidden md:block">{renderWorldLevelSwitcher(true)}</div>
               {(() => {
                 const regCleared = getRegionClearedCount(focusedRegion.id);
-                const chestClaimed = (claimedRegionChests ?? []).includes(focusedRegion.id);
+                const chestKey = encodeRegionChestKey(focusedRegion.id, worldDifficulty);
+                const chestClaimed = (claimedRegionChests ?? []).includes(chestKey);
                 const chestReady = regCleared >= focusedRegion.stageCount && !chestClaimed;
                 return (
                   <button
@@ -1147,6 +1395,23 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                       >
                         STAGE {activeStage.code}
                       </span>
+                      {worldDifficulty !== 'NORMAL' && (
+                        <span
+                          className="px-2 py-0.5 rounded text-[9px] font-display font-black uppercase border bg-black/85 flex items-center gap-1"
+                          style={{
+                            borderColor: activeDiffCfg.themeColor,
+                            color: activeDiffCfg.themeColor,
+                          }}
+                          title={activeDiffCfg.worldModifier?.desc}
+                        >
+                          {worldDifficulty === 'HELL' ? (
+                            <Skull className="w-2.5 h-2.5" />
+                          ) : (
+                            <Flame className="w-2.5 h-2.5" />
+                          )}
+                          {activeDiffCfg.shortLabel} {activeDiffCfg.label}
+                        </span>
+                      )}
                       {activeStage.isBossStage && (
                         <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-fuchsia-600 text-white">
                           REGION BOSS
@@ -1161,6 +1426,25 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                         Threat ×{activeStage.enemyScale.toFixed(2)}
                       </span>
                     </div>
+                    {activeStage.worldModifier && (
+                      <div
+                        className="mt-1 px-2 py-1 rounded-lg bg-slate-950/85 border text-[10px] font-semibold flex items-center gap-1.5"
+                        style={{
+                          borderColor: `${activeStage.worldModifier.color}55`,
+                          color: '#fde68a',
+                        }}
+                      >
+                        <span
+                          className="font-display font-black uppercase tracking-wider shrink-0"
+                          style={{ color: activeStage.worldModifier.color }}
+                        >
+                          {activeStage.worldModifier.name}:
+                        </span>
+                        <span className="text-slate-300 truncate" title={activeStage.worldModifier.desc}>
+                          {activeDiffCfg.rewardHighlight}
+                        </span>
+                      </div>
+                    )}
                     <h3 className="font-display text-base lg:text-xl font-black text-white mt-0.5 leading-tight">
                       {activeStage.name}
                     </h3>
@@ -1245,7 +1529,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                         <div className="font-mono font-bold text-cyan-300">
                           +
                           {clearedStages.includes(activeStage.id)
-                            ? 40
+                            ? (activeStage.repeatCrystals ?? 40)
                             : activeStage.firstClearCrystals}
                         </div>
                       </div>
@@ -1445,7 +1729,8 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
                     <div className="w-full py-2.5 px-4 rounded-xl bg-slate-950 border border-slate-700 text-center text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-center gap-2">
                       <Lock className="w-4 h-4 text-slate-500" />
                       <span>
-                        Clear Stage {activeStage.chapter}-{activeStage.stageNumber - 1} to Unlock
+                        Clear Stage {activeDiffCfg.codePrefix}
+                        {activeStage.chapter}-{activeStage.stageNumber - 1} to Unlock
                       </span>
                     </div>
                   )}
@@ -1461,6 +1746,7 @@ export const WorldMapOverlay: React.FC<WorldMapOverlayProps> = ({
       <RegionChestModal
         open={showChestModal}
         region={focusedRegion}
+        difficulty={worldDifficulty}
         clearedCount={getRegionClearedCount(focusedRegion.id)}
         onClose={() => setShowChestModal(false)}
       />

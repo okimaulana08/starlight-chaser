@@ -160,6 +160,22 @@ export const PERMANENT_COMMISSIONS: PermanentCommissionDef[] = [
     getProgress: (s) => s.lifetimeLinkBursts ?? 0,
     reward: { crystals: 400, dungeonTickets: 2 },
   },
+  {
+    id: 'perm_hard_world_ch1',
+    title: 'Crimson Rift Pioneer',
+    desc: 'Conquer World Level 2 (Hard) Chapter 1 Boss (H 1-12)',
+    target: 1,
+    getProgress: (s) => (s.clearedStages.includes('hard__stage_1_12') ? 1 : 0),
+    reward: { crystals: 480, starCores: 4, gearCrateRarity: 'LEGENDARY' },
+  },
+  {
+    id: 'perm_hell_world_ch1',
+    title: 'Abyssal Zenith Sovereign',
+    desc: 'Conquer World Level 3 (Hell) Chapter 1 Boss (X 1-12)',
+    target: 1,
+    getProgress: (s) => (s.clearedStages.includes('hell__stage_1_12') ? 1 : 0),
+    reward: { crystals: 800, starCores: 8, relicFragments: 15, gearCrateRarity: 'LEGENDARY' },
+  },
 ];
 
 export function computeDailyActivityPoints(claimedDailyIds: string[]): number {

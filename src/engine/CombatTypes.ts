@@ -172,6 +172,7 @@ export interface EnemyUnit {
   maxHp: number;
   atk: number;
   defStat: number;
+  atkSpeedMult?: number;
   alive: boolean;
   basicTimer: number;
   // Debuffs & CC

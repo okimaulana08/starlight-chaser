@@ -22,7 +22,16 @@ import { PETS, PET_MAP } from '../data/pets';
 import { RELICS } from '../data/relics';
 import { REGION_MAP, REGIONS } from '../data/regions';
 import { SPIRE_MAX_FLOOR } from '../data/spire';
-import { getHighestUnlockedStage, getStagesByRegion, isStageUnlocked, STAGE_MAP } from '../data/stages';
+import {
+  CAMPAIGN_DIFFICULTIES,
+  CAMPAIGN_DIFFICULTY_MAP,
+  encodeRegionChestKey,
+  getCampaignStageById,
+  getHighestUnlockedStage,
+  getStagesByRegion,
+  isDifficultyUnlocked,
+  isStageUnlocked,
+} from '../data/stages';
 import { audioManager } from '../engine/AudioManager';
 import {
   computeHeroStats,
@@ -92,6 +101,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
     claimedRegionChests,
     clearedStages,
     selectedStageId,
+    selectedDifficulty,
     lastDailySupplyAt,
     dungeonTickets,
     dungeonEntriesUsed,
@@ -174,20 +184,36 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   );
   const hasClaimableRegionChest = useMemo(
     () =>
-      REGIONS.some((r) => {
-        if ((claimedRegionChests ?? []).includes(r.id)) return false;
-        const stages = getStagesByRegion(r.id);
-        return stages.length > 0 && stages.every((s) => clearedStages.includes(s.id));
+      CAMPAIGN_DIFFICULTIES.some((diffCfg) => {
+        if (!isDifficultyUnlocked(diffCfg.id, clearedStages)) return false;
+        return REGIONS.some((r) => {
+          const chestKey = encodeRegionChestKey(r.id, diffCfg.id);
+          if ((claimedRegionChests ?? []).includes(chestKey)) return false;
+          const stages = getStagesByRegion(r.id, diffCfg.id);
+          return stages.length > 0 && stages.every((s) => clearedStages.includes(s.id));
+        });
       }),
     [clearedStages, claimedRegionChests],
   );
 
-  // Respect strict sequential progression: fallback to highest unlocked stage if saved stage is locked
+  // Respect active Campaign World Level & strict sequential progression
+  const activeDifficulty =
+    selectedDifficulty && isDifficultyUnlocked(selectedDifficulty, clearedStages)
+      ? selectedDifficulty
+      : 'NORMAL';
+  const activeDifficultyCfg = CAMPAIGN_DIFFICULTY_MAP[activeDifficulty];
+
   const selectedStage = useMemo(() => {
-    const saved = STAGE_MAP[selectedStageId];
-    if (saved && isStageUnlocked(saved, clearedStages)) return saved;
-    return getHighestUnlockedStage(clearedStages);
-  }, [selectedStageId, clearedStages]);
+    const saved = getCampaignStageById(selectedStageId);
+    if (
+      saved &&
+      (saved.difficulty ?? 'NORMAL') === activeDifficulty &&
+      isStageUnlocked(saved, clearedStages)
+    ) {
+      return saved;
+    }
+    return getHighestUnlockedStage(clearedStages, activeDifficulty);
+  }, [selectedStageId, clearedStages, activeDifficulty]);
 
   const selectedRegion = REGION_MAP[selectedStage.regionId] ?? REGIONS[0];
 
@@ -939,6 +965,17 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               <div className="relative z-10 h-full px-3 sm:px-4 py-2 flex flex-col justify-between">
                 <div className="text-[8px] sm:text-[9px] font-display font-black uppercase tracking-[0.18em] text-amber-300 flex items-center gap-1 leading-none truncate pr-14">
                   <GameIcon name="worldmap" className="w-3.5 h-3.5" />
+                  {activeDifficulty !== 'NORMAL' && (
+                    <span
+                      className="px-1.5 py-0.5 rounded bg-slate-950/90 border text-[7px] font-black tracking-wider shrink-0"
+                      style={{
+                        borderColor: activeDifficultyCfg.themeColor,
+                        color: activeDifficultyCfg.themeColor,
+                      }}
+                    >
+                      {activeDifficultyCfg.label}
+                    </span>
+                  )}
                   <span className="truncate">
                     CH.{selectedRegion.chapter} {selectedRegion.name.toUpperCase()}
                   </span>

@@ -1,4 +1,11 @@
-import type { EquipmentRarity, EquipmentSetId, Faction, MaterialKey, Tier } from '../types/game';
+import type {
+  CampaignDifficulty,
+  EquipmentRarity,
+  EquipmentSetId,
+  Faction,
+  MaterialKey,
+  Tier,
+} from '../types/game';
 
 export interface MaterialMeta {
   key: MaterialKey;
@@ -804,3 +811,51 @@ export const REGION_CHEST_REWARDS: Record<string, RegionChestRewardDef> = Object
     return [regionId, reward];
   }),
 );
+
+/**
+ * Returns Region Completion Reward Chest scaled to the active Campaign World Level:
+ * - NORMAL (WL 1): Base Conqueror Chest (Epic Ch.1-3, Legendary Ch.4-10)
+ * - HARD (WL 2): Crimson Rift Chest (~1.65-1.8× Crystals/Gold/Mats, Epic Ch.1-2, Legendary Ch.3-10)
+ * - HELL (WL 3): Abyssal Zenith Chest (~2.5-3.0× Crystals/Gold/Mats, Guaranteed Legendary ALL Chapters!)
+ */
+export function getRegionChestReward(
+  regionId: string,
+  difficulty: CampaignDifficulty = 'NORMAL',
+): RegionChestRewardDef | null {
+  const base = REGION_CHEST_REWARDS[regionId];
+  if (!base) return null;
+  if (difficulty === 'NORMAL') return base;
+
+  if (difficulty === 'HARD') {
+    return {
+      ...base,
+      title: `Hard Ch.${base.chapter} Conqueror Chest`,
+      crystals: Math.round((base.crystals * 1.65) / 20) * 20,
+      gold: Math.round((base.gold * 1.85) / 100) * 100,
+      expPotions: Math.round(base.expPotions * 1.65),
+      forgeStones: Math.round(base.forgeStones * 1.75),
+      starIronIngots: Math.max(4, Math.round(base.starIronIngots * 1.85)),
+      astralAnvilCores: Math.max(2, Math.round((base.astralAnvilCores || 1) * 1.9)),
+      starCores: Math.max(4, Math.round(base.starCores * 1.85)),
+      relicFragments: Math.round(base.relicFragments * 1.65),
+      essenceQty: Math.round(base.essenceQty * 1.75),
+      gearRarity: base.chapter >= 3 ? 'LEGENDARY' : 'EPIC',
+    };
+  }
+
+  // HELL (WL 3)
+  return {
+    ...base,
+    title: `Hell Ch.${base.chapter} Sovereign Chest`,
+    crystals: Math.round((base.crystals * 2.5) / 20) * 20,
+    gold: Math.round((base.gold * 3.0) / 100) * 100,
+    expPotions: Math.round(base.expPotions * 2.4),
+    forgeStones: Math.round(base.forgeStones * 2.6),
+    starIronIngots: Math.max(8, Math.round(base.starIronIngots * 2.8)),
+    astralAnvilCores: Math.max(5, Math.round((base.astralAnvilCores || 2) * 2.8)),
+    starCores: Math.max(7, Math.round(base.starCores * 2.8)),
+    relicFragments: Math.round(base.relicFragments * 2.4),
+    essenceQty: Math.round(base.essenceQty * 2.6),
+    gearRarity: 'LEGENDARY',
+  };
+}

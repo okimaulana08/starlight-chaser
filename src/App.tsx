@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ShopCategory } from './data/materials';
+import { parseCampaignStageId } from './data/stages';
 import { audioManager } from './engine/AudioManager';
 import { useCombatStore } from './store/useCombatStore';
 import { usePlayerStore } from './store/usePlayerStore';
@@ -57,7 +58,9 @@ export const App: React.FC = () => {
     // Synchronously wipe stale Victory/Defeat state BEFORE mounting CombatHUD (prevents Stage Cleared flash!)
     useCombatStore.getState().resetForStage(stageId, '', 1);
     if (!stageId.startsWith('dungeon__') && !stageId.startsWith('spire__')) {
-      usePlayerStore.getState().setSelectedStage(stageId);
+      const store = usePlayerStore.getState();
+      store.setSelectedStage(stageId);
+      store.setSelectedDifficulty(parseCampaignStageId(stageId).difficulty);
     }
     setCombatReturnScreen(returnTo);
     setActiveStageId(stageId);

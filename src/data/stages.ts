@@ -1,6 +1,145 @@
-import type { EquipmentRarity, RegionDef, StageDef, StageWave } from '../types/game';
+import type {
+  CampaignDifficulty,
+  EquipmentRarity,
+  RegionDef,
+  StageDef,
+  StageWave,
+} from '../types/game';
 import { CHAPTER_BIOME_DROPS } from './materials';
 import { REGIONS, REGION_MAP } from './regions';
+
+export interface CampaignDifficultyConfig {
+  id: CampaignDifficulty;
+  worldLevel: 1 | 2 | 3;
+  label: string;
+  shortLabel: string;
+  subtitle: string;
+  codePrefix: string;
+  themeColor: string;
+  badgeBg: string;
+  unlockStageId: string | null;
+  unlockLabel: string;
+  rewardHighlight: string;
+  enemyAtkSpeedMult: number;
+  bossBreakMult: number;
+  repeatCrystals: number;
+  worldModifier?: {
+    id: string;
+    name: string;
+    desc: string;
+    color: string;
+  };
+}
+
+export const CAMPAIGN_DIFFICULTIES: CampaignDifficultyConfig[] = [
+  {
+    id: 'NORMAL',
+    worldLevel: 1,
+    label: 'Normal',
+    shortLabel: 'WL 1',
+    subtitle: 'Dawn of Aetheria',
+    codePrefix: '',
+    themeColor: '#f5c84c',
+    badgeBg: 'from-amber-400/25 to-yellow-500/15',
+    unlockStageId: null,
+    unlockLabel: 'Unlocked',
+    rewardHighlight: 'Standard Campaign Progression • Lv.1–80',
+    enemyAtkSpeedMult: 1.0,
+    bossBreakMult: 1.0,
+    repeatCrystals: 40,
+  },
+  {
+    id: 'HARD',
+    worldLevel: 2,
+    label: 'Hard',
+    shortLabel: 'WL 2',
+    subtitle: 'Crimson Rift',
+    codePrefix: 'H ',
+    themeColor: '#f97316',
+    badgeBg: 'from-orange-500/30 to-rose-600/20',
+    unlockStageId: 'stage_10_12',
+    unlockLabel: 'Clear Normal Ch.10 Boss (10-12)',
+    rewardHighlight: '2× Gold • 1.9× EXP • No Common Gear • Guaranteed Anvil & Star Cores',
+    enemyAtkSpeedMult: 1.1,
+    bossBreakMult: 1.2,
+    repeatCrystals: 60,
+    worldModifier: {
+      id: 'HARD_RIFT_SURGE',
+      name: 'Rift Surge',
+      desc: 'World Level 2: Enemies attack +10% faster and Bosses gain +20% Break Shield. Rewards 2× Gold, 1.9× Hero EXP, 1.75× Materials, and Epic/Legendary Gear.',
+      color: '#f97316',
+    },
+  },
+  {
+    id: 'HELL',
+    worldLevel: 3,
+    label: 'Hell',
+    shortLabel: 'WL 3',
+    subtitle: 'Abyssal Zenith',
+    codePrefix: 'X ',
+    themeColor: '#f43f5e',
+    badgeBg: 'from-rose-600/35 to-fuchsia-600/25',
+    unlockStageId: 'hard__stage_10_12',
+    unlockLabel: 'Clear Hard Ch.10 Boss (H 10-12)',
+    rewardHighlight: '3.2× Gold • 2.8× EXP • Epic & Legendary Only (×2–3 Drops) • Transcendence Mats',
+    enemyAtkSpeedMult: 1.18,
+    bossBreakMult: 1.35,
+    repeatCrystals: 85,
+    worldModifier: {
+      id: 'HELL_ABYSSAL_FRENZY',
+      name: 'Abyssal Frenzy',
+      desc: 'World Level 3: Enemies attack +18% faster and Bosses gain +35% Break Shield. Rewards 3.2× Gold, 2.8× Hero EXP, 2.6× Materials, and Guaranteed Epic/Legendary Multi-Drops.',
+      color: '#f43f5e',
+    },
+  },
+];
+
+export const CAMPAIGN_DIFFICULTY_MAP: Record<CampaignDifficulty, CampaignDifficultyConfig> = {
+  NORMAL: CAMPAIGN_DIFFICULTIES[0],
+  HARD: CAMPAIGN_DIFFICULTIES[1],
+  HELL: CAMPAIGN_DIFFICULTIES[2],
+};
+
+export function encodeCampaignStageId(
+  baseStageId: string,
+  difficulty: CampaignDifficulty = 'NORMAL',
+): string {
+  const clean = baseStageId.replace(/^(hard__|hell__)/, '');
+  if (difficulty === 'HARD') return `hard__${clean}`;
+  if (difficulty === 'HELL') return `hell__${clean}`;
+  return clean;
+}
+
+export function parseCampaignStageId(stageId: string): {
+  baseStageId: string;
+  difficulty: CampaignDifficulty;
+} {
+  if (stageId.startsWith('hard__')) {
+    return { baseStageId: stageId.slice(6), difficulty: 'HARD' };
+  }
+  if (stageId.startsWith('hell__')) {
+    return { baseStageId: stageId.slice(6), difficulty: 'HELL' };
+  }
+  return { baseStageId: stageId, difficulty: 'NORMAL' };
+}
+
+export function encodeRegionChestKey(
+  regionId: string,
+  difficulty: CampaignDifficulty = 'NORMAL',
+): string {
+  if (difficulty === 'HARD') return `hard__${regionId}`;
+  if (difficulty === 'HELL') return `hell__${regionId}`;
+  return regionId;
+}
+
+export function isDifficultyUnlocked(
+  difficulty: CampaignDifficulty,
+  clearedStages: string[],
+): boolean {
+  const cfg = CAMPAIGN_DIFFICULTY_MAP[difficulty];
+  if (!cfg.unlockStageId) return true;
+  return clearedStages.includes(cfg.unlockStageId);
+}
 
 interface StageTemplate {
   name: string;
@@ -549,55 +688,319 @@ function buildAllStages(): StageDef[] {
   return list;
 }
 
-export const STAGES: StageDef[] = buildAllStages();
+export const STAGES: StageDef[] = buildAllStages().map((s) => ({
+  ...s,
+  baseStageId: s.id,
+  difficulty: 'NORMAL' as CampaignDifficulty,
+  repeatCrystals: 40,
+}));
 
 export const STAGE_MAP: Record<string, StageDef> = Object.fromEntries(
   STAGES.map((s) => [s.id, s]),
 );
 
-export function getStagesByRegion(regionId: string): StageDef[] {
-  return STAGES.filter((s) => s.regionId === regionId);
+function scaleRange(
+  range: [number, number] | undefined,
+  mult: number,
+  minFloor: [number, number] = [1, 1],
+): [number, number] {
+  if (!range) return minFloor;
+  const a = Math.max(minFloor[0], Math.round(range[0] * mult));
+  const b = Math.max(a, Math.max(minFloor[1], Math.round(range[1] * mult)));
+  return [a, b];
+}
+
+function buildEndgameRarityWeights(
+  chapter: number,
+  isMiniBoss: boolean,
+  isBossStage: boolean,
+  difficulty: 'HARD' | 'HELL',
+): Record<EquipmentRarity, number> {
+  const t = Math.max(0, Math.min(1, (chapter - 1) / 9));
+  if (difficulty === 'HARD') {
+    const rareBase = Math.max(0, Math.round((isBossStage ? 8 : isMiniBoss ? 14 : 24) * (1 - t)));
+    const legBase = Math.min(
+      80,
+      Math.round((isBossStage ? 36 : isMiniBoss ? 26 : 18) + t * (isBossStage ? 42 : isMiniBoss ? 40 : 40)),
+    );
+    const epic = Math.max(10, 100 - rareBase - legBase);
+    return { COMMON: 0, RARE: rareBase, EPIC: epic, LEGENDARY: legBase };
+  }
+
+  // HELL (WL 3): Epic & Legendary ONLY — true endgame Transcendence farming!
+  const legBase = Math.min(
+    94,
+    Math.round((isBossStage ? 70 : isMiniBoss ? 62 : 52) + t * (isBossStage ? 24 : isMiniBoss ? 26 : 30)),
+  );
+  const epic = Math.max(6, 100 - legBase);
+  return { COMMON: 0, RARE: 0, EPIC: epic, LEGENDARY: legBase };
+}
+
+const HARD_SCALE_PAIRS: Array<[number, number]> = [
+  [24.2, 26.0],  // Hard Ch.1
+  [26.3, 28.0],  // Hard Ch.2
+  [28.3, 30.0],  // Hard Ch.3
+  [30.3, 32.0],  // Hard Ch.4
+  [32.3, 34.0],  // Hard Ch.5
+  [34.3, 35.8],  // Hard Ch.6
+  [36.1, 37.5],  // Hard Ch.7
+  [37.8, 39.2],  // Hard Ch.8
+  [39.5, 40.8],  // Hard Ch.9
+  [41.0, 42.5],  // Hard Ch.10
+];
+
+const HELL_SCALE_PAIRS: Array<[number, number]> = [
+  [44.5, 46.8],  // Hell Ch.1
+  [47.2, 49.5],  // Hell Ch.2
+  [49.9, 52.1],  // Hell Ch.3
+  [52.5, 54.6],  // Hell Ch.4
+  [55.0, 57.0],  // Hell Ch.5
+  [57.4, 59.3],  // Hell Ch.6
+  [59.7, 61.6],  // Hell Ch.7
+  [62.0, 63.8],  // Hell Ch.8
+  [64.2, 66.0],  // Hell Ch.9
+  [66.4, 68.5],  // Hell Ch.10
+];
+
+const HARD_POWER_RANGES: Array<[number, number]> = [
+  [126000, 134000],
+  [135000, 142000],
+  [143000, 150000],
+  [151000, 158000],
+  [159000, 166000],
+  [167000, 173000],
+  [174000, 180000],
+  [181000, 186000],
+  [187000, 193000],
+  [194000, 202000],
+];
+
+const HELL_POWER_RANGES: Array<[number, number]> = [
+  [208000, 217000],
+  [218000, 227000],
+  [228000, 236000],
+  [237000, 245000],
+  [246000, 254000],
+  [255000, 263000],
+  [264000, 272000],
+  [273000, 280000],
+  [281000, 289000],
+  [290000, 300000],
+];
+
+const difficultyStageCache: Record<string, StageDef> = {};
+
+export function getRegionRecommendedPowerRange(
+  region: RegionDef,
+  difficulty: CampaignDifficulty = 'NORMAL',
+): [number, number] {
+  const idx = Math.max(0, Math.min(9, region.chapter - 1));
+  if (difficulty === 'HARD') return HARD_POWER_RANGES[idx] ?? [126000, 202000];
+  if (difficulty === 'HELL') return HELL_POWER_RANGES[idx] ?? [208000, 300000];
+  return region.recommendedPowerRange;
+}
+
+export function buildStageForDifficulty(
+  baseStage: StageDef,
+  difficulty: CampaignDifficulty = 'NORMAL',
+): StageDef {
+  if (difficulty === 'NORMAL') return baseStage;
+
+  const encodedId = encodeCampaignStageId(baseStage.id, difficulty);
+  if (difficultyStageCache[encodedId]) return difficultyStageCache[encodedId];
+
+  const cfg = CAMPAIGN_DIFFICULTY_MAP[difficulty];
+  const chIdx = Math.max(0, Math.min(9, baseStage.chapter - 1));
+  const progress = (baseStage.stageNumber - 1) / 11;
+  const curve = Math.pow(progress, 1.05);
+  const [minScale, maxScale] =
+    difficulty === 'HARD' ? HARD_SCALE_PAIRS[chIdx] : HELL_SCALE_PAIRS[chIdx];
+  const [minPwr, maxPwr] =
+    difficulty === 'HARD' ? HARD_POWER_RANGES[chIdx] : HELL_POWER_RANGES[chIdx];
+
+  const isBoss = Boolean(baseStage.isBossStage);
+  const isMini = Boolean(baseStage.isMiniBoss);
+  const enemyScale = Number(
+    ((minScale + (maxScale - minScale) * curve) * (isMini ? 1.03 : 1.0)).toFixed(2),
+  );
+  const recommendedPower = Math.round((minPwr + (maxPwr - minPwr) * curve) / 500) * 500;
+
+  const isHell = difficulty === 'HELL';
+  const goldMult = isHell ? 3.2 : 2.0;
+  const expPotMult = isHell ? 2.4 : 1.6;
+  const stoneMult = isHell ? 2.6 : 1.75;
+  const ironMult = isHell ? 2.8 : 1.8;
+  const anvilMult = isHell ? 2.8 : 1.85;
+  const essMult = isHell ? 2.6 : 1.75;
+  const firstCrystalMult = isHell ? 2.2 : 1.5;
+
+  const built: StageDef = {
+    ...baseStage,
+    id: encodedId,
+    baseStageId: baseStage.id,
+    difficulty,
+    code: `${cfg.codePrefix}${baseStage.code}`,
+    recommendedPower,
+    enemyScale,
+    firstClearCrystals: Math.round((baseStage.firstClearCrystals * firstCrystalMult) / 10) * 10,
+    repeatCrystals: cfg.repeatCrystals,
+    combatExpMultiplier: isHell ? 2.8 : 1.9,
+    worldModifier: cfg.worldModifier,
+    ambientMoteColors: isHell
+      ? [0xf43f5e, 0xc084fc]
+      : [0xf97316, baseStage.ambientMoteColors?.[0] ?? 0xfde047],
+    rewards: {
+      ...baseStage.rewards,
+      gold: scaleRange(baseStage.rewards.gold, goldMult, [1500, 2000]),
+      expPotions: scaleRange(baseStage.rewards.expPotions, expPotMult, isHell ? [4, 6] : [2, 4]),
+      forgeStones: scaleRange(baseStage.rewards.forgeStones, stoneMult, isHell ? [6, 9] : [4, 6]),
+      starIronIngots: scaleRange(
+        baseStage.rewards.starIronIngots,
+        ironMult,
+        isHell ? [4, 6] : [2, 3],
+      ),
+      astralAnvilCores: scaleRange(
+        baseStage.rewards.astralAnvilCores,
+        anvilMult,
+        isHell ? (isBoss ? [5, 8] : [2, 4]) : isBoss ? [3, 5] : [1, 2],
+      ),
+      starCores: scaleRange(
+        baseStage.rewards.starCores,
+        isHell ? 2.6 : 1.75,
+        isHell
+          ? isBoss
+            ? [8, 12]
+            : isMini
+              ? [4, 7]
+              : [2, 3]
+          : isBoss
+            ? [5, 8]
+            : isMini
+              ? [2, 4]
+              : [1, 2],
+      ),
+      relicFragments: scaleRange(
+        baseStage.rewards.relicFragments,
+        isHell ? 2.4 : 1.65,
+        isHell
+          ? isBoss
+            ? [10, 15]
+            : isMini
+              ? [5, 8]
+              : [2, 4]
+          : isBoss
+            ? [6, 10]
+            : isMini
+              ? [3, 5]
+              : [1, 2],
+      ),
+      primaryEssenceQty: scaleRange(
+        baseStage.rewards.primaryEssenceQty,
+        essMult,
+        isHell ? [4, 6] : [2, 4],
+      ),
+      bonusRandomEssenceChance: isHell ? 0.95 : isBoss ? 0.95 : isMini ? 0.75 : 0.45,
+      relicDropChance: baseStage.rewards.relicDropPool
+        ? Math.min(
+            isHell ? 0.6 : 0.45,
+            Number(((baseStage.rewards.relicDropChance ?? 0.12) * (isHell ? 2.0 : 1.45)).toFixed(2)),
+          )
+        : 0,
+      equipmentDrops: isHell
+        ? isBoss
+          ? 3
+          : 2
+        : isBoss || isMini
+          ? 2
+          : 1,
+      equipmentDropChance: isHell ? 1.0 : isBoss || isMini ? 1.0 : 0.85,
+      bonusEquipmentDropChance: isHell
+        ? isMini
+          ? 0.6
+          : undefined
+        : isBoss
+          ? 0.5
+          : undefined,
+      rarityWeights: buildEndgameRarityWeights(baseStage.chapter, isMini, isBoss, difficulty),
+    },
+  };
+
+  difficultyStageCache[encodedId] = built;
+  return built;
+}
+
+export function getCampaignStageById(stageId: string): StageDef | null {
+  const { baseStageId, difficulty } = parseCampaignStageId(stageId);
+  const base = STAGE_MAP[baseStageId];
+  if (!base) return null;
+  return buildStageForDifficulty(base, difficulty);
+}
+
+export function getAllStagesForDifficulty(difficulty: CampaignDifficulty = 'NORMAL'): StageDef[] {
+  if (difficulty === 'NORMAL') return STAGES;
+  return STAGES.map((s) => buildStageForDifficulty(s, difficulty));
+}
+
+export function getStagesByRegion(
+  regionId: string,
+  difficulty: CampaignDifficulty = 'NORMAL',
+): StageDef[] {
+  const baseList = STAGES.filter((s) => s.regionId === regionId);
+  if (difficulty === 'NORMAL') return baseList;
+  return baseList.map((s) => buildStageForDifficulty(s, difficulty));
 }
 
 export function getNextStageId(currentStageId: string): string | null {
-  const idx = STAGES.findIndex((s) => s.id === currentStageId);
+  const { baseStageId, difficulty } = parseCampaignStageId(currentStageId);
+  const idx = STAGES.findIndex((s) => s.id === baseStageId);
   if (idx === -1 || idx + 1 >= STAGES.length) return null;
-  return STAGES[idx + 1].id;
+  return encodeCampaignStageId(STAGES[idx + 1].id, difficulty);
 }
 
 /**
- * STRICT SEQUENTIAL REGION UNLOCK:
- * - Chapter 1 (`region_1`) is always unlocked.
- * - Chapter N (`N >= 2`) unlocks ONLY after ALL 12 stages of Chapter N-1 are cleared!
+ * STRICT SEQUENTIAL REGION UNLOCK (per Campaign World Level):
+ * - World Level itself must be unlocked first (Normal always open; Hard requires Normal 10-12; Hell requires Hard 10-12).
+ * - Chapter 1 (`region_1`) opens immediately once that World Level is unlocked.
+ * - Chapter N (`N >= 2`) unlocks ONLY after ALL 12 stages of Chapter N-1 in THAT World Level are cleared!
  */
-export function isRegionUnlocked(regionId: string, clearedStages: string[]): boolean {
+export function isRegionUnlocked(
+  regionId: string,
+  clearedStages: string[],
+  difficulty: CampaignDifficulty = 'NORMAL',
+): boolean {
+  if (!isDifficultyUnlocked(difficulty, clearedStages)) return false;
   const region = REGION_MAP[regionId];
   if (!region) return false;
   if (region.chapter <= 1) return true;
   const prevRegionId = `region_${region.chapter - 1}`;
-  const prevStages = getStagesByRegion(prevRegionId);
+  const prevStages = getStagesByRegion(prevRegionId, difficulty);
   return prevStages.length > 0 && prevStages.every((s) => clearedStages.includes(s.id));
 }
 
 /**
- * STRICT SEQUENTIAL STAGE UNLOCK:
- * - Region must be unlocked first (all 12 stages of previous region cleared).
+ * STRICT SEQUENTIAL STAGE UNLOCK (per Campaign World Level):
+ * - Region must be unlocked first in that stage's World Level.
  * - Stage X-1 opens when Region X is unlocked.
- * - Stage X-N (`N >= 2`) unlocks only after Stage X-(N-1) is cleared.
+ * - Stage X-N (`N >= 2`) unlocks only after Stage X-(N-1) in the same World Level is cleared.
  */
 export function isStageUnlocked(stage: StageDef, clearedStages: string[]): boolean {
-  if (!isRegionUnlocked(stage.regionId, clearedStages)) return false;
+  const diff = stage.difficulty ?? 'NORMAL';
+  if (!isRegionUnlocked(stage.regionId, clearedStages, diff)) return false;
   if (stage.stageNumber <= 1) return true;
-  const prevId = `stage_${stage.chapter}_${stage.stageNumber - 1}`;
+  const prevId = encodeCampaignStageId(`stage_${stage.chapter}_${stage.stageNumber - 1}`, diff);
   return clearedStages.includes(prevId);
 }
 
 /**
- * Returns the highest unlocked frontier stage (safe fallback if saved selectedStageId is locked).
+ * Returns the highest unlocked frontier stage for a given World Level.
  */
-export function getHighestUnlockedStage(clearedStages: string[]): StageDef {
-  let highest = STAGES[0];
-  for (const s of STAGES) {
+export function getHighestUnlockedStage(
+  clearedStages: string[],
+  difficulty: CampaignDifficulty = 'NORMAL',
+): StageDef {
+  const all = getAllStagesForDifficulty(difficulty);
+  let highest = all[0];
+  for (const s of all) {
     if (isStageUnlocked(s, clearedStages)) {
       highest = s;
     }

@@ -20,7 +20,12 @@ import {
 import { parseDungeonStageId, resolveAnyStageDef } from '../data/dungeons';
 import { HERO_MAP } from '../data/heroes';
 import { SPIRE_MAX_FLOOR, encodeSpireStageId, parseSpireStageId } from '../data/spire';
-import { getNextStageId, isStageUnlocked, STAGE_MAP } from '../data/stages';
+import {
+  CAMPAIGN_DIFFICULTY_MAP,
+  getCampaignStageById,
+  getNextStageId,
+  isStageUnlocked,
+} from '../data/stages';
 import { getFallbackCardSvg } from '../engine/AssetManager';
 import { audioManager } from '../engine/AudioManager';
 import { CombatEngine } from '../engine/CombatEngine';
@@ -94,9 +99,13 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
     ? getDungeonEntriesLeft(parsedDungeon.dungeonId).canEnter
     : true;
   const nextStageId = isDungeonStage || isSpireStage ? null : getNextStageId(stageId);
-  const candidateNext = nextStageId ? STAGE_MAP[nextStageId] : null;
+  const candidateNext = nextStageId ? getCampaignStageById(nextStageId) : null;
   const nextStage =
     candidateNext && isStageUnlocked(candidateNext, clearedStages) ? candidateNext : null;
+  const worldDiffCfg =
+    resolvedStageDef.difficulty && resolvedStageDef.difficulty !== 'NORMAL'
+      ? CAMPAIGN_DIFFICULTY_MAP[resolvedStageDef.difficulty]
+      : null;
   const nextSpireFloor =
     isSpireStage && parsedSpireFloor < SPIRE_MAX_FLOOR ? parsedSpireFloor + 1 : null;
 
@@ -185,7 +194,21 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between gap-1.5">
             {/* Minimal Floating Stage Plaque */}
-            <div className="pointer-events-auto rpg-panel-subtle px-2.5 py-1 flex items-center gap-1.5 sm:gap-2.5 border-l-4 border-l-amber-400 min-w-0">
+            <div
+              className="pointer-events-auto rpg-panel-subtle px-2.5 py-1 flex items-center gap-1.5 sm:gap-2.5 border-l-4 min-w-0"
+              style={{ borderLeftColor: worldDiffCfg ? worldDiffCfg.themeColor : '#fbbf24' }}
+            >
+              {worldDiffCfg && (
+                <span
+                  className="px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-display font-black uppercase tracking-wider border bg-slate-950/90 shrink-0"
+                  style={{
+                    borderColor: worldDiffCfg.themeColor,
+                    color: worldDiffCfg.themeColor,
+                  }}
+                >
+                  {worldDiffCfg.shortLabel} {worldDiffCfg.label}
+                </span>
+              )}
               <div className="text-[10px] sm:text-[11px] font-display font-extrabold tracking-wider text-amber-300 uppercase truncate">
                 <span className="sm:hidden">{shortStageCode}</span>
                 <span className="hidden sm:inline">{stageName}</span>
@@ -228,6 +251,20 @@ export const CombatHUD: React.FC<CombatHUDProps> = ({ stageId, onSelectStage, on
                 >
                   <Zap className="w-2.5 h-2.5" />
                   {resolvedStageDef.spireModifier.name}
+                </span>
+              )}
+              {resolvedStageDef.worldModifier && (
+                <span
+                  title={`${resolvedStageDef.worldModifier.name}: ${resolvedStageDef.worldModifier.desc}`}
+                  className="hidden xl:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-display font-black uppercase border shrink-0"
+                  style={{
+                    color: resolvedStageDef.worldModifier.color,
+                    borderColor: `${resolvedStageDef.worldModifier.color}88`,
+                    backgroundColor: `${resolvedStageDef.worldModifier.color}18`,
+                  }}
+                >
+                  <Flame className="w-2.5 h-2.5" />
+                  {resolvedStageDef.worldModifier.name}
                 </span>
               )}
             </div>
