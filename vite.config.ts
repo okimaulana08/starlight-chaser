@@ -54,7 +54,7 @@ export default defineConfig({
             urlPattern: /\/assets\/.*\.(?:webp|png|jpg)$/i,
             handler: 'StaleWhileRevalidate',
             options: {
-              cacheName: 'starlight-art-v11',
+              cacheName: 'starlight-art-v12',
               expiration: {
                 maxEntries: 320,
                 maxAgeSeconds: 60 * 60 * 24 * 30,
