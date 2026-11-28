@@ -5,6 +5,29 @@ import { HEROES } from './heroes';
  * Active Event Banners displayed under the Summon > EVENT tab (with sub-tabs).
  * Any hero featured here (UR or SSR rate-up) is automatically excluded from the permanent Hero Summon pool!
  */
+export const HERO_BANNER_UR_VELARIS: BannerDef = {
+  id: 'banner_hero_zero_meridian_ur',
+  type: 'HERO',
+  name: 'Sovereign of the Zero Meridian',
+  eventSubTabLabel: '❖ UR • Zero Meridian',
+  subtitle:
+    'NEW LIMITED UR EVENT — Featured: Velaris (UR Astral Assault Sovereign • Boss-Slayer & Empyrean Transcendence)',
+  featuredIds: ['velaris'],
+  poolUR: ['velaris'],
+  poolSSR: ['vespera', 'aurelia', 'zephyrion', 'vaelen', 'seraphina', 'draven', 'elara'],
+  poolSR: ['ignis', 'garrick', 'lyra', 'raze', 'orion'],
+  poolR: ['bram', 'kael', 'nyx', 'titus', 'clara'],
+  isLimitedEvent: true,
+  urBaseRate: 0.006,
+  softPity: 70,
+  hardPity: 100,
+  singleCost: 160,
+  tenCost: 1600,
+  sparkCost: 160,
+  accentColor: '#818cf8',
+  backgroundAsset: '/assets/banners/bg_summon_velaris_ur.webp',
+};
+
 export const HERO_BANNER_UR: BannerDef = {
   id: 'banner_hero_sovereign_ur',
   type: 'HERO',
@@ -51,7 +74,11 @@ export const HERO_BANNER_EVENT_SSR: BannerDef = {
 // Backward-compatible export alias
 export const HERO_BANNER_NEW = HERO_BANNER_EVENT_SSR;
 
-export const EVENT_HERO_BANNERS: BannerDef[] = [HERO_BANNER_UR, HERO_BANNER_EVENT_SSR];
+export const EVENT_HERO_BANNERS: BannerDef[] = [
+  HERO_BANNER_UR_VELARIS,
+  HERO_BANNER_UR,
+  HERO_BANNER_EVENT_SSR,
+];
 
 /**
  * Dynamic set of all Hero IDs currently featured in active Event banners.

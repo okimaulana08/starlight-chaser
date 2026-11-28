@@ -484,11 +484,15 @@ export const SkillInspector: React.FC<SkillInspectorProps> = ({ hero, owned }) =
                 ❖ Empyrean Empowered
               </span>
               <span className="text-right font-bold text-amber-100 leading-snug">
-                {hero.id === 'hero_astraea'
+                {hero.id === 'astraea'
                   ? selected === 'PASSIVE'
                     ? '5-Stack Six-Star Barrage (260% True DMG + 0.8 SP)'
                     : '12s Empyrean Domain (0.9s rapid starfall bolts)'
-                  : hero.transcendence.summary}
+                  : hero.id === 'velaris'
+                    ? selected === 'PASSIVE'
+                      ? '2-Hit Singularity Edge (240% True Slash + Boss Break)'
+                      : '12s Empyrean Zero Meridian Rift (0.9s True Blade Echoes)'
+                    : hero.transcendence.summary}
               </span>
             </div>
           )}

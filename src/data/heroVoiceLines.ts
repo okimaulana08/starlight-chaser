@@ -12,6 +12,12 @@ const HERO_EXTRA_LINES: Record<string, string[]> = {
     'Seraphina’s forbidden starchart only glimpsed my silhouette. Now I walk beside your vanguard in full starlight.',
     'Align our Starlight Link and witness the true majesty of a Sovereign Domain.',
   ],
+  velaris: [
+    'At the Zero Meridian, every fractured horizon bows to a single cut.',
+    'Astraea mends the fallen sky; I sever whatever crawls through the cracks. Name your target, Commander.',
+    'Four rift-blades already track the Boss’s pulse. Once its guard breaks, reality splits in five slashes.',
+    'Stand beside me on the event horizon—no eclipse can swallow a vanguard that refuses to blink.',
+  ],
   vespera: [
     'Target locked at four hundred meters. Once the magma coils peak, nothing walks away.',
     'Tell Draven to keep them burning—my Ember Cluster Barrage loves a hot target.',

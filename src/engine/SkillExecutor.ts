@@ -588,6 +588,37 @@ export class SkillExecutor {
           this.applyDamageInArea(ctx, hero, skill, false, tx, ty, effectiveRadius, angle, 0.55, false);
         },
       });
+    } else if (skill.id === 'velaris_ult') {
+      // UR ZERO MERIDIAN RIFT (9s, or 12s when Transcended!) + ECLIPSE OVERDRIVE (+25% AtkSpd, +20% Lifesteal)!
+      const riftDur = hero.transcended ? 12.0 : 9.0;
+      hero.overdriveTimer = Math.max(hero.overdriveTimer, riftDur);
+      hero.atkSpdBuffTimer = Math.max(hero.atkSpdBuffTimer, riftDur);
+      hero.atkSpdBuffValue = Math.max(hero.atkSpdBuffValue, hero.transcended ? 0.32 : 0.25);
+      hero.atkBuffTimer = Math.max(hero.atkBuffTimer, riftDur);
+      hero.atkBuffValue = Math.max(hero.atkBuffValue, hero.transcended ? 0.25 : 0.18);
+      ctx.addZone({
+        id: `zero_meridian_rift_${Date.now()}`,
+        kind: 'CELESTIAL_DOMAIN',
+        ownerHeroId: hero.heroId,
+        x: tx,
+        y: ty,
+        radius: hero.transcended ? 430 : 390,
+        remaining: riftDur,
+        maxDuration: riftDur,
+        tickTimer: hero.transcended ? 0.9 : 1.2,
+        color: hero.transcended ? 0xfde047 : 0x818cf8,
+      });
+      ctx.notifyBanner(
+        hero.transcended
+          ? '❖ EMPYREAN ZERO MERIDIAN — ECLIPSE MONARCH UNLEASHED! ❖'
+          : '❖ ZERO MERIDIAN RIFT OPENED — VELARIS ECLIPSE OVERDRIVE! ❖',
+      );
+    } else if (skill.id === 'velaris_s2') {
+      // Horizon Sever grants Velaris +25% Crit Rate (6s) + 18% Max HP Starlight Barrier
+      hero.critBuffTimer = Math.max(hero.critBuffTimer, 6.0);
+      hero.critBuffValue = Math.max(hero.critBuffValue, 0.25);
+      const shAmt = Math.round(hero.maxHp * 0.18 * hero.stats.shieldPower);
+      ctx.grantShield(hero, hero, shAmt, false);
     } else if (skill.id === 'vaelen_ult') {
       ctx.addZone({
         id: `rift_${Date.now()}`,

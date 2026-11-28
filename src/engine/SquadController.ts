@@ -480,6 +480,32 @@ export class SquadController {
         }
       }
 
+      // Velaris UR Passive (Singularity Edge): Every 3rd basic attack (2nd when Transcended) unleashes a True Dimensional Slash + Boss Break + 12% Lifesteal!
+      if (hero.heroId === 'velaris') {
+        const triggerEvery = hero.transcended ? 2 : 3;
+        if (hero.basicCount % triggerEvery === 0) {
+          const slashColor = hero.transcended ? 0xfde047 : 0x818cf8;
+          ctx.spawnBeam(hero.x, hero.y - 36, hitEnemy.x, hitEnemy.y - 26, slashColor, hero.transcended ? 12 : 9);
+          ctx.spawnRingWave(hitEnemy.x, hitEnemy.y, hero.transcended ? 92 : 76, hero.transcended ? 0xfde047 : 0x38e8ff, 0.36);
+          ctx.spawnDamageText(
+            hitEnemy.x,
+            hitEnemy.y - 54,
+            hero.transcended ? '❖ EMPYREAN FRACTURE!' : '✦ RIFT FRACTURE!',
+            slashColor,
+            true,
+          );
+          const riftRes = ctx.damageEnemy(hero, hitEnemy, {
+            multiplier: hero.transcended ? 2.4 : 1.9,
+            isSkill: true,
+            isTrueDamage: true,
+            breakDamage: hero.transcended ? 26 : 18,
+          });
+          if (riftRes.damage > 0) {
+            ctx.healHero(hero, hero, Math.round(riftRes.damage * 0.12), false);
+          }
+        }
+      }
+
       // Vaelen Passive: Every 3rd basic attack implants Starfall Mark (6s)
       if (hero.heroId === 'vaelen' && hero.basicCount % 3 === 0) {
         hitEnemy.starfallMarkTimer = 6.0;

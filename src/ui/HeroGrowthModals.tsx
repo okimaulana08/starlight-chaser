@@ -1051,7 +1051,7 @@ export const TranscendModal: React.FC<TranscendModalProps> = ({
                     SSR TRANSCENDENCE COMING SOON
                   </div>
                   <p className="text-xs text-slate-300 max-w-md mx-auto">
-                    Transcendence visual evolutions are unlocked exclusively for UR & SSR Chasers after Awakening ★6. Currently live for <strong>UR Astraea</strong>!
+                    Transcendence visual evolutions are unlocked exclusively for UR & SSR Chasers after Awakening ★6. Currently live for <strong>UR Astraea &amp; UR Velaris</strong>!
                   </p>
                   <RpgButton variant="slate" size="md" onClick={onClose}>
                     Close

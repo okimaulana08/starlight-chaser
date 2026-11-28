@@ -411,6 +411,10 @@ export function computeHeroStats(
       sovTranscended && up ? up.squadFinalDmgBonus : sovereign.sovereignAura.squadFinalDmgBonus;
     critDmg +=
       sovTranscended && up ? up.squadCritDmgBonus : sovereign.sovereignAura.squadCritDmgBonus;
+    breakDmgBonus +=
+      sovTranscended && up
+        ? (up.squadBreakDmgBonus ?? 0)
+        : (sovereign.sovereignAura.squadBreakDmgBonus ?? 0);
     // UR C6 Pinnacle Squad-Wide Resonance (+4% ATK & HP to entire squad!)
     if ((sovereignOwned?.constellation ?? 0) >= 6) {
       atkPct += 0.04;

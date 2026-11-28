@@ -126,6 +126,132 @@ export const HEROES: HeroDef[] = [
     },
   },
 
+  {
+    id: 'velaris',
+    name: 'Velaris',
+    title: 'Sovereign of the Zero Meridian',
+    tier: 'UR',
+    role: 'ASSAULT',
+    faction: 'ASTRAL',
+    themeColor: '#818cf8',
+    createdAt: '2026-11-28T01:00:00Z',
+    baseStats: {
+      hp: 1520,
+      atk: 274,
+      def: 122,
+      critRate: 0.2,
+      critDmg: 1.7,
+      atkSpeed: 1.18,
+      moveSpeed: 224,
+      attackRange: 108,
+    },
+    sovereignAura: {
+      name: 'Event Horizon Decree',
+      description:
+        'Celestial Wildcard: harmonizes with your squad’s Faction Resonance or completes 4-Faction Harmony. Grants all allies +12% Final DMG, +12% Crit DMG, +15% Boss Break DMG, and upgrades Velaris Starlight Link Bursts to +50% Bonus DMG.',
+      squadFinalDmgBonus: 0.12,
+      squadCritDmgBonus: 0.12,
+      squadBreakDmgBonus: 0.15,
+      linkBurstBonus: 0.5,
+      wildcardFaction: true,
+    },
+    passive: {
+      id: 'singularity_edge',
+      name: 'Singularity Edge',
+      description:
+        'Every 3rd basic attack or active skill hit triggers a Rift Fracture (every 2nd when Transcended), cleaving the target with a True Dimensional Slash (190% ATK True DMG, +35% Boss Break DMG) and healing Velaris for 12% of damage dealt.',
+    },
+    skills: [
+      {
+        id: 'velaris_s1',
+        name: 'Phase Rend',
+        description:
+          'Blurs along the Zero Meridian in 3 sequential dimensional slashes (205% ATK total, Multi-Hit), shredding enemy DEF by 22% (5s) and restoring 15% of damage dealt as Lifesteal.',
+        spCost: 1,
+        cooldown: 5.5,
+        aimType: 'LINE',
+        range: 260,
+        radius: 130,
+        multiplier: 2.05,
+        hitCount: 3,
+        effects: ['MULTI_HIT', 'DEF_SHRED', 'LIFESTEAL'],
+        vfxKey: 'velaris_s1',
+      },
+      {
+        id: 'velaris_s2',
+        name: 'Horizon Sever',
+        description:
+          'Shatters boss guards with 4 lightning-fast eclipse cuts (310% ATK total, Multi-Hit, heavy Stun Cancel & Break DMG), granting Velaris +25% Crit Rate (6s) and an 18% Max HP Starlight Barrier.',
+        spCost: 2,
+        cooldown: 9,
+        aimType: 'CIRCLE',
+        range: 240,
+        radius: 175,
+        multiplier: 3.1,
+        hitCount: 4,
+        effects: ['MULTI_HIT', 'STUN_CANCEL', 'CRIT_BUFF', 'SHIELD'],
+        vfxKey: 'velaris_s2',
+      },
+    ],
+    ultimate: {
+      id: 'velaris_ult',
+      name: 'Zero Meridian: Eclipse Judgement',
+      description:
+        'Splits space itself in 5 sovereign eclipse slashes (680% ATK, +50% Execute vs <40% HP or Broken bosses) and tears open a 9s Zero Meridian Rift (12s Transcended): Velaris enters Eclipse Overdrive (+25% AtkSpd, +20% Lifesteal) while phantom meridian blades slice enemies every 1.2s (85% ATK True DMG).',
+      spCost: 0,
+      gaugeCost: 50,
+      cooldown: 21,
+      aimType: 'CIRCLE',
+      range: 340,
+      radius: 245,
+      multiplier: 6.8,
+      hitCount: 5,
+      effects: ['MULTI_HIT', 'EXECUTE', 'ATK_BUFF'],
+      vfxKey: 'ult_velaris',
+      cutInKey: 'cutin_velaris',
+    },
+    lore: 'Warden of the Zero Meridian — the silent threshold dividing Aetheria from the abyssal Void Rifts. While Astraea descended to mend the shattered Fifth Pillar, Velaris stepped out of the total eclipse itself to sever every anomaly daring to cross the event horizon.',
+    quote: 'At the Zero Meridian, every fractured horizon bows to a single cut.',
+    bondStory:
+      'Though his gaze carries the cold stillness of deep space, Velaris spends quiet nights recalibrating the Astral Observatory beside Seraphina and sparring at dawn with Vaelen. He admits to the Commander that a blade forged to sever dimensions only truly shines when defending a world worth keeping whole.',
+    assets: {
+      card: '/assets/heroes/hero_velaris_card.webp',
+      standing: '/assets/standing/standing_velaris.webp',
+      sprite: '/assets/sprites/battle_velaris.webp',
+      cutIn: '/assets/cutins/cutin_velaris.webp',
+      cutInVideo: '/assets/cutins/cutin_velaris.mp4',
+    },
+    transcendence: {
+      enabled: true,
+      formTitle: 'Empyrean Eclipse Monarch',
+      quote: 'Behold the unbroken Eclipse—every horizon fractures at my decree!',
+      summary:
+        'Unlocks Max Lv.100, +20% Base HP/ATK/DEF, +8% Crit Rate, +20% Crit DMG, Transcended Empyrean Visuals (Card, Lobby & Battle), upgraded Event Horizon Decree (+18% Final DMG / +22% Crit DMG / +25% Boss Break DMG / +70% Link Burst), 2-hit Singularity Edge True Slash (240% ATK), and 12s rapid Zero Meridian Rift.',
+      maxLevelCap: 100,
+      statSurge: {
+        baseStatMultBonus: 0.2,
+        critRateBonus: 0.08,
+        critDmgBonus: 0.2,
+      },
+      upgradedSovereignAura: {
+        name: 'Empyrean Horizon Decree',
+        description:
+          'Transcended Celestial Wildcard: harmonizes Faction Resonance or 4-Faction Harmony. Grants all allies +18% Final DMG, +22% Crit DMG, +25% Boss Break DMG, and upgrades Velaris Starlight Link Bursts to +70% Bonus DMG.',
+        squadFinalDmgBonus: 0.18,
+        squadCritDmgBonus: 0.22,
+        squadBreakDmgBonus: 0.25,
+        linkBurstBonus: 0.7,
+      },
+      assets: {
+        card: '/assets/heroes/hero_velaris_transcended_card.webp',
+        standing: '/assets/standing/standing_velaris_transcended.webp',
+        sprite: '/assets/sprites/battle_velaris_transcended.webp',
+        attackSprite: '/assets/sprites/battle_velaris_transcended_atk.webp',
+        attackScaleBoost: 1.2,
+      },
+    },
+  },
+
   // ==================== TIER SSR (FLAGSHIP HEROES) ====================
   {
     id: 'vespera',

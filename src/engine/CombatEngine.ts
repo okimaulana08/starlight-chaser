@@ -1639,20 +1639,45 @@ export class CombatEngine {
             }
           }
         } else if (z.kind === 'CELESTIAL_DOMAIN') {
-          // Every 1.2s (0.9s when Transcended!), rain prismatic orbital star-lances across enemies inside Celestial Domain!
+          // Every 1.2s (0.9s when Transcended!): Astraea rains prismatic orbital star-lances; Velaris unleashes True DMG Meridian Blade Echoes!
           z.tickTimer = owner.transcended ? 0.9 : 1.2;
+          const isVelarisRift = owner.heroId === 'velaris';
           const aliveFoes = this.ctx.enemies.filter((e) => e.alive);
-          const targets = aliveFoes.slice(0, owner.transcended ? 4 : 3);
-          const cols = [0xfde047, 0x38e8ff, 0xe879f9];
+          const targets = isVelarisRift
+            ? [...aliveFoes].sort((a, b) => (b.def.isBoss ? 1 : 0) - (a.def.isBoss ? 1 : 0)).slice(0, owner.transcended ? 3 : 2)
+            : aliveFoes.slice(0, owner.transcended ? 4 : 3);
+          const cols = isVelarisRift
+            ? owner.transcended
+              ? [0xfde047, 0xa855f7, 0x38e8ff]
+              : [0x818cf8, 0x38e8ff, 0xf43f5e]
+            : [0xfde047, 0x38e8ff, 0xe879f9];
           targets.forEach((e, idx) => {
             const col = cols[idx % cols.length];
-            this.pool.spawnSkyPillar(e.x, e.y, owner.transcended ? 78 : 68, col, false);
+            if (isVelarisRift) {
+              this.pool.spawnBeam(e.x - 56, e.y - 68, e.x + 56, e.y + 12, col, owner.transcended ? 11 : 9);
+              this.pool.spawnRingWave(e.x, e.y, owner.transcended ? 84 : 68, col, 0.34);
+            } else {
+              this.pool.spawnSkyPillar(e.x, e.y, owner.transcended ? 78 : 68, col, false);
+            }
             this.pool.spawnBurst(e.x, e.y - 26, col, 10, 36);
             this.handleDamageEnemy(owner, e, {
-              multiplier: owner.transcended ? 0.92 : 0.75,
+              multiplier: isVelarisRift
+                ? owner.transcended
+                  ? 1.05
+                  : 0.85
+                : owner.transcended
+                  ? 0.92
+                  : 0.75,
               isSkill: true,
-              hitShieldHits: 1,
-              breakDamage: owner.transcended ? 8 : 6,
+              isTrueDamage: isVelarisRift,
+              hitShieldHits: isVelarisRift ? 2 : 1,
+              breakDamage: isVelarisRift
+                ? owner.transcended
+                  ? 14
+                  : 10
+                : owner.transcended
+                  ? 8
+                  : 6,
             });
           });
         }
@@ -3453,6 +3478,10 @@ export class CombatEngine {
       if (h.heroId === 'astraea') {
         stacksLabel = h.ascensionTimer > 0 ? 'ASCEND' : 'BLADES';
         stacksCount = h.ascensionTimer > 0 ? Math.ceil(h.ascensionTimer) : h.starlightBlades;
+      } else if (h.heroId === 'velaris') {
+        const triggerEvery = h.transcended ? 2 : 3;
+        stacksLabel = h.overdriveTimer > 0 ? 'ECLIPSE' : 'RIFT';
+        stacksCount = h.overdriveTimer > 0 ? Math.ceil(h.overdriveTimer) : h.basicCount % triggerEvery;
       } else if (h.heroId === 'vespera') {
         stacksLabel = 'HEAT';
         stacksCount = h.heatRounds;

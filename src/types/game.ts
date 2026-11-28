@@ -155,6 +155,7 @@ export interface HeroTranscendenceDef {
     description: string;
     squadFinalDmgBonus: number;
     squadCritDmgBonus: number;
+    squadBreakDmgBonus?: number;
     linkBurstBonus: number;
   };
   assets: {
@@ -234,6 +235,7 @@ export interface HeroDef {
     description: string;
     squadFinalDmgBonus: number;
     squadCritDmgBonus: number;
+    squadBreakDmgBonus?: number;
     linkBurstBonus: number;
     wildcardFaction?: boolean;
   };

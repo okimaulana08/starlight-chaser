@@ -371,7 +371,11 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'EVENT', 
                 <div
                   key={item.id}
                   className={`relative flex flex-col items-center justify-end h-[92%] sm:h-[88%] ${
-                    i === 0 ? 'z-20 -mr-10 sm:-mr-14' : 'z-10 -ml-6 sm:-ml-10 opacity-95'
+                    featuredItems.length === 1
+                      ? 'z-20'
+                      : i === 0
+                        ? 'z-20 -mr-10 sm:-mr-14'
+                        : 'z-10 -ml-6 sm:-ml-10 opacity-95'
                   }`}
                 >
                   <div
@@ -602,7 +606,7 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'EVENT', 
                 }`}
               >
                 {isUrEvent
-                  ? '❖ 100% Astraea on UR'
+                  ? `❖ 100% ${HERO_MAP[banner.poolUR?.[0] ?? '']?.name ?? 'UR'} on UR`
                   : isPetBanner
                     ? '🐾 100% Aetherion on SSR'
                     : isStandardHeroBanner
@@ -633,8 +637,15 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'EVENT', 
             {isUrEvent ? (
               <>
                 Base: <strong className="text-fuchsia-200">UR 0.6%</strong> •{' '}
-                <strong className="text-amber-300">SSR 2.5% (Vespera 50% Up)</strong> •{' '}
-                <strong className="text-violet-300">SR 17.5%</strong>. SSR pulls keep UR Pity intact!
+                <strong className="text-amber-300">
+                  {banner.featuredIds.some((id) => HERO_MAP[id]?.tier === 'SSR')
+                    ? `SSR 2.5% (${banner.featuredIds
+                        .filter((id) => HERO_MAP[id]?.tier === 'SSR')
+                        .map((id) => HERO_MAP[id]?.name)
+                        .join('/')} 50% Up)`
+                    : 'SSR 2.5% (All SSR Pool)'}
+                </strong>{' '}
+                • <strong className="text-violet-300">SR 17.5%</strong>. SSR pulls keep UR Pity intact!
                 10× guarantees SR+.
               </>
             ) : isPetBanner ? (
