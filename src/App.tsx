@@ -30,7 +30,7 @@ export const App: React.FC = () => {
   const [activeStageId, setActiveStageId] = useState<string>('stage_1_1');
   const [combatReturnScreen, setCombatReturnScreen] = useState<'LOBBY' | 'DUNGEON' | 'SPIRE'>('LOBBY');
   const [shopTab, setShopTab] = useState<ShopCategory>('GROWTH');
-  const [gachaTab, setGachaTab] = useState<'UR_EVENT' | 'NEW_HERO' | 'HERO' | 'PET' | 'RELIC'>('UR_EVENT');
+  const [gachaTab, setGachaTab] = useState<'EVENT' | 'HERO' | 'PET' | 'RELIC'>('EVENT');
   const [dungeonFocus, setDungeonFocus] = useState<{
     dungeonId: DungeonId;
     faction?: Faction;
@@ -77,7 +77,7 @@ export const App: React.FC = () => {
     setScreen('SHOP');
   };
 
-  const handleOpenGacha = (tab: 'UR_EVENT' | 'NEW_HERO' | 'HERO' | 'PET' | 'RELIC' = 'UR_EVENT') => {
+  const handleOpenGacha = (tab: 'EVENT' | 'HERO' | 'PET' | 'RELIC' = 'EVENT') => {
     setGachaTab(tab);
     setScreen('GACHA');
   };
@@ -157,7 +157,7 @@ export const App: React.FC = () => {
               <GachaScreen
                 initialTab={gachaTab}
                 onBack={() => {
-                  setGachaTab('UR_EVENT');
+                  setGachaTab('EVENT');
                   setScreen('LOBBY');
                 }}
               />

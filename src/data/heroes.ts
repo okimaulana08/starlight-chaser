@@ -10,6 +10,7 @@ export const HEROES: HeroDef[] = [
     role: 'MAGE',
     faction: 'SOLARIS',
     themeColor: '#e879f9',
+    createdAt: '2026-11-26T02:00:00Z',
     baseStats: {
       hp: 1380,
       atk: 268,
@@ -134,6 +135,7 @@ export const HEROES: HeroDef[] = [
     role: 'RANGER',
     faction: 'ASHEN',
     themeColor: '#ff4d2e',
+    createdAt: '2026-11-26T01:00:00Z',
     baseStats: {
       hp: 1210,
       atk: 232,
@@ -218,6 +220,7 @@ export const HEROES: HeroDef[] = [
     role: 'ASSAULT',
     faction: 'SOLARIS',
     themeColor: '#f5c84c',
+    createdAt: '2026-11-20T01:00:00Z',
     baseStats: {
       hp: 1450,
       atk: 210,
@@ -301,6 +304,7 @@ export const HEROES: HeroDef[] = [
     role: 'MAGE',
     faction: 'ASTRAL',
     themeColor: '#38e8ff',
+    createdAt: '2026-11-20T02:00:00Z',
     baseStats: {
       hp: 1150,
       atk: 235,
@@ -385,6 +389,7 @@ export const HEROES: HeroDef[] = [
     role: 'TANK',
     faction: 'ASHEN',
     themeColor: '#f97316',
+    createdAt: '2026-11-20T03:00:00Z',
     baseStats: {
       hp: 2150,
       atk: 145,
@@ -469,6 +474,7 @@ export const HEROES: HeroDef[] = [
     role: 'RANGER',
     faction: 'VERDANT',
     themeColor: '#34d399',
+    createdAt: '2026-11-20T04:00:00Z',
     baseStats: {
       hp: 1180,
       atk: 225,
@@ -553,6 +559,7 @@ export const HEROES: HeroDef[] = [
     role: 'HEALER',
     faction: 'VERDANT',
     themeColor: '#34d399',
+    createdAt: '2026-11-20T05:00:00Z',
     baseStats: {
       hp: 1520,
       atk: 195,
@@ -635,6 +642,7 @@ export const HEROES: HeroDef[] = [
     role: 'ASSAULT',
     faction: 'ASTRAL',
     themeColor: '#818cf8',
+    createdAt: '2026-11-20T06:00:00Z',
     baseStats: {
       hp: 1380,
       atk: 228,
@@ -721,6 +729,7 @@ export const HEROES: HeroDef[] = [
     role: 'TANK',
     faction: 'SOLARIS',
     themeColor: '#eab308',
+    createdAt: '2026-11-20T07:00:00Z',
     baseStats: {
       hp: 1850,
       atk: 125,
@@ -802,6 +811,7 @@ export const HEROES: HeroDef[] = [
     role: 'HEALER',
     faction: 'VERDANT',
     themeColor: '#10b981',
+    createdAt: '2026-11-20T08:00:00Z',
     baseStats: {
       hp: 1320,
       atk: 140,
@@ -883,6 +893,7 @@ export const HEROES: HeroDef[] = [
     role: 'ASSAULT',
     faction: 'ASHEN',
     themeColor: '#ef4444',
+    createdAt: '2026-11-20T09:00:00Z',
     baseStats: {
       hp: 1380,
       atk: 190,
@@ -965,6 +976,7 @@ export const HEROES: HeroDef[] = [
     role: 'RANGER',
     faction: 'ASTRAL',
     themeColor: '#60a5fa',
+    createdAt: '2026-11-20T10:00:00Z',
     baseStats: {
       hp: 1120,
       atk: 185,
@@ -1050,6 +1062,7 @@ export const HEROES: HeroDef[] = [
     role: 'RANGER',
     faction: 'VERDANT',
     themeColor: '#22c55e',
+    createdAt: '2026-11-20T11:00:00Z',
     baseStats: {
       hp: 1020,
       atk: 175,
@@ -1133,6 +1146,7 @@ export const HEROES: HeroDef[] = [
     role: 'MAGE',
     faction: 'ASHEN',
     themeColor: '#fb7185',
+    createdAt: '2026-11-20T12:00:00Z',
     baseStats: {
       hp: 980,
       atk: 180,
@@ -1215,6 +1229,7 @@ export const HEROES: HeroDef[] = [
     role: 'TANK',
     faction: 'ASTRAL',
     themeColor: '#818cf8',
+    createdAt: '2026-11-20T13:00:00Z',
     baseStats: {
       hp: 1650,
       atk: 110,
@@ -1297,6 +1312,7 @@ export const HEROES: HeroDef[] = [
     role: 'HEALER',
     faction: 'SOLARIS',
     themeColor: '#fcd34d',
+    createdAt: '2026-11-20T14:00:00Z',
     baseStats: {
       hp: 1180,
       atk: 130,
@@ -1378,6 +1394,7 @@ export const HEROES: HeroDef[] = [
     role: 'MAGE',
     faction: 'SOLARIS',
     themeColor: '#fb923c',
+    createdAt: '2026-11-20T15:00:00Z',
     baseStats: {
       hp: 1120,
       atk: 205,
@@ -1460,6 +1477,7 @@ export const HEROES: HeroDef[] = [
     role: 'TANK',
     faction: 'ASHEN',
     themeColor: '#f43f5e',
+    createdAt: '2026-11-20T16:00:00Z',
     baseStats: {
       hp: 1740,
       atk: 120,

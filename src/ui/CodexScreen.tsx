@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle2, Film, Sparkles, X } from 'lucide-react';
 import { ENEMIES } from '../data/enemies';
@@ -8,7 +8,7 @@ import { PETS } from '../data/pets';
 import { RELICS } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
 import { CODEX_MILESTONES, usePlayerStore } from '../store/usePlayerStore';
-import type { EnemyDef, HeroDef, PetDef, RelicDef } from '../types/game';
+import type { EnemyDef, HeroDef, PetDef, RelicDef, Tier } from '../types/game';
 import { ArtImage } from './ArtImage';
 import { CollectibleCard } from './CollectibleCard';
 import { GameIcon } from './GameIcon';
@@ -31,12 +31,80 @@ type InspectItem =
   | { kind: 'RELIC'; data: RelicDef }
   | { kind: 'ENEMY'; data: EnemyDef };
 
+const RARITY_GROUPS: Array<{
+  tier: Tier;
+  heroTitle: string;
+  relicTitle: string;
+  accent: string;
+  border: string;
+  bg: string;
+}> = [
+  {
+    tier: 'UR',
+    heroTitle: 'Celestial Sovereigns',
+    relicTitle: 'Sovereign Relics',
+    accent: '#e879f9',
+    border: 'rgba(232,121,249,0.45)',
+    bg: 'linear-gradient(90deg, rgba(232,121,249,0.18), rgba(245,200,76,0.08), transparent)',
+  },
+  {
+    tier: 'SSR',
+    heroTitle: 'Starlight Champions',
+    relicTitle: 'Mythic Relics',
+    accent: '#f5c84c',
+    border: 'rgba(245,200,76,0.42)',
+    bg: 'linear-gradient(90deg, rgba(245,200,76,0.16), rgba(245,200,76,0.02), transparent)',
+  },
+  {
+    tier: 'SR',
+    heroTitle: 'Vanguard Chasers',
+    relicTitle: 'Astral Relics',
+    accent: '#c084fc',
+    border: 'rgba(192,132,252,0.4)',
+    bg: 'linear-gradient(90deg, rgba(192,132,252,0.14), rgba(192,132,252,0.02), transparent)',
+  },
+  {
+    tier: 'R',
+    heroTitle: 'Frontier Chasers',
+    relicTitle: 'Starlight Relics',
+    accent: '#38bdf8',
+    border: 'rgba(56,189,248,0.38)',
+    bg: 'linear-gradient(90deg, rgba(56,189,248,0.13), rgba(56,189,248,0.02), transparent)',
+  },
+];
+
+function getCreatedTime(createdAt?: string): number {
+  if (!createdAt) return 0;
+  const parsed = Date.parse(createdAt);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
 export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
   const { roster, unlockedCodexIds, claimedCodexMilestones, claimCodexMilestone } = usePlayerStore();
   const [tab, setTab] = useState<'HEROES' | 'PETS' | 'RELICS' | 'BESTIARY' | 'WORLD'>('HEROES');
   const [inspect, setInspect] = useState<InspectItem | null>(null);
   const [previewUltVideo, setPreviewUltVideo] = useState(false);
   const [previewTranscended, setPreviewTranscended] = useState(false);
+
+  const groupedHeroes = useMemo(
+    () =>
+      RARITY_GROUPS.map((group) => {
+        const items = HEROES.filter((h) => h.tier === group.tier).sort(
+          (a, b) => getCreatedTime(a.createdAt) - getCreatedTime(b.createdAt),
+        );
+        return { ...group, items };
+      }).filter((g) => g.items.length > 0),
+    [],
+  );
+
+  const groupedRelics = useMemo(
+    () =>
+      RARITY_GROUPS.map((group) => ({
+        ...group,
+        items: RELICS.filter((r) => r.tier === group.tier),
+      })).filter((g) => g.items.length > 0),
+    [],
+  );
 
   const totalEntries = HEROES.length + PETS.length + RELICS.length + ENEMIES.length;
   const unlockedCount = unlockedCodexIds.length;
@@ -120,30 +188,64 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
       {/* GALLERY CONTENT */}
       <main className="relative z-10 flex-1 px-5 pb-5 pt-2 overflow-y-auto">
         {tab === 'HEROES' && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
-            {HEROES.map((h) => {
-              const unlocked = unlockedCodexIds.includes(h.id);
-              const ownedHero = roster[h.id];
-              const visuals = resolveHeroVisuals(h, ownedHero);
+          <div className="space-y-6">
+            {groupedHeroes.map((group) => {
+              const unlockedInGroup = group.items.filter((h) =>
+                unlockedCodexIds.includes(h.id),
+              ).length;
               return (
-                <CollectibleCard
-                  key={h.id}
-                  kind="HERO"
-                  id={h.id}
-                  src={visuals.card}
-                  name={h.name}
-                  subtitle={visuals.title}
-                  tier={h.tier}
-                  role={h.role}
-                  transcended={Boolean(ownedHero?.transcended)}
-                  locked={!unlocked}
-                  onClick={() => {
-                    audioManager.playSfx('button');
-                    setPreviewUltVideo(false);
-                    setPreviewTranscended(Boolean(ownedHero?.transcended));
-                    setInspect({ kind: 'HERO', data: h });
-                  }}
-                />
+                <section key={group.tier} className="space-y-3">
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-xl border"
+                    style={{
+                      borderColor: group.border,
+                      background: group.bg,
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <RarityCrest tier={group.tier} size="sm" />
+                      <h2
+                        className="font-display text-sm sm:text-base font-black uppercase tracking-[0.14em]"
+                        style={{ color: group.accent }}
+                      >
+                        {group.heroTitle}
+                      </h2>
+                      <span className="hidden sm:inline text-[10px] font-semibold text-slate-400">
+                        • Oldest → Newest
+                      </span>
+                    </div>
+                    <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-950/75 border border-white/10 text-slate-200">
+                      {unlockedInGroup}/{group.items.length} Unlocked
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+                    {group.items.map((h) => {
+                      const unlocked = unlockedCodexIds.includes(h.id);
+                      const ownedHero = roster[h.id];
+                      const visuals = resolveHeroVisuals(h, ownedHero);
+                      return (
+                        <CollectibleCard
+                          key={h.id}
+                          kind="HERO"
+                          id={h.id}
+                          src={visuals.card}
+                          name={h.name}
+                          subtitle={visuals.title}
+                          tier={h.tier}
+                          role={h.role}
+                          transcended={Boolean(ownedHero?.transcended)}
+                          locked={!unlocked}
+                          onClick={() => {
+                            audioManager.playSfx('button');
+                            setPreviewUltVideo(false);
+                            setPreviewTranscended(Boolean(ownedHero?.transcended));
+                            setInspect({ kind: 'HERO', data: h });
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
               );
             })}
           </div>
@@ -175,25 +277,56 @@ export const CodexScreen: React.FC<CodexScreenProps> = ({ onBack }) => {
         )}
 
         {tab === 'RELICS' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-w-5xl">
-            {RELICS.map((r) => {
-              const unlocked = unlockedCodexIds.includes(r.id);
+          <div className="space-y-6 max-w-6xl">
+            {groupedRelics.map((group) => {
+              const unlockedInGroup = group.items.filter((r) =>
+                unlockedCodexIds.includes(r.id),
+              ).length;
               return (
-                <CollectibleCard
-                  key={r.id}
-                  kind="RELIC"
-                  id={r.id}
-                  src={r.assetCard}
-                  name={r.name}
-                  subtitle={`${r.preferredRole} Starlight Relic`}
-                  tier={r.tier}
-                  role={r.preferredRole}
-                  locked={!unlocked}
-                  onClick={() => {
-                    audioManager.playSfx('button');
-                    setInspect({ kind: 'RELIC', data: r });
-                  }}
-                />
+                <section key={group.tier} className="space-y-3">
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-xl border"
+                    style={{
+                      borderColor: group.border,
+                      background: group.bg,
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <RarityCrest tier={group.tier} size="sm" />
+                      <h2
+                        className="font-display text-sm sm:text-base font-black uppercase tracking-[0.14em]"
+                        style={{ color: group.accent }}
+                      >
+                        {group.relicTitle}
+                      </h2>
+                    </div>
+                    <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-950/75 border border-white/10 text-slate-200">
+                      {unlockedInGroup}/{group.items.length} Unlocked
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {group.items.map((r) => {
+                      const unlocked = unlockedCodexIds.includes(r.id);
+                      return (
+                        <CollectibleCard
+                          key={r.id}
+                          kind="RELIC"
+                          id={r.id}
+                          src={r.assetCard}
+                          name={r.name}
+                          subtitle={`${r.preferredRole} Starlight Relic`}
+                          tier={r.tier}
+                          role={r.preferredRole}
+                          locked={!unlocked}
+                          onClick={() => {
+                            audioManager.playSfx('button');
+                            setInspect({ kind: 'RELIC', data: r });
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
               );
             })}
           </div>

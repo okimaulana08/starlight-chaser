@@ -226,6 +226,8 @@ export interface HeroDef {
   role: Role;
   faction: Faction;
   themeColor: string;
+  /** ISO creation/release timestamp used to sort Codex oldest → newest (latest at the end). */
+  createdAt?: string;
   baseStats: BaseStats;
   sovereignAura?: {
     name: string;
@@ -470,6 +472,12 @@ export interface BannerDef {
   poolSR: string[];
   poolR: string[];
   isLimitedEvent?: boolean;
+  /** Short label displayed on Event sub-tab switcher (e.g. "UR • Fifth Pillar"). */
+  eventSubTabLabel?: string;
+  /** True on the permanent Hero Summon banner (equal SSR odds across non-event pool). */
+  isStandardPool?: boolean;
+  /** Hero IDs currently featured in Event banners and excluded from Hero Summon. */
+  excludedEventHeroIds?: string[];
   urBaseRate?: number;
   ssrBaseRate?: number;
   srBaseRate?: number;

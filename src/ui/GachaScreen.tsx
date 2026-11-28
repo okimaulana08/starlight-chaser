@@ -2,13 +2,12 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ShoppingBag } from 'lucide-react';
 import {
-  HERO_BANNER,
-  HERO_BANNER_NEW,
-  HERO_BANNER_UR,
+  EVENT_HERO_BANNERS,
+  HERO_BANNER_STANDARD,
   PET_BANNER,
   RELIC_BANNER,
 } from '../data/banners';
-import { HERO_MAP } from '../data/heroes';
+import { HEROES, HERO_MAP } from '../data/heroes';
 import { PET_MAP } from '../data/pets';
 import { RELIC_MAP } from '../data/relics';
 import { audioManager } from '../engine/AudioManager';
@@ -30,12 +29,14 @@ import { StarlightBackdrop } from './StarlightBackdrop';
 import { SUMMON_POSTER_SRC, SUMMON_VIDEO_SRC, SummonCinematic } from './SummonCinematic';
 import { SummonResultsStage, SummonSpotlight } from './SummonShowcase';
 
+export type SummonMainTab = 'EVENT' | 'HERO' | 'PET' | 'RELIC';
+
 interface GachaScreenProps {
-  initialTab?: 'UR_EVENT' | 'NEW_HERO' | 'HERO' | 'PET' | 'RELIC';
+  initialTab?: SummonMainTab;
   onBack: () => void;
 }
 
-export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT', onBack }) => {
+export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'EVENT', onBack }) => {
   const {
     starlightCrystals,
     starlightTokens,
@@ -51,9 +52,8 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT
     sparkExchange,
   } = usePlayerStore();
 
-  const [bannerTab, setBannerTab] = useState<'UR_EVENT' | 'NEW_HERO' | 'HERO' | 'PET' | 'RELIC'>(
-    initialTab,
-  );
+  const [mainTab, setMainTab] = useState<SummonMainTab>(initialTab);
+  const [activeEventId, setActiveEventId] = useState<string>(EVENT_HERO_BANNERS[0].id);
   const [phase, setPhase] = useState<'IDLE' | 'CINEMATIC' | 'SPOTLIGHT' | 'REVEAL'>('IDLE');
   const [pendingResults, setPendingResults] = useState<GachaPullResult[]>([]);
   const [spotlightIndex, setSpotlightIndex] = useState(0);
@@ -94,34 +94,45 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT
     return Array.from(urls);
   }, [pendingResults]);
 
+  const activeEventBanner =
+    EVENT_HERO_BANNERS.find((b) => b.id === activeEventId) ?? EVENT_HERO_BANNERS[0];
+
   const banner =
-    bannerTab === 'UR_EVENT'
-      ? HERO_BANNER_UR
-      : bannerTab === 'NEW_HERO'
-        ? HERO_BANNER_NEW
-        : bannerTab === 'HERO'
-          ? HERO_BANNER
-          : bannerTab === 'PET'
-            ? PET_BANNER
-            : RELIC_BANNER;
+    mainTab === 'EVENT'
+      ? activeEventBanner
+      : mainTab === 'HERO'
+        ? HERO_BANNER_STANDARD
+        : mainTab === 'PET'
+          ? PET_BANNER
+          : RELIC_BANNER;
+
   const isUrEvent = isURBanner(banner);
   const isPetBanner = banner.type === 'PET';
+  const isStandardHeroBanner = Boolean(banner.isStandardPool);
   const pity = isUrEvent
     ? (pityCounterUR ?? 0)
     : isPetBanner
       ? (pityCounterPet ?? 0)
-      : bannerTab === 'RELIC'
+      : mainTab === 'RELIC'
         ? pityCounterRelic
         : pityCounterHero;
   const guaranteed = isUrEvent
     ? Boolean(guaranteedFeaturedUR)
     : isPetBanner
       ? Boolean(guaranteedFeaturedPet)
-      : bannerTab === 'RELIC'
+      : mainTab === 'RELIC'
         ? guaranteedFeaturedRelic
         : guaranteedFeaturedHero;
   const nextUrRate = getURProbability(pity, banner);
   const nextSsrRate = getSSRProbability(pity, banner);
+
+  const sparkUrHeroes = useMemo(() => HEROES.filter((h) => h.tier === 'UR'), []);
+  const sparkSsrHeroes = useMemo(() => HEROES.filter((h) => h.tier === 'SSR'), []);
+
+  const excludedEventNames = useMemo(
+    () => (banner.excludedEventHeroIds ?? []).map((id) => HERO_MAP[id]?.name ?? id),
+    [banner.excludedEventHeroIds],
+  );
 
   const highestTier = pendingResults.some((r) => r.tier === 'UR')
     ? 'UR'
@@ -255,19 +266,18 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT
       </AnimatePresence>
 
       {/* FLOATING TOP CORNERS (Responsive Mobile & Desktop) */}
-      <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 safe-top pb-2">
-        <div className="flex items-center gap-2">
+      <div className="relative z-20 flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 safe-top pb-1.5">
+        <div className="flex items-center gap-2 overflow-x-auto max-w-full">
           <RpgBackButton onClick={onBack} />
 
-          {/* Unified Celestial Sliding Banner Switcher */}
+          {/* Unified Celestial Sliding Main Summon Switcher */}
           <RpgTabs
-            layoutId="gacha-banner-tabs"
-            value={bannerTab}
-            onChange={setBannerTab}
+            layoutId="gacha-main-tabs"
+            value={mainTab}
+            onChange={setMainTab}
             items={[
-              { key: 'UR_EVENT', label: '❖ UR Event', icon: 'summon', accent: 'gold' },
-              { key: 'NEW_HERO', label: 'New SSR', icon: 'summon', accent: 'gold' },
-              { key: 'HERO', label: 'Eclipse', icon: 'heroes', accent: 'gold' },
+              { key: 'EVENT', label: '✦ Event', icon: 'summon', accent: 'gold' },
+              { key: 'HERO', label: 'Hero Summon', icon: 'heroes', accent: 'gold' },
               { key: 'PET', label: '🐾 Pets', icon: 'summon', accent: 'cyan' },
               { key: 'RELIC', label: 'Relics', icon: 'relic', accent: 'cyan' },
             ]}
@@ -288,6 +298,50 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT
           </button>
         </div>
       </div>
+
+      {/* EVENT SUB-TABS RIBBON (Shown when mainTab === 'EVENT') */}
+      {mainTab === 'EVENT' && (
+        <div className="relative z-20 px-3 sm:px-5 pb-1.5 flex items-center gap-2 overflow-x-auto">
+          <div className="inline-flex items-center gap-1.5 p-1 rounded-full bg-slate-950/80 border border-white/15 backdrop-blur-md shadow-[0_8px_24px_rgba(0,0,0,0.6)]">
+            {EVENT_HERO_BANNERS.map((ev) => {
+              const selected = ev.id === activeEventBanner.id;
+              const evIsUr = isURBanner(ev);
+              return (
+                <button
+                  key={ev.id}
+                  type="button"
+                  onClick={() => {
+                    audioManager.playSfx('button');
+                    setActiveEventId(ev.id);
+                  }}
+                  className={`relative px-3 sm:px-4 py-1.5 rounded-full text-[11px] sm:text-xs font-display font-black uppercase tracking-wider transition flex items-center gap-1.5 shrink-0 ${
+                    selected
+                      ? evIsUr
+                        ? 'bg-gradient-to-r from-fuchsia-500/85 via-purple-500/85 to-amber-400/85 text-white shadow-[0_0_18px_rgba(232,121,249,0.55)] border border-white/60'
+                        : 'bg-gradient-to-r from-emerald-500/85 to-teal-400/85 text-slate-950 shadow-[0_0_18px_rgba(52,211,153,0.45)] border border-emerald-200/80'
+                      : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
+                  }`}
+                >
+                  <span>{ev.eventSubTabLabel ?? ev.name}</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[8px] font-black tracking-widest ${
+                      selected
+                        ? evIsUr
+                          ? 'bg-slate-950/60 text-amber-200'
+                          : 'bg-slate-950/75 text-emerald-200'
+                        : evIsUr
+                          ? 'bg-fuchsia-500/20 text-fuchsia-300'
+                          : 'bg-emerald-500/20 text-emerald-300'
+                    }`}
+                  >
+                    {evIsUr ? 'UR' : 'SSR'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* FULL-BLEED CELESTIAL SUMMON ALTAR STAGE (Side-by-Side on Mobile Landscape & Desktop!) */}
       <main className="relative z-10 flex-1 grid grid-cols-1 sm:grid-cols-12 items-center px-3 sm:px-5 safe-bottom gap-3 sm:gap-5 min-h-0 overflow-y-auto sm:overflow-hidden">
@@ -356,10 +410,18 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT
                     </span>
                     <span
                       className={`hidden md:inline text-[9px] font-black uppercase ${
-                        item.tier === 'UR' ? 'text-fuchsia-200' : 'text-amber-300'
+                        item.tier === 'UR'
+                          ? 'text-fuchsia-200'
+                          : isStandardHeroBanner
+                            ? 'text-cyan-200'
+                            : 'text-amber-300'
                       }`}
                     >
-                      {item.tier === 'UR' ? '❖ LIMITED UR' : '★ RATE-UP'}
+                      {item.tier === 'UR'
+                        ? '❖ LIMITED UR'
+                        : isStandardHeroBanner
+                          ? '★ HERO POOL'
+                          : '★ RATE-UP'}
                     </span>
                   </div>
                 </div>
@@ -462,13 +524,20 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT
                   ? '❖ LIMITED CELESTIAL SOVEREIGN EVENT ❖'
                   : isPetBanner
                     ? '🐾 STARLIGHT COMPANION SANCTUARY'
-                    : banner.type === 'HERO'
-                      ? 'STARLIGHT RESONANCE BANNER'
-                      : 'ANCIENT RELIC ALTAR'}
+                    : isStandardHeroBanner
+                      ? '★ PERMANENT STARLIGHT HERO SUMMON'
+                      : banner.type === 'HERO'
+                        ? '★ LIMITED SSR EVENT BANNER'
+                        : 'ANCIENT RELIC ALTAR'}
               </div>
               {isUrEvent && (
                 <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-300/25 via-fuchsia-500/30 to-cyan-400/25 border border-white/75 text-[9px] font-display font-black uppercase tracking-widest text-white shadow-[0_0_14px_rgba(232,121,249,0.7)] animate-pulse">
                   UR DEBUT
+                </span>
+              )}
+              {isStandardHeroBanner && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-300/70 text-[9px] font-display font-black uppercase tracking-widest text-amber-200">
+                  STANDARD POOL
                 </span>
               )}
               {isPetBanner && (
@@ -525,21 +594,40 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT
                     ? 'bg-fuchsia-500/20 border-fuchsia-300/70 text-fuchsia-100'
                     : isPetBanner
                       ? 'bg-cyan-500/20 border-cyan-300/70 text-cyan-100'
-                      : guaranteed
-                        ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-300'
-                        : 'bg-cyan-500/15 border-cyan-400/45 text-cyan-200'
+                      : isStandardHeroBanner
+                        ? 'bg-amber-500/15 border-amber-400/55 text-amber-200'
+                        : guaranteed
+                          ? 'bg-emerald-500/15 border-emerald-400/50 text-emerald-300'
+                          : 'bg-cyan-500/15 border-cyan-400/45 text-cyan-200'
                 }`}
               >
                 {isUrEvent
                   ? '❖ 100% Astraea on UR'
                   : isPetBanner
                     ? '🐾 100% Aetherion on SSR'
-                    : guaranteed
-                      ? '★ 100% Featured'
-                      : '50/50 Featured Rate-Up'}
+                    : isStandardHeroBanner
+                      ? `★ Equal Odds (${banner.poolSSR.length} SSR)`
+                      : guaranteed
+                        ? '★ 100% Featured'
+                        : '50/50 Featured Rate-Up'}
               </span>
             </div>
           </div>
+
+          {isStandardHeroBanner && excludedEventNames.length > 0 && (
+            <div className="rounded-xl bg-slate-950/75 border border-amber-400/25 px-3 py-2 text-[11px] leading-relaxed space-y-0.5">
+              <div className="text-amber-200 font-bold">
+                Pool: {banner.poolSSR.length} SSR • {banner.poolSR.length} SR • {banner.poolR.length} R{' '}
+                <span className="text-slate-400 font-normal">
+                  ({banner.poolSSR.length + banner.poolSR.length + banner.poolR.length} Heroes)
+                </span>
+              </div>
+              <div className="text-slate-400">
+                Excludes active Event Heroes:{' '}
+                <span className="text-fuchsia-200 font-semibold">{excludedEventNames.join(', ')}</span>
+              </div>
+            </div>
+          )}
 
           <div className="text-[11px] text-slate-400 leading-relaxed">
             {isUrEvent ? (
@@ -708,67 +796,60 @@ export const GachaScreen: React.FC<GachaScreenProps> = ({ initialTab = 'UR_EVENT
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-              {(HERO_BANNER_UR.poolUR ?? []).map((hid) => {
-                const h = HERO_MAP[hid];
-                if (!h) return null;
-                return (
-                  <div key={hid} className="flex flex-col gap-1.5">
-                    <CollectibleCard
-                      kind="HERO"
-                      id={hid}
-                      src={h.assets.card}
-                      name={h.name}
-                      subtitle={h.title}
-                      tier={h.tier}
-                      role={h.role}
-                      topBannerLabel="❖ LIMITED UR"
-                      compact
-                      interactive={false}
-                    />
-                    <RpgButton
-                      variant="gold"
-                      size="xs"
-                      disabled={starlightTokens < 160}
-                      onClick={() => {
-                        if (sparkExchange('HERO', hid)) audioManager.playSfx('ssr_reveal');
-                      }}
-                      className="w-full font-display font-black uppercase tracking-wider"
-                    >
-                      Exchange 160
-                    </RpgButton>
-                  </div>
-                );
-              })}
+              {sparkUrHeroes.map((h) => (
+                <div key={h.id} className="flex flex-col gap-1.5">
+                  <CollectibleCard
+                    kind="HERO"
+                    id={h.id}
+                    src={h.assets.card}
+                    name={h.name}
+                    subtitle={h.title}
+                    tier={h.tier}
+                    role={h.role}
+                    topBannerLabel="❖ LIMITED UR"
+                    compact
+                    interactive={false}
+                  />
+                  <RpgButton
+                    variant="gold"
+                    size="xs"
+                    disabled={starlightTokens < 160}
+                    onClick={() => {
+                      if (sparkExchange('HERO', h.id)) audioManager.playSfx('ssr_reveal');
+                    }}
+                    className="w-full font-display font-black uppercase tracking-wider"
+                  >
+                    Exchange 160
+                  </RpgButton>
+                </div>
+              ))}
 
-              {HERO_BANNER.poolSSR.map((hid) => {
-                const h = HERO_MAP[hid];
-                return (
-                  <div key={hid} className="flex flex-col gap-1.5">
-                    <CollectibleCard
-                      kind="HERO"
-                      id={hid}
-                      src={h.assets.card}
-                      name={h.name}
-                      subtitle={h.title}
-                      tier={h.tier}
-                      role={h.role}
-                      compact
-                      interactive={false}
-                    />
-                    <RpgButton
-                      variant="gold"
-                      size="xs"
-                      disabled={starlightTokens < 120}
-                      onClick={() => {
-                        if (sparkExchange('HERO', hid)) audioManager.playSfx('ssr_reveal');
-                      }}
-                      className="w-full font-display font-black uppercase tracking-wider"
-                    >
-                      Exchange 120
-                    </RpgButton>
-                  </div>
-                );
-              })}
+              {sparkSsrHeroes.map((h) => (
+                <div key={h.id} className="flex flex-col gap-1.5">
+                  <CollectibleCard
+                    kind="HERO"
+                    id={h.id}
+                    src={h.assets.card}
+                    name={h.name}
+                    subtitle={h.title}
+                    tier={h.tier}
+                    role={h.role}
+                    compact
+                    interactive={false}
+                  />
+                  <RpgButton
+                    variant="gold"
+                    size="xs"
+                    disabled={starlightTokens < 120}
+                    onClick={() => {
+                      if (sparkExchange('HERO', h.id)) audioManager.playSfx('ssr_reveal');
+                    }}
+                    className="w-full font-display font-black uppercase tracking-wider"
+                  >
+                    Exchange 120
+                  </RpgButton>
+                </div>
+              ))}
 
               {[...PET_BANNER.poolSSR, ...PET_BANNER.poolSR].map((pid) => {
                 const p = PET_MAP[pid];

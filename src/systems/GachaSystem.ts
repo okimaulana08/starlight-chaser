@@ -103,6 +103,10 @@ export function executeGachaPulls(
           pickedId = pickRandom(banner.poolSSR);
           isFeatured = true;
           guaranteed = false;
+        } else if (banner.isStandardPool) {
+          // Permanent Hero Summon: equal odds across every non-event SSR hero in the pool
+          pickedId = pickRandom(banner.poolSSR);
+          isFeatured = false;
         } else {
           const winFeatured = guaranteed || Math.random() < 0.5;
           if (winFeatured) {

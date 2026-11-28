@@ -1,9 +1,15 @@
 import type { BannerDef } from '../types/game';
+import { HEROES } from './heroes';
 
+/**
+ * Active Event Banners displayed under the Summon > EVENT tab (with sub-tabs).
+ * Any hero featured here (UR or SSR rate-up) is automatically excluded from the permanent Hero Summon pool!
+ */
 export const HERO_BANNER_UR: BannerDef = {
   id: 'banner_hero_sovereign_ur',
   type: 'HERO',
   name: 'Sovereign of the Fifth Pillar',
+  eventSubTabLabel: '❖ UR • Fifth Pillar',
   subtitle:
     'LIMITED UR EVENT — Featured: Astraea (UR Celestial Sovereign) & Vespera (SSR Cinder-Rail Valkyrie)',
   featuredIds: ['astraea', 'vespera'],
@@ -22,15 +28,17 @@ export const HERO_BANNER_UR: BannerDef = {
   backgroundAsset: '/assets/banners/bg_summon_sovereign_ur.webp',
 };
 
-export const HERO_BANNER_NEW: BannerDef = {
+export const HERO_BANNER_EVENT_SSR: BannerDef = {
   id: 'banner_hero_chrono_bloom',
   type: 'HERO',
   name: 'Chrono & Eternal Bloom',
-  subtitle: 'Featured SSR Rate-Up: Aurelia (SSR Healer) & Zephyrion (Chrono Blade)',
+  eventSubTabLabel: '★ SSR • Chrono & Bloom',
+  subtitle: 'LIMITED SSR EVENT — Featured: Aurelia (Saintess of the World-Tree) & Zephyrion (Chrono Eclipse Blade)',
   featuredIds: ['aurelia', 'zephyrion'],
   poolSSR: ['aurelia', 'zephyrion', 'vespera', 'vaelen', 'seraphina', 'draven', 'elara'],
   poolSR: ['ignis', 'garrick', 'lyra', 'raze', 'orion'],
   poolR: ['bram', 'kael', 'nyx', 'titus', 'clara'],
+  isLimitedEvent: true,
   softPity: 60,
   hardPity: 80,
   singleCost: 160,
@@ -40,15 +48,40 @@ export const HERO_BANNER_NEW: BannerDef = {
   backgroundAsset: '/assets/banners/bg_summon_chrono_bloom.webp',
 };
 
-export const HERO_BANNER: BannerDef = {
-  id: 'banner_hero_eclipse',
+// Backward-compatible export alias
+export const HERO_BANNER_NEW = HERO_BANNER_EVENT_SSR;
+
+export const EVENT_HERO_BANNERS: BannerDef[] = [HERO_BANNER_UR, HERO_BANNER_EVENT_SSR];
+
+/**
+ * Dynamic set of all Hero IDs currently featured in active Event banners.
+ * Excluded automatically from the permanent Hero Summon pool until their Event ends!
+ */
+export const ACTIVE_EVENT_HERO_IDS: string[] = Array.from(
+  new Set(EVENT_HERO_BANNERS.flatMap((b) => [...(b.poolUR ?? []), ...b.featuredIds])),
+);
+
+const standardHeroes = HEROES.filter((h) => !ACTIVE_EVENT_HERO_IDS.includes(h.id));
+const standardPoolSSR = standardHeroes.filter((h) => h.tier === 'SSR').map((h) => h.id);
+const standardPoolSR = standardHeroes.filter((h) => h.tier === 'SR').map((h) => h.id);
+const standardPoolR = standardHeroes.filter((h) => h.tier === 'R').map((h) => h.id);
+
+/**
+ * Permanent Hero Summon Banner (replaces Eclipse & Constellation).
+ * Contains ALL heroes EXCEPT heroes currently featured in the Event tab (including ex-Eclipse Vaelen & Seraphina).
+ */
+export const HERO_BANNER_STANDARD: BannerDef = {
+  id: 'banner_hero_standard',
   type: 'HERO',
-  name: 'Eclipse & Constellation',
-  subtitle: 'Featured SSR Rate-Up: Vaelen & Seraphina',
+  name: 'Starlight Hero Summon',
+  subtitle:
+    'Permanent Chaser Roster — All Standard Heroes (Vaelen, Seraphina, Draven, Elara + all SR & R; excludes active Event Heroes)',
   featuredIds: ['vaelen', 'seraphina'],
-  poolSSR: ['vaelen', 'seraphina', 'vespera', 'draven', 'elara', 'aurelia', 'zephyrion'],
-  poolSR: ['garrick', 'lyra', 'raze', 'orion', 'ignis'],
-  poolR: ['kael', 'nyx', 'titus', 'clara', 'bram'],
+  poolSSR: standardPoolSSR,
+  poolSR: standardPoolSR,
+  poolR: standardPoolR,
+  isStandardPool: true,
+  excludedEventHeroIds: ACTIVE_EVENT_HERO_IDS,
   softPity: 60,
   hardPity: 80,
   singleCost: 160,
@@ -57,6 +90,9 @@ export const HERO_BANNER: BannerDef = {
   accentColor: '#f5c84c',
   backgroundAsset: '/assets/banners/bg_summon_eclipse.webp',
 };
+
+// Backward-compatible export alias
+export const HERO_BANNER = HERO_BANNER_STANDARD;
 
 export const RELIC_BANNER: BannerDef = {
   id: 'banner_relic_starfall',
@@ -101,4 +137,9 @@ export const PET_BANNER: BannerDef = {
   backgroundAsset: '/assets/banners/bg_summon_pets.webp',
 };
 
-export const BANNERS = [HERO_BANNER_UR, HERO_BANNER_NEW, HERO_BANNER, PET_BANNER, RELIC_BANNER];
+export const BANNERS = [
+  ...EVENT_HERO_BANNERS,
+  HERO_BANNER_STANDARD,
+  PET_BANNER,
+  RELIC_BANNER,
+];
